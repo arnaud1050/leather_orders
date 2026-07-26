@@ -1,0 +1,10 @@
+services:
+  atelier-orders:
+    build: .
+    container_name: atelier-orders
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persists /app/data (e.g. a future SQLite file) across container rebuilds
+      - ./data:/app/data

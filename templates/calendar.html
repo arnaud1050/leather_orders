@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ month_name }} {{ year }} — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="ledger__header">
+    <div class="ledger__mark">
+      <h1>Atelier Order Book</h1>
+      <p class="ledger__tag">production calendar</p>
+    </div>
+
+    <nav class="ledger__nav">
+      <a class="stamp" href="{{ url_for('month_view', year=prev_year, month=prev_month) }}" title="Previous month">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 6l-6 6 6 6" />
+  </svg>
+</a>
+<div class="ledger__month">
+  <span class="ledger__month-name">{{ month_name }}</span>
+  <span class="ledger__year">{{ year }}</span>
+</div>
+<a class="stamp" href="{{ url_for('month_view', year=next_year, month=next_month) }}" title="Next month">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 6l6 6-6 6" />
+  </svg>
+</a>
+    </nav>
+
+    <div class="ledger__summary">
+      <span class="ledger__summary-count">{{ month_total }}</span>
+      <span class="ledger__summary-label">order{{ 's' if month_total != 1 else '' }}<br>due this month</span>
+    </div>
+  </header>
+
+  <div class="legend">
+    {% for key, label in status_labels.items() %}
+    <span class="legend__item">
+      <span class="dot dot--{{ key }}"></span>{{ label }}
+    </span>
+    {% endfor %}
+  </div>
+
+  <table class="calendar">
+    <thead>
+      <tr>
+        {% for wd in ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] %}
+        <th>{{ wd }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for week in weeks %}
+      <tr>
+        {% for cell in week %}
+          {% if cell is none %}
+          <td class="day day--empty"></td>
+          {% else %}
+          <td class="day {% if cell.is_today %}day--today{% endif %} {% if not cell.orders %}day--quiet{% endif %}">
+            <div class="day__number">
+              {{ cell.day }}
+              {% if cell.is_today %}<span class="day__rivet" title="Today"></span>{% endif %}
+            </div>
+            <div class="day__orders">
+              {% for order in cell.orders %}
+              <div class="chip chip--{{ order.status }}" title="{{ order.notes }}">
+                <span class="chip__client">{{ order.client }}</span>
+                <span class="chip__item">{{ order.item }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</div>
+{% endblock %}
