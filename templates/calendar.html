@@ -63,7 +63,7 @@
             <div class="day__orders">
               {% for order in cell.orders %}
               <div class="chip chip--{{ order.status }}" title="{{ order.notes }}">
-                <span class="chip__client">{{ order.client }}</span>
+                <span class="chip__client">{{ order.customer.name }}</span>
                 <span class="chip__item">{{ order.item }}</span>
               </div>
               {% endfor %}

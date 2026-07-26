@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ order.item }} — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <a class="back-link" href="{{ return_to }}">&larr; Back to timeline</a>
+
+  <header class="detail-header">
+    <h1>{{ order.item }}</h1>
+    <p class="detail-subtitle">
+      Order for
+      <a href="{{ url_for('customer_page', customer_id=order.customer.id) }}?return_to={{ return_to }}">{{ order.customer.name }}</a>
+    </p>
+  </header>
+
+  <dl class="detail-facts">
+    <div>
+      <dt>Start date</dt>
+      <dd>{{ order.start.strftime('%b') }} {{ order.start.day }}, {{ order.start.year }}</dd>
+    </div>
+    <div>
+      <dt>Due date</dt>
+      <dd>{{ order.due.strftime('%b') }} {{ order.due.day }}, {{ order.due.year }}</dd>
+    </div>
+    <div>
+      <dt>Price</dt>
+      <dd>${{ '%.2f'|format(order.price) }}</dd>
+    </div>
+    <div>
+      <dt>Status</dt>
+      <dd><span class="dot dot--{{ order.status }}"></span> {{ status_labels[order.status] }}</dd>
+    </div>
+  </dl>
+
+  <section class="detail-documents">
+    <h2>Documents</h2>
+    <ul class="doc-list">
+      {% for doc in order.documents %}
+      <li class="doc-list__item">
+        <span class="doc-list__label">{{ doc.label }}</span>
+        <span class="doc-list__filename">{{ doc.filename }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="detail-note">Upload / download isn't wired up yet — these are placeholders standing in for the real thing.</p>
+  </section>
+
+</div>
+{% endblock %}

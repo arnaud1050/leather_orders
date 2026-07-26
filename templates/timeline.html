@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Production Timeline — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="ledger__header">
+    <div class="ledger__mark">
+      <h1>Atelier Order Book</h1>
+      <p class="ledger__tag">production timeline</p>
+    </div>
+
+    <nav class="ledger__nav">
+      <a class="stamp" href="{{ url_for('timeline_window', year=prev_start.year, month=prev_start.month, day=prev_start.day) }}" title="Previous">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 6l-6 6 6 6" />
+        </svg>
+      </a>
+      <div class="ledger__month">
+        <span class="ledger__month-name">{{ window_start.strftime('%b') }} {{ window_start.day }} – {{ window_end.strftime('%b') }} {{ window_end.day }}</span>
+        <span class="ledger__year">{{ window_start.year }}</span>
+      </div>
+      <a class="stamp" href="{{ url_for('timeline_window', year=next_start.year, month=next_start.month, day=next_start.day) }}" title="Next">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </a>
+    </nav>
+
+    <div class="ledger__summary">
+      <span class="ledger__summary-count">{{ rows|length }}</span>
+      <span class="ledger__summary-label">order{{ 's' if rows|length != 1 else '' }}<br>in this window</span>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span class="legend__item"><span class="dot dot--in_progress"></span>In progress</span>
+    <span class="legend__item"><span class="dot dot--ready"></span>Ready for pickup</span>
+    <span class="legend__item"><span class="dot dot--delivered"></span>Delivered</span>
+    <span class="legend__item"><span class="dot dot--rush"></span>Rush</span>
+  </div>
+
+  <div class="timeline" style="--window-days: {{ window_days }}; --week-count: {{ week_headers|length }};">
+    <div class="timeline__row timeline__row--header">
+      <div class="timeline__label"></div>
+      <div class="timeline__track timeline__track--header">
+        {% for week_start in week_headers %}
+        <div class="timeline__week-label">{{ week_start.strftime('%b') }} {{ week_start.day }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% for row in rows %}
+    <div class="timeline__row">
+      <button type="button" class="timeline__label" data-open-customer="{{ row.customer.id }}">{{ row.customer.name }}</button>
+      <div class="timeline__track">
+        <div class="timeline__bar timeline__bar--{{ row.status }} {% if row.truncated_start %}timeline__bar--open-start{% endif %} {% if row.truncated_end %}timeline__bar--open-end{% endif %}"
+             style="grid-column: {{ row.col_start }} / span {{ row.span }};"
+             title="{{ row.notes }}"
+             data-open-order="{{ row.id }}">
+          <span class="timeline__bar-label">{{ row.item }}</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if not rows %}
+    <div class="timeline__empty">No orders scheduled in this window.</div>
+    {% endif %}
+  </div>
+
+  {# Quick-view/edit modals. One per customer/order visible in this window,
+     opened via the buttons above. Each links out to a full page as well. #}
+  {% for customer in customers_in_view %}
+  <dialog id="customer-modal-{{ customer.id }}" class="modal">
+    <form method="post" action="{{ url_for('edit_customer', customer_id=customer.id) }}" class="modal__form">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <h2 class="modal__title">{{ customer.name }}</h2>
+      <label class="modal__field">Name<input type="text" name="name" value="{{ customer.name }}" required></label>
+      <label class="modal__field">Email<input type="email" name="email" value="{{ customer.email }}"></label>
+      <label class="modal__field">Phone<input type="tel" name="phone" value="{{ customer.phone }}"></label>
+      <div class="modal__actions">
+        <a class="modal__link" href="{{ url_for('customer_page', customer_id=customer.id) }}?return_to={{ request.path }}">View full profile &rarr;</a>
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  {% endfor %}
+
+  {% for row in rows %}
+  <dialog id="order-modal-{{ row.id }}" class="modal">
+    <div class="modal__body">
+      <h2 class="modal__title">{{ row.item }}</h2>
+      <p class="modal__subtitle">{{ row.customer.name }}</p>
+      <dl class="modal__facts">
+        <div><dt>Start</dt><dd>{{ row.start.strftime('%b') }} {{ row.start.day }}</dd></div>
+        <div><dt>Due</dt><dd>{{ row.due.strftime('%b') }} {{ row.due.day }}</dd></div>
+        <div><dt>Price</dt><dd>${{ '%.2f'|format(row.price) }}</dd></div>
+      </dl>
+      <div class="modal__documents">
+        {% for doc in row.documents %}
+        <span class="modal__doc">{{ doc.label }}: {{ doc.filename }}</span>
+        {% endfor %}
+      </div>
+      <div class="modal__actions">
+        <a class="modal__link" href="{{ url_for('order_page', order_id=row.id) }}?return_to={{ request.path }}">Open full order page &rarr;</a>
+        <button type="button" class="btn-secondary" data-close-modal>Close</button>
+      </div>
+    </div>
+  </dialog>
+  {% endfor %}
+
+</div>
+
+<script>
+  document.querySelectorAll('[data-open-customer]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var modal = document.getElementById('customer-modal-' + el.dataset.openCustomer);
+      if (modal) modal.showModal();
+    });
+  });
+
+  document.querySelectorAll('[data-open-order]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var modal = document.getElementById('order-modal-' + el.dataset.openOrder);
+      if (modal) modal.showModal();
+    });
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      el.closest('dialog').close();
+    });
+  });
+
+  // Click on the backdrop (outside the modal content) closes it too
+  document.querySelectorAll('dialog.modal').forEach(function (dialog) {
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+</script>
+{% endblock %}
