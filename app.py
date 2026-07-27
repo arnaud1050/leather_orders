@@ -1,77 +1,51 @@
 """
-Atelier Order Book — prototype calendar view
+Atelier Order Book — prototype calendar/timeline view
 Custom leather goods order & inventory planner (Flask)
 
-This is a prototype: customers/orders live in memory and reset when the
-server restarts. Once the shape of the data feels right, swap CUSTOMERS
-and ORDERS for real database tables (SQLite via SQLAlchemy is the
-natural next step) — the dict shapes below are deliberately close to
-what those tables would look like.
+This is a prototype: data lives in a local SQLite database (see models.py)
+and is scoped per Company, in anticipation of this eventually becoming a
+multi-tenant SaaS product. Today only one company ("By Monsieur") is
+seeded, but every query already filters by company_id so adding a second
+tenant later is additive.
 """
 
+import os
 from datetime import date, timedelta
 from calendar import Calendar, month_name
+
 from flask import Flask, render_template, request, redirect, url_for, abort
+from flask_login import (
+    LoginManager, current_user, login_required, login_user, logout_user,
+)
+
+from models import Company, Customer, Document, Order, User, db, seed_if_empty
 
 app = Flask(__name__)
 
-# ---------------------------------------------------------------------------
-# In-memory sample data.
-#
-# CUSTOMERS is keyed by id. ORDERS reference a customer via "customer_id".
-# Right after ORDERS is defined, each order dict gets a "customer" key
-# attached (a reference into CUSTOMERS, not a copy) so templates can just
-# write order.customer.name etc. Because it's a reference, editing a
-# customer via the /customers/<id>/edit route updates it everywhere at
-# once — no need to re-sync anything.
-# ---------------------------------------------------------------------------
-CUSTOMERS = {
-    1: {"id": 1, "name": "M. Alarie", "email": "m.alarie@example.com", "phone": "514-555-0142"},
-    2: {"id": 2, "name": "S. Okafor", "email": "s.okafor@example.com", "phone": "604-555-0198"},
-    3: {"id": 3, "name": "R. Chen", "email": "r.chen@example.com", "phone": "778-555-0110"},
-    4: {"id": 4, "name": "L. Beaumont", "email": "l.beaumont@example.com", "phone": "438-555-0176"},
-    5: {"id": 5, "name": "A. Novak", "email": "a.novak@example.com", "phone": "416-555-0133"},
-    6: {"id": 6, "name": "T. Iverson", "email": "t.iverson@example.com", "phone": "604-555-0121"},
-    7: {"id": 7, "name": "P. Dubois", "email": "p.dubois@example.com", "phone": "514-555-0187"},
-    8: {"id": 8, "name": "H. Solberg", "email": "h.solberg@example.com", "phone": "778-555-0165"},
-    9: {"id": 9, "name": "G. Marchetti", "email": "g.marchetti@example.com", "phone": "416-555-0154"},
-    10: {"id": 10, "name": "N. Petrova", "email": "n.petrova@example.com", "phone": "604-555-0109"},
-}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
-# Placeholder documents — the upload/download flow isn't built yet, this
-# just simulates what an order with attachments will eventually look like.
-_SAMPLE_DOCUMENTS = [
-    {"label": "Mockup", "filename": "mockup_v1.pdf"},
-    {"label": "Invoice", "filename": "invoice_draft.pdf"},
-]
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(DATA_DIR, "atelier.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Set a real SECRET_KEY via the environment in production/Docker — this
+# fallback is only safe for local dev.
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-not-secure")
 
-# Each order represents a custom leather commission.
-# "start" -> when work begins (cutting/tooling). Combined with "due", this is
-#            what the timeline view draws as a bar.
-# status drives the colour of its chip/bar.
-#   "in_progress" -> currently being cut / tooled / stitched
-#   "ready"       -> finished, awaiting pickup or shipment
-#   "delivered"   -> handed off to the client
-#   "rush"        -> in progress, but on a tight deadline
-ORDERS = [
-    {"id": 1, "customer_id": 1, "item": "Full-grain briefcase", "start": date(2026, 6, 15), "due": date(2026, 7, 3), "price": 850.00, "status": "delivered", "notes": "Horween Chromexcel, brass hardware"},
-    {"id": 2, "customer_id": 2, "item": "Weekender duffel", "start": date(2026, 6, 22), "due": date(2026, 7, 9), "price": 620.00, "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim"},
-    {"id": 3, "customer_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 7, 1), "due": date(2026, 7, 9), "price": 140.00, "status": "ready", "notes": "Hand-stitched, gold foil initials"},
-    {"id": 4, "customer_id": 4, "item": "Messenger bag", "start": date(2026, 6, 29), "due": date(2026, 7, 14), "price": 480.00, "status": "rush", "notes": "Client travels on the 15th"},
-    {"id": 5, "customer_id": 5, "item": "Belt, 38mm", "start": date(2026, 7, 8), "due": date(2026, 7, 14), "price": 95.00, "status": "in_progress", "notes": "English bridle leather"},
-    {"id": 6, "customer_id": 6, "item": "Camera strap", "start": date(2026, 7, 10), "due": date(2026, 7, 18), "price": 110.00, "status": "ready", "notes": "Padded, nickel rivets"},
-    {"id": 7, "customer_id": 7, "item": "Tote bag", "start": date(2026, 7, 6), "due": date(2026, 7, 22), "price": 310.00, "status": "in_progress", "notes": "Natural veg-tan, will patina"},
-    {"id": 8, "customer_id": 1, "item": "Passport holder (x2)", "start": date(2026, 7, 16), "due": date(2026, 7, 22), "price": 130.00, "status": "in_progress", "notes": "Gift for anniversary"},
-    {"id": 9, "customer_id": 8, "item": "Watch strap", "start": date(2026, 7, 21), "due": date(2026, 7, 27), "price": 85.00, "status": "rush", "notes": "Custom buckle from client's own"},
-    {"id": 10, "customer_id": 9, "item": "Laptop sleeve", "start": date(2026, 7, 20), "due": date(2026, 7, 30), "price": 165.00, "status": "in_progress", "notes": "13-inch, felt lining"},
-    {"id": 11, "customer_id": 10, "item": "Card holder", "start": date(2026, 7, 28), "due": date(2026, 8, 4), "price": 75.00, "status": "in_progress", "notes": "Minimalist, 3-slot"},
-    {"id": 12, "customer_id": 3, "item": "Travel journal cover", "start": date(2026, 7, 24), "due": date(2026, 8, 6), "price": 120.00, "status": "ready", "notes": "Refillable, brass corners"},
-]
+db.init_app(app)
 
-for _order in ORDERS:
-    _order["customer"] = CUSTOMERS[_order["customer_id"]]
-    _order["documents"] = list(_SAMPLE_DOCUMENTS)  # placeholder, same fake docs on every order for now
-del _order
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+
+with app.app_context():
+    db.create_all()
+    seed_if_empty()
 
 STATUS_LABELS = {
     "in_progress": "In progress",
@@ -81,36 +55,85 @@ STATUS_LABELS = {
 }
 
 
-def get_order_or_404(order_id: int) -> dict:
-    order = next((o for o in ORDERS if o["id"] == order_id), None)
+def get_order_or_404(order_id: int) -> Order:
+    order = (
+        Order.query.join(Customer)
+        .filter(Order.id == order_id, Customer.company_id == current_user.company_id)
+        .first()
+    )
     if order is None:
         abort(404)
     return order
 
 
-def get_customer_or_404(customer_id: int) -> dict:
-    customer = CUSTOMERS.get(customer_id)
+def get_customer_or_404(customer_id: int) -> Customer:
+    customer = Customer.query.filter_by(
+        id=customer_id, company_id=current_user.company_id
+    ).first()
     if customer is None:
         abort(404)
     return customer
 
 
-def orders_by_day(year: int, month: int) -> dict[int, list[dict]]:
+def orders_by_day(year: int, month: int) -> dict[int, list[Order]]:
     """Map day-of-month -> list of orders due that day, for the given month."""
-    grouped: dict[int, list[dict]] = {}
-    for order in ORDERS:
-        if order["due"].year == year and order["due"].month == month:
-            grouped.setdefault(order["due"].day, []).append(order)
+    grouped: dict[int, list[Order]] = {}
+    orders = (
+        Order.query.join(Customer)
+        .filter(Customer.company_id == current_user.company_id)
+        .all()
+    )
+    for order in orders:
+        if order.due.year == year and order.due.month == month:
+            grouped.setdefault(order.due.day, []).append(order)
     return grouped
 
 
-@app.route("/")
-def index():
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("timeline_view"))
+
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user = User.query.filter_by(username=username).first()
+        if user is not None and user.check_password(password):
+            login_user(user)
+            next_url = request.args.get("next") or url_for("timeline_view")
+            return redirect(next_url)
+        error = "Incorrect username or password."
+
+    return render_template("login.html", error=error, active_view=None)
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------------
+# Calendar view — month grid via Python's stdlib calendar module
+# (calendar.Calendar), no external dependency. Orders shown as chips on
+# their due date.
+# ---------------------------------------------------------------------------
+
+@app.route("/calendar")
+@login_required
+def calendar_view():
     today = date.today()
     return month_view(today.year, today.month)
 
 
 @app.route("/month/<int:year>/<int:month>")
+@login_required
 def month_view(year: int, month: int):
     if not (1 <= month <= 12):
         abort(404)
@@ -160,6 +183,7 @@ def month_view(year: int, month: int):
 # customer name on the left, a bar spanning start -> due for each order.
 # Clicking a customer name or a bar opens a quick-view/edit modal (see
 # timeline.html); each modal links out to the full customer/order page.
+# This is the app's default view (see "/" below).
 # ---------------------------------------------------------------------------
 
 TIMELINE_WEEKS = 8       # weeks visible at once
@@ -173,13 +197,15 @@ def _sunday_on_or_before(d: date) -> date:
     return d - timedelta(days=offset)
 
 
-@app.route("/timeline")
+@app.route("/")
+@login_required
 def timeline_view():
     start = _sunday_on_or_before(date.today())
     return timeline_window(start.year, start.month, start.day)
 
 
 @app.route("/timeline/<int:year>/<int:month>/<int:day>")
+@login_required
 def timeline_window(year: int, month: int, day: int):
     try:
         requested = date(year, month, day)
@@ -192,34 +218,41 @@ def timeline_window(year: int, month: int, day: int):
 
     week_headers = [window_start + timedelta(days=w * 7) for w in range(TIMELINE_WEEKS)]
 
+    all_orders = (
+        Order.query.join(Customer)
+        .filter(Customer.company_id == current_user.company_id)
+        .order_by(Order.start)
+        .all()
+    )
+
     rows = []
-    customers_seen: dict[int, dict] = {}  # preserves first-appearance order, deduped
-    for order in sorted(ORDERS, key=lambda o: o["start"]):
+    customers_seen: dict[int, Customer] = {}  # preserves first-appearance order, deduped
+    for order in all_orders:
         # Skip orders that don't overlap the visible window at all
-        if order["due"] < window_start or order["start"] > window_end:
+        if order.due < window_start or order.start > window_end:
             continue
 
-        clipped_start = max(order["start"], window_start)
-        clipped_end = min(order["due"], window_end)
+        clipped_start = max(order.start, window_start)
+        clipped_end = min(order.due, window_end)
         col_start = (clipped_start - window_start).days + 1  # 1-indexed CSS grid column
         span = (clipped_end - clipped_start).days + 1
 
         rows.append({
-            "id": order["id"],
-            "customer": order["customer"],
-            "item": order["item"],
-            "price": order["price"],
-            "start": order["start"],
-            "due": order["due"],
-            "status": order["status"],
-            "notes": order["notes"],
-            "documents": order["documents"],
+            "id": order.id,
+            "customer": order.customer,
+            "item": order.item,
+            "price": order.price,
+            "start": order.start,
+            "due": order.due,
+            "status": order.status,
+            "notes": order.notes,
+            "documents": order.documents,
             "col_start": col_start,
             "span": span,
-            "truncated_start": order["start"] < window_start,
-            "truncated_end": order["due"] > window_end,
+            "truncated_start": order.start < window_start,
+            "truncated_end": order.due > window_end,
         })
-        customers_seen.setdefault(order["customer"]["id"], order["customer"])
+        customers_seen.setdefault(order.customer.id, order.customer)
 
     step_days = TIMELINE_STEP_WEEKS * 7
     prev_start = window_start - timedelta(days=step_days)
@@ -235,6 +268,7 @@ def timeline_window(year: int, month: int, day: int):
         customers_in_view=list(customers_seen.values()),
         prev_start=prev_start,
         next_start=next_start,
+        status_labels=STATUS_LABELS,
         active_view="timeline",
     )
 
@@ -247,30 +281,34 @@ def timeline_window(year: int, month: int, day: int):
 # ---------------------------------------------------------------------------
 
 @app.route("/customers/<int:customer_id>")
+@login_required
 def customer_page(customer_id: int):
     customer = get_customer_or_404(customer_id)
-    customer_orders = [o for o in ORDERS if o["customer_id"] == customer_id]
     return_to = request.args.get("return_to") or url_for("timeline_view")
     return render_template(
         "customer_page.html",
         customer=customer,
-        orders=customer_orders,
+        orders=customer.orders,
         return_to=return_to,
         active_view=None,
     )
 
 
 @app.route("/customers/<int:customer_id>/edit", methods=["POST"])
+@login_required
 def edit_customer(customer_id: int):
     customer = get_customer_or_404(customer_id)
-    customer["name"] = request.form.get("name", "").strip() or customer["name"]
-    customer["email"] = request.form.get("email", "").strip()
-    customer["phone"] = request.form.get("phone", "").strip()
+    customer.first_name = request.form.get("first_name", "").strip() or customer.first_name
+    customer.last_name = request.form.get("last_name", "").strip() or customer.last_name
+    customer.email = request.form.get("email", "").strip()
+    customer.phone = request.form.get("phone", "").strip()
+    db.session.commit()
     return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
 
 
 @app.route("/orders/<int:order_id>")
+@login_required
 def order_page(order_id: int):
     order = get_order_or_404(order_id)
     return_to = request.args.get("return_to") or url_for("timeline_view")
@@ -281,6 +319,36 @@ def order_page(order_id: int):
         return_to=return_to,
         active_view=None,
     )
+
+
+@app.route("/orders/<int:order_id>/edit", methods=["POST"])
+@login_required
+def edit_order(order_id: int):
+    order = get_order_or_404(order_id)
+    order.item = request.form.get("item", "").strip() or order.item
+
+    start_str = request.form.get("start")
+    due_str = request.form.get("due")
+    if start_str:
+        order.start = date.fromisoformat(start_str)
+    if due_str:
+        order.due = date.fromisoformat(due_str)
+
+    price_str = request.form.get("price")
+    if price_str:
+        try:
+            order.price = float(price_str)
+        except ValueError:
+            pass
+
+    status = request.form.get("status")
+    if status in STATUS_LABELS:
+        order.status = status
+
+    order.notes = request.form.get("notes", "").strip()
+    db.session.commit()
+    return_to = request.form.get("return_to") or url_for("timeline_view")
+    return redirect(return_to)
 
 
 if __name__ == "__main__":

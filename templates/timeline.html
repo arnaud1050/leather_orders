@@ -75,7 +75,8 @@
     <form method="post" action="{{ url_for('edit_customer', customer_id=customer.id) }}" class="modal__form">
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <h2 class="modal__title">{{ customer.name }}</h2>
-      <label class="modal__field">Name<input type="text" name="name" value="{{ customer.name }}" required></label>
+      <label class="modal__field">First name<input type="text" name="first_name" value="{{ customer.first_name }}" required></label>
+      <label class="modal__field">Last name<input type="text" name="last_name" value="{{ customer.last_name }}" required></label>
       <label class="modal__field">Email<input type="email" name="email" value="{{ customer.email }}"></label>
       <label class="modal__field">Phone<input type="tel" name="phone" value="{{ customer.phone }}"></label>
       <div class="modal__actions">
@@ -91,14 +92,21 @@
 
   {% for row in rows %}
   <dialog id="order-modal-{{ row.id }}" class="modal">
-    <div class="modal__body">
+    <form method="post" action="{{ url_for('edit_order', order_id=row.id) }}" class="modal__form">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
       <h2 class="modal__title">{{ row.item }}</h2>
       <p class="modal__subtitle">{{ row.customer.name }}</p>
-      <dl class="modal__facts">
-        <div><dt>Start</dt><dd>{{ row.start.strftime('%b') }} {{ row.start.day }}</dd></div>
-        <div><dt>Due</dt><dd>{{ row.due.strftime('%b') }} {{ row.due.day }}</dd></div>
-        <div><dt>Price</dt><dd>${{ '%.2f'|format(row.price) }}</dd></div>
-      </dl>
+      <label class="modal__field">Item<input type="text" name="item" value="{{ row.item }}" required></label>
+      <label class="modal__field">Start<input type="date" name="start" value="{{ row.start.isoformat() }}" required></label>
+      <label class="modal__field">Due<input type="date" name="due" value="{{ row.due.isoformat() }}" required></label>
+      <label class="modal__field">Price<input type="number" name="price" value="{{ '%.2f'|format(row.price) }}" step="0.01" min="0" required></label>
+      <label class="modal__field">Status
+        <select name="status">
+          {% for key, label in status_labels.items() %}
+          <option value="{{ key }}" {% if key == row.status %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <div class="modal__documents">
         {% for doc in row.documents %}
         <span class="modal__doc">{{ doc.label }}: {{ doc.filename }}</span>
@@ -106,9 +114,12 @@
       </div>
       <div class="modal__actions">
         <a class="modal__link" href="{{ url_for('order_page', order_id=row.id) }}?return_to={{ request.path }}">Open full order page &rarr;</a>
-        <button type="button" class="btn-secondary" data-close-modal>Close</button>
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
       </div>
-    </div>
+    </form>
   </dialog>
   {% endfor %}
 

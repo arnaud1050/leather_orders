@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger login-page">
+
+  <header class="detail-header">
+    <h1>Atelier Order Book</h1>
+    <p class="detail-subtitle">Sign in to continue</p>
+  </header>
+
+  <form method="post" class="detail-form">
+    {% if error %}
+    <p class="login-error">{{ error }}</p>
+    {% endif %}
+    <label>Username<input type="text" name="username" required autofocus></label>
+    <label>Password<input type="password" name="password" required></label>
+    <div>
+      <button type="submit" class="btn-primary">Sign in</button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

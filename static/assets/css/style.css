@@ -72,15 +72,30 @@ body {
   text-decoration: none;
   color: var(--ink-soft);
   padding: 6px 14px;
-  border: 1px solid var(--hairline);
-  border-bottom: none;
   border-radius: var(--radius) var(--radius) 0 0;
 }
 
 .view-switch__link.is-active {
   color: var(--ink);
   background: var(--paper);
-  border-color: var(--ink);
+}
+
+.view-switch__logout {
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--paper);
+  background: var(--ink);
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  align-self: center;
+}
+
+.view-switch__logout:hover {
+  background: #000;
 }
 
 /* ---------------------------------------------------------------------
@@ -519,7 +534,9 @@ dialog.modal::backdrop {
   color: var(--ink-soft);
 }
 
-.modal__field input {
+.modal__field input,
+.modal__field select,
+.modal__field textarea {
   font-family: var(--font-body);
   font-size: 0.9rem;
   font-weight: 400;
@@ -530,31 +547,14 @@ dialog.modal::backdrop {
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   background: var(--paper);
+  resize: vertical;
 }
 
-.modal__field input:focus {
+.modal__field input:focus,
+.modal__field select:focus,
+.modal__field textarea:focus {
   outline: none;
   border-color: var(--ink);
-}
-
-.modal__facts {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin: 0;
-}
-
-.modal__facts dt {
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-soft);
-}
-
-.modal__facts dd {
-  margin: 2px 0 0;
-  font-size: 0.85rem;
-  font-weight: 600;
 }
 
 .modal__documents {
@@ -681,7 +681,9 @@ dialog.modal::backdrop {
   color: var(--ink-soft);
 }
 
-.detail-form input {
+.detail-form input,
+.detail-form select,
+.detail-form textarea {
   font-family: var(--font-body);
   font-size: 0.95rem;
   font-weight: 400;
@@ -692,40 +694,25 @@ dialog.modal::backdrop {
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   background: var(--paper);
+  resize: vertical;
 }
 
-.detail-form input:focus {
+.detail-form input:focus,
+.detail-form select:focus,
+.detail-form textarea:focus {
   outline: none;
   border-color: var(--ink);
 }
 
-.detail-facts {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin: 0 0 32px;
-  padding: 0;
+.login-page {
+  max-width: 400px;
+  margin: 80px auto 0;
 }
 
-.detail-facts > div {
-  border-left: 2px solid var(--hairline);
-  padding-left: 10px;
-}
-
-.detail-facts dt {
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-soft);
-}
-
-.detail-facts dd {
-  margin: 4px 0 0;
-  font-size: 1rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.login-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--status-rush);
 }
 
 .detail-orders h2,

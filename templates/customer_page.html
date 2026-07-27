@@ -12,7 +12,8 @@
 
   <form method="post" action="{{ url_for('edit_customer', customer_id=customer.id) }}" class="detail-form">
     <input type="hidden" name="return_to" value="{{ return_to }}">
-    <label>Name<input type="text" name="name" value="{{ customer.name }}" required></label>
+    <label>First name<input type="text" name="first_name" value="{{ customer.first_name }}" required></label>
+    <label>Last name<input type="text" name="last_name" value="{{ customer.last_name }}" required></label>
     <label>Email<input type="email" name="email" value="{{ customer.email }}"></label>
     <label>Phone<input type="tel" name="phone" value="{{ customer.phone }}"></label>
     <div>

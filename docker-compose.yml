@@ -6,5 +6,10 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      # Persists /app/data (e.g. a future SQLite file) across container rebuilds
+      # Persists /app/data (the SQLite file) across container rebuilds
       - ./data:/app/data
+    environment:
+      # Required for real deployments — app.py falls back to an insecure
+      # default if this isn't set. Put the real value in a local .env file
+      # (already gitignored) rather than committing it here.
+      - SECRET_KEY=${SECRET_KEY:-dev-not-secure}

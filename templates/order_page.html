@@ -13,24 +13,24 @@
     </p>
   </header>
 
-  <dl class="detail-facts">
+  <form method="post" action="{{ url_for('edit_order', order_id=order.id) }}" class="detail-form">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <label>Item<input type="text" name="item" value="{{ order.item }}" required></label>
+    <label>Start date<input type="date" name="start" value="{{ order.start.isoformat() }}" required></label>
+    <label>Due date<input type="date" name="due" value="{{ order.due.isoformat() }}" required></label>
+    <label>Price<input type="number" name="price" value="{{ '%.2f'|format(order.price) }}" step="0.01" min="0" required></label>
+    <label>Status
+      <select name="status">
+        {% for key, label in status_labels.items() %}
+        <option value="{{ key }}" {% if key == order.status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Notes<textarea name="notes" rows="3">{{ order.notes }}</textarea></label>
     <div>
-      <dt>Start date</dt>
-      <dd>{{ order.start.strftime('%b') }} {{ order.start.day }}, {{ order.start.year }}</dd>
+      <button type="submit" class="btn-primary">Save changes</button>
     </div>
-    <div>
-      <dt>Due date</dt>
-      <dd>{{ order.due.strftime('%b') }} {{ order.due.day }}, {{ order.due.year }}</dd>
-    </div>
-    <div>
-      <dt>Price</dt>
-      <dd>${{ '%.2f'|format(order.price) }}</dd>
-    </div>
-    <div>
-      <dt>Status</dt>
-      <dd><span class="dot dot--{{ order.status }}"></span> {{ status_labels[order.status] }}</dd>
-    </div>
-  </dl>
+  </form>
 
   <section class="detail-documents">
     <h2>Documents</h2>
