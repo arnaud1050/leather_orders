@@ -27,22 +27,34 @@
     </nav>
 
     <div class="ledger__summary">
-      <span class="ledger__summary-count">{{ rows|length }}</span>
-      <span class="ledger__summary-label">order{{ 's' if rows|length != 1 else '' }}<br>in this window</span>
+      <span class="ledger__summary-count" id="order-count">{{ rows|length }}</span>
+      <span class="ledger__summary-label" id="order-count-label">order{{ 's' if rows|length != 1 else '' }}<br>in this window</span>
     </div>
   </header>
 
   <div class="legend-row">
-    <div class="legend">
-      <span class="legend__item"><span class="dot dot--in_progress"></span>In progress</span>
-      <span class="legend__item"><span class="dot dot--ready"></span>Ready for pickup</span>
-      <span class="legend__item"><span class="dot dot--delivered"></span>Delivered</span>
-      <span class="legend__item"><span class="dot dot--rush"></span>Rush</span>
+    <div class="legend" id="status-legend">
+      <button type="button" class="legend__item" data-status="in_progress"><span class="dot dot--in_progress"></span>In progress</button>
+      <button type="button" class="legend__item" data-status="ready"><span class="dot dot--ready"></span>Ready for pickup</button>
+      <button type="button" class="legend__item" data-status="delivered"><span class="dot dot--delivered"></span>Delivered</button>
+      <button type="button" class="legend__item" data-status="rush"><span class="dot dot--rush"></span>Rush</button>
+      <span class="legend__item legend__item--static">
+        <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+        Returning client
+      </span>
     </div>
+    <label class="timeline__sort">
+      Sort by
+      <select id="timeline-sort">
+        <option value="start">Start date</option>
+        <option value="due">Due date</option>
+        <option value="value">Highest paying client</option>
+      </select>
+    </label>
     <a href="{{ url_for('new_order', return_to=request.path) }}" class="btn-primary legend__new-order">+ New order</a>
   </div>
 
-  <div class="timeline" style="--window-days: {{ window_days }}; --week-count: {{ week_headers|length }};">
+  <div class="timeline" id="timeline" style="--window-days: {{ window_days }}; --week-count: {{ week_headers|length }};">
     <div class="timeline__row timeline__row--header">
       <div class="timeline__label"></div>
       <div class="timeline__track timeline__track--header">
@@ -53,7 +65,7 @@
     </div>
 
     {% for row in rows %}
-    <div class="timeline__row">
+    <div class="timeline__row" data-status="{{ row.status }}" data-start="{{ row.start.isoformat() }}" data-due="{{ row.due.isoformat() }}" data-client-value="{{ row.client.lifetime_value }}">
       <button type="button" class="timeline__label" data-open-client="{{ row.client.id }}">
         {{ row.client.name }}
         {% if row.client.is_returning %}
@@ -160,5 +172,80 @@
       if (event.target === dialog) dialog.close();
     });
   });
+
+  // Status filter (click a legend item to hide/show that status) and sort
+  // order — both persisted in localStorage (not the URL) so they carry
+  // over automatically as you navigate prev/next through the timeline.
+  (function () {
+    var HIDDEN_KEY = 'timeline-hidden-statuses';
+    var SORT_KEY = 'timeline-sort';
+
+    var timeline = document.getElementById('timeline');
+    var rows = Array.prototype.slice.call(timeline.querySelectorAll('.timeline__row:not(.timeline__row--header)'));
+    var legendButtons = document.querySelectorAll('#status-legend .legend__item[data-status]');
+    var sortSelect = document.getElementById('timeline-sort');
+    var orderCount = document.getElementById('order-count');
+    var orderCountLabel = document.getElementById('order-count-label');
+
+    function getHidden() {
+      try {
+        return JSON.parse(localStorage.getItem(HIDDEN_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function applyFilter() {
+      var hidden = getHidden();
+      var visible = 0;
+      rows.forEach(function (row) {
+        var isHidden = hidden.indexOf(row.dataset.status) !== -1;
+        row.hidden = isHidden;
+        if (!isHidden) visible++;
+      });
+      legendButtons.forEach(function (btn) {
+        btn.classList.toggle('legend__item--off', hidden.indexOf(btn.dataset.status) !== -1);
+      });
+      orderCount.textContent = visible;
+      orderCountLabel.innerHTML = 'order' + (visible !== 1 ? 's' : '') + '<br>in this window';
+    }
+
+    function applySort() {
+      var sortBy = localStorage.getItem(SORT_KEY) || 'start';
+      sortSelect.value = sortBy;
+      var sorted = rows.slice().sort(function (a, b) {
+        if (sortBy === 'value') {
+          return parseFloat(b.dataset.clientValue) - parseFloat(a.dataset.clientValue);
+        }
+        return a.dataset[sortBy] < b.dataset[sortBy] ? -1 : a.dataset[sortBy] > b.dataset[sortBy] ? 1 : 0;
+      });
+      sorted.forEach(function (row) {
+        timeline.appendChild(row);
+      });
+    }
+
+    legendButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var hidden = getHidden();
+        var status = btn.dataset.status;
+        var index = hidden.indexOf(status);
+        if (index === -1) {
+          hidden.push(status);
+        } else {
+          hidden.splice(index, 1);
+        }
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+        applyFilter();
+      });
+    });
+
+    sortSelect.addEventListener('change', function () {
+      localStorage.setItem(SORT_KEY, sortSelect.value);
+      applySort();
+    });
+
+    applySort();
+    applyFilter();
+  })();
 </script>
 {% endblock %}
