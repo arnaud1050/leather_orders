@@ -132,7 +132,7 @@ _SAMPLE_DOCUMENTS = [
 ]
 
 
-def seed_if_empty() -> None:
+def seed_if_empty(admin_password: str = "changeme") -> None:
     """Populate a fresh database with the sample "By Monsieur" tenant."""
     if Company.query.count() > 0:
         return
@@ -142,7 +142,7 @@ def seed_if_empty() -> None:
     db.session.flush()  # assigns company.id
 
     admin = User(company_id=company.id, username="admin")
-    admin.set_password("changeme")
+    admin.set_password(admin_password)
     db.session.add(admin)
 
     customers_by_id = {}

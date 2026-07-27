@@ -45,7 +45,7 @@ def load_user(user_id):
 
 with app.app_context():
     db.create_all()
-    seed_if_empty()
+    seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
 
 STATUS_LABELS = {
     "in_progress": "In progress",

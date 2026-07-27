@@ -1,0 +1,32 @@
+services:
+  demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.demo
+    container_name: demo
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    volumes:
+      # Separate from ./data (used by docker-compose.yml) so this demo
+      # deployment doesn't share a SQLite file with a local/other environment.
+      - ./data-demo:/app/data
+    environment:
+      # Required — app.py falls back to an insecure default if this isn't
+      # set. Put the real value in a local .env file (already gitignored)
+      # rather than committing it here.
+      - SECRET_KEY=${SECRET_KEY:-dev-not-secure}
+      # Only used the first time this deployment's database is created
+      # (seed_if_empty() in models.py) — sets the "admin" user's password.
+      # Ignored on every subsequent start once ./data-demo/atelier.db exists.
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+    networks:
+      - website_network
+
+networks:
+  # Pre-existing network shared with the nginx reverse proxy container, so
+  # nginx can reach this container by name (demo:5555) without publishing
+  # to the host. Must already exist on the server (created by whatever set
+  # up the other sites on website_network).
+  website_network:
+    external: true
