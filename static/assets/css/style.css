@@ -397,6 +397,14 @@ body {
   text-decoration: underline;
 }
 
+.timeline__star {
+  width: 11px;
+  height: 11px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  color: var(--status-ready);
+}
+
 .timeline__track {
   position: relative;
   display: grid;
@@ -666,6 +674,51 @@ dialog.modal::backdrop {
   font-weight: 600;
 }
 
+.pill--returning {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  padding: 3px 10px;
+  vertical-align: middle;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--status-ready);
+  border: 1px solid var(--status-ready);
+  border-radius: 999px;
+}
+
+.pill--returning svg {
+  width: 11px;
+  height: 11px;
+}
+
+.client-stats {
+  display: flex;
+  gap: 24px;
+  margin: 0 0 28px;
+}
+
+.client-stats__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.client-stats__value {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.client-stats__label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+}
+
 .detail-subtitle {
   margin: 6px 0 0;
   font-size: 0.8rem;
@@ -721,6 +774,31 @@ dialog.modal::backdrop {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-form .checkbox-group__item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+}
+
+.checkbox-group__item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--ink);
 }
 
 .detail-form input,

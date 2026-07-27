@@ -12,17 +12,17 @@
 
   <form method="post" class="detail-form">
     <input type="hidden" name="return_to" value="{{ return_to }}">
-    <label>Customer
-      <select name="customer_id" id="customer-select" required>
-        <option value="" disabled selected>Select a customer</option>
-        <option value="new">+ Add new customer</option>
-        {% for customer in customers %}
-        <option value="{{ customer.id }}">{{ customer.name }}</option>
+    <label>Client
+      <select name="client_id" id="client-select" required>
+        <option value="" disabled selected>Select a client</option>
+        <option value="new">+ Add new client</option>
+        {% for client in clients %}
+        <option value="{{ client.id }}">{{ client.name }}</option>
         {% endfor %}
       </select>
     </label>
-    <fieldset id="new-customer-fields" hidden>
-      <legend>New customer</legend>
+    <fieldset id="new-client-fields" hidden>
+      <legend>New client</legend>
       <label>First name<input type="text" name="new_first_name"></label>
       <label>Last name<input type="text" name="new_last_name"></label>
       <label>Email<input type="email" name="new_email"></label>
@@ -48,19 +48,19 @@
 </div>
 
 <script>
-  const customerSelect = document.getElementById('customer-select');
-  const newCustomerFields = document.getElementById('new-customer-fields');
-  const newFirstName = newCustomerFields.querySelector('[name="new_first_name"]');
-  const newLastName = newCustomerFields.querySelector('[name="new_last_name"]');
+  const clientSelect = document.getElementById('client-select');
+  const newClientFields = document.getElementById('new-client-fields');
+  const newFirstName = newClientFields.querySelector('[name="new_first_name"]');
+  const newLastName = newClientFields.querySelector('[name="new_last_name"]');
 
-  function syncNewCustomerFields() {
-    const isNew = customerSelect.value === 'new';
-    newCustomerFields.hidden = !isNew;
+  function syncNewClientFields() {
+    const isNew = clientSelect.value === 'new';
+    newClientFields.hidden = !isNew;
     newFirstName.required = isNew;
     newLastName.required = isNew;
   }
 
-  customerSelect.addEventListener('change', syncNewCustomerFields);
-  syncNewCustomerFields();
+  clientSelect.addEventListener('change', syncNewClientFields);
+  syncNewClientFields();
 </script>
 {% endblock %}

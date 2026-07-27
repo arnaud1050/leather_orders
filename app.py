@@ -18,7 +18,7 @@ from flask_login import (
     LoginManager, current_user, login_required, login_user, logout_user,
 )
 
-from models import Company, Customer, Document, Order, User, db, seed_if_empty
+from models import Client, Company, Document, Order, User, db, seed_if_empty
 
 app = Flask(__name__)
 
@@ -54,11 +54,24 @@ STATUS_LABELS = {
     "rush": "Rush",
 }
 
+# Matches the "How did you hear about BY MONSIEUR" checkboxes on the
+# bymonsieur.ca contact form. A client's selections are stored as a single
+# comma-separated string in Client.source (see edit_client()).
+SOURCE_OPTIONS = [
+    "Google Search",
+    "Word of Mouth",
+    "Craft Market / Open Studio",
+    "Instagram",
+    "Facebook",
+    "LinkedIn",
+    "Other",
+]
+
 
 def get_order_or_404(order_id: int) -> Order:
     order = (
-        Order.query.join(Customer)
-        .filter(Order.id == order_id, Customer.company_id == current_user.company_id)
+        Order.query.join(Client)
+        .filter(Order.id == order_id, Client.company_id == current_user.company_id)
         .first()
     )
     if order is None:
@@ -66,21 +79,21 @@ def get_order_or_404(order_id: int) -> Order:
     return order
 
 
-def get_customer_or_404(customer_id: int) -> Customer:
-    customer = Customer.query.filter_by(
-        id=customer_id, company_id=current_user.company_id
+def get_client_or_404(client_id: int) -> Client:
+    client = Client.query.filter_by(
+        id=client_id, company_id=current_user.company_id
     ).first()
-    if customer is None:
+    if client is None:
         abort(404)
-    return customer
+    return client
 
 
 def orders_by_day(year: int, month: int) -> dict[int, list[Order]]:
     """Map day-of-month -> list of orders due that day, for the given month."""
     grouped: dict[int, list[Order]] = {}
     orders = (
-        Order.query.join(Customer)
-        .filter(Customer.company_id == current_user.company_id)
+        Order.query.join(Client)
+        .filter(Client.company_id == current_user.company_id)
         .all()
     )
     for order in orders:
@@ -180,9 +193,9 @@ def month_view(year: int, month: int):
 
 # ---------------------------------------------------------------------------
 # Timeline (Gantt-style) view — multiple weeks at once, one row per order,
-# customer name on the left, a bar spanning start -> due for each order.
-# Clicking a customer name or a bar opens a quick-view/edit modal (see
-# timeline.html); each modal links out to the full customer/order page.
+# client name on the left, a bar spanning start -> due for each order.
+# Clicking a client name or a bar opens a quick-view/edit modal (see
+# timeline.html); each modal links out to the full client/order page.
 # This is the app's default view (see "/" below).
 # ---------------------------------------------------------------------------
 
@@ -219,14 +232,14 @@ def timeline_window(year: int, month: int, day: int):
     week_headers = [window_start + timedelta(days=w * 7) for w in range(TIMELINE_WEEKS)]
 
     all_orders = (
-        Order.query.join(Customer)
-        .filter(Customer.company_id == current_user.company_id)
+        Order.query.join(Client)
+        .filter(Client.company_id == current_user.company_id)
         .order_by(Order.start)
         .all()
     )
 
     rows = []
-    customers_seen: dict[int, Customer] = {}  # preserves first-appearance order, deduped
+    clients_seen: dict[int, Client] = {}  # preserves first-appearance order, deduped
     for order in all_orders:
         # Skip orders that don't overlap the visible window at all
         if order.due < window_start or order.start > window_end:
@@ -239,7 +252,7 @@ def timeline_window(year: int, month: int, day: int):
 
         rows.append({
             "id": order.id,
-            "customer": order.customer,
+            "client": order.client,
             "item": order.item,
             "price": order.price,
             "start": order.start,
@@ -252,7 +265,7 @@ def timeline_window(year: int, month: int, day: int):
             "truncated_start": order.start < window_start,
             "truncated_end": order.due > window_end,
         })
-        customers_seen.setdefault(order.customer.id, order.customer)
+        clients_seen.setdefault(order.client.id, order.client)
 
     step_days = TIMELINE_STEP_WEEKS * 7
     prev_start = window_start - timedelta(days=step_days)
@@ -265,7 +278,7 @@ def timeline_window(year: int, month: int, day: int):
         week_headers=week_headers,
         window_days=window_days,
         rows=rows,
-        customers_in_view=list(customers_seen.values()),
+        clients_in_view=list(clients_seen.values()),
         prev_start=prev_start,
         next_start=next_start,
         status_labels=STATUS_LABELS,
@@ -274,34 +287,39 @@ def timeline_window(year: int, month: int, day: int):
 
 
 # ---------------------------------------------------------------------------
-# Customer & order detail pages. Reachable directly, or via "view full
+# Client & order detail pages. Reachable directly, or via "view full
 # profile / open full order page" links inside the timeline's modals.
 # `return_to` carries the visitor back to whichever timeline window they
 # came from, instead of always bouncing to today's window.
 # ---------------------------------------------------------------------------
 
-@app.route("/customers/<int:customer_id>")
+@app.route("/clients/<int:client_id>")
 @login_required
-def customer_page(customer_id: int):
-    customer = get_customer_or_404(customer_id)
+def client_page(client_id: int):
+    client = get_client_or_404(client_id)
     return_to = request.args.get("return_to") or url_for("timeline_view")
+    selected_sources = [s.strip() for s in (client.source or "").split(",") if s.strip()]
     return render_template(
-        "customer_page.html",
-        customer=customer,
-        orders=customer.orders,
+        "client_page.html",
+        client=client,
+        orders=client.orders,
         return_to=return_to,
+        source_options=SOURCE_OPTIONS,
+        selected_sources=selected_sources,
         active_view=None,
     )
 
 
-@app.route("/customers/<int:customer_id>/edit", methods=["POST"])
+@app.route("/clients/<int:client_id>/edit", methods=["POST"])
 @login_required
-def edit_customer(customer_id: int):
-    customer = get_customer_or_404(customer_id)
-    customer.first_name = request.form.get("first_name", "").strip() or customer.first_name
-    customer.last_name = request.form.get("last_name", "").strip() or customer.last_name
-    customer.email = request.form.get("email", "").strip()
-    customer.phone = request.form.get("phone", "").strip()
+def edit_client(client_id: int):
+    client = get_client_or_404(client_id)
+    client.first_name = request.form.get("first_name", "").strip() or client.first_name
+    client.last_name = request.form.get("last_name", "").strip() or client.last_name
+    client.email = request.form.get("email", "").strip()
+    client.phone = request.form.get("phone", "").strip()
+    selected_sources = [s for s in request.form.getlist("source") if s in SOURCE_OPTIONS]
+    client.source = ", ".join(selected_sources)
     db.session.commit()
     return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
@@ -310,40 +328,40 @@ def edit_customer(customer_id: int):
 @app.route("/orders/new", methods=["GET", "POST"])
 @login_required
 def new_order():
-    customers = (
-        Customer.query.filter_by(company_id=current_user.company_id)
-        .order_by(Customer.first_name, Customer.last_name)
+    clients = (
+        Client.query.filter_by(company_id=current_user.company_id)
+        .order_by(Client.first_name, Client.last_name)
         .all()
     )
     return_to = request.values.get("return_to") or url_for("timeline_view")
 
     if request.method == "POST":
-        customer_id = request.form.get("customer_id", "")
-        if customer_id == "new":
+        client_id = request.form.get("client_id", "")
+        if client_id == "new":
             first_name = request.form.get("new_first_name", "").strip()
             last_name = request.form.get("new_last_name", "").strip()
             if not first_name or not last_name:
                 abort(400)
-            customer = Customer(
+            client = Client(
                 company_id=current_user.company_id,
                 first_name=first_name,
                 last_name=last_name,
                 email=request.form.get("new_email", "").strip(),
                 phone=request.form.get("new_phone", "").strip(),
             )
-            db.session.add(customer)
-            db.session.flush()  # assigns customer.id
+            db.session.add(client)
+            db.session.flush()  # assigns client.id
         else:
-            customer = Customer.query.filter_by(
-                id=customer_id if customer_id.isdigit() else None,
+            client = Client.query.filter_by(
+                id=client_id if client_id.isdigit() else None,
                 company_id=current_user.company_id,
             ).first()
-            if customer is None:
+            if client is None:
                 abort(400)
 
         status = request.form.get("status")
         order = Order(
-            customer_id=customer.id,
+            client_id=client.id,
             item=request.form.get("item", "").strip(),
             start=date.fromisoformat(request.form.get("start")),
             due=date.fromisoformat(request.form.get("due")),
@@ -357,7 +375,7 @@ def new_order():
 
     return render_template(
         "new_order.html",
-        customers=customers,
+        clients=clients,
         status_labels=STATUS_LABELS,
         return_to=return_to,
         today=date.today(),

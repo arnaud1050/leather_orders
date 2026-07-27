@@ -9,7 +9,7 @@
     <h1>{{ order.item }}</h1>
     <p class="detail-subtitle">
       Order for
-      <a href="{{ url_for('customer_page', customer_id=order.customer.id) }}?return_to={{ return_to }}">{{ order.customer.name }}</a>
+      <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ return_to }}">{{ order.client.name }}</a>
     </p>
   </header>
 

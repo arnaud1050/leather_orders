@@ -1,7 +1,7 @@
 """
 SQLAlchemy models + seed data.
 
-Company is the tenant boundary: everything else (users, customers, and
+Company is the tenant boundary: everything else (users, clients, and
 transitively orders/documents) hangs off a company_id. Today only one
 company is seeded ("By Monsieur"), but scoping queries by company_id from
 the start means adding a second tenant later is additive, not a rewrite.
@@ -24,7 +24,7 @@ class Company(db.Model):
     name = db.Column(db.String(120), nullable=False)
 
     users = db.relationship("User", back_populates="company")
-    customers = db.relationship("Customer", back_populates="company")
+    clients = db.relationship("Client", back_populates="company")
 
 
 class User(db.Model, UserMixin):
@@ -44,8 +44,8 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.password_hash, password)
 
 
-class Customer(db.Model):
-    __tablename__ = "customers"
+class Client(db.Model):
+    __tablename__ = "clients"
 
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
@@ -53,20 +53,35 @@ class Customer(db.Model):
     last_name = db.Column(db.String(80), nullable=False)
     email = db.Column(db.String(120))
     phone = db.Column(db.String(40))
+    # Populated when a client originates from the bymonsieur.ca contact
+    # form (via a Make.com webhook, see /api/leads) rather than being added
+    # by staff. Blank for manually-created clients.
+    source = db.Column(db.String(120))
+    inquiry_type = db.Column(db.String(120))
+    first_message = db.Column(db.Text)
 
-    company = db.relationship("Company", back_populates="customers")
-    orders = db.relationship("Order", back_populates="customer")
+    company = db.relationship("Company", back_populates="clients")
+    orders = db.relationship("Order", back_populates="client")
 
     @hybrid_property
     def name(self):
         return f"{self.first_name} {self.last_name}"
+
+    @property
+    def is_returning(self):
+        """A second order marks a client as a repeat customer."""
+        return len(self.orders) >= 2
+
+    @property
+    def lifetime_value(self):
+        return sum(order.price for order in self.orders)
 
 
 class Order(db.Model):
     __tablename__ = "orders"
 
     id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey("clients.id"), nullable=False)
     item = db.Column(db.String(200), nullable=False)
     start = db.Column(db.Date, nullable=False)
     due = db.Column(db.Date, nullable=False)
@@ -74,7 +89,7 @@ class Order(db.Model):
     status = db.Column(db.String(20), nullable=False)
     notes = db.Column(db.Text)
 
-    customer = db.relationship("Customer", back_populates="orders")
+    client = db.relationship("Client", back_populates="orders")
     documents = db.relationship("Document", back_populates="order")
 
 
@@ -90,13 +105,13 @@ class Document(db.Model):
 
 
 # ---------------------------------------------------------------------------
-# Seed data — same sample customers/orders the in-memory prototype used to
+# Seed data — same sample clients/orders the in-memory prototype used to
 # hardcode, now inserted into SQLite on first run. Placeholder documents
 # ("Mockup" + "Invoice") are attached to every order, matching the old
 # _SAMPLE_DOCUMENTS behavior.
 # ---------------------------------------------------------------------------
 
-_SAMPLE_CUSTOMERS = [
+_SAMPLE_CLIENTS = [
     {"id": 1, "first_name": "Marie", "last_name": "Alarie", "email": "m.alarie@example.com", "phone": "514-555-0142"},
     {"id": 2, "first_name": "Sarah", "last_name": "Okafor", "email": "s.okafor@example.com", "phone": "604-555-0198"},
     {"id": 3, "first_name": "Ryan", "last_name": "Chen", "email": "r.chen@example.com", "phone": "778-555-0110"},
@@ -111,19 +126,21 @@ _SAMPLE_CUSTOMERS = [
 
 # Dates lean toward the end of July (2026-07-26 "today" at the time this was
 # written) so the timeline's default window has plenty to show around today.
+# client_id 1 and 3 each get a second order below, so they show up as
+# "returning" clients in the seeded data.
 _SAMPLE_ORDERS = [
-    {"id": 1, "customer_id": 1, "item": "Full-grain briefcase", "start": date(2026, 7, 1), "due": date(2026, 7, 15), "price": 850.00, "status": "delivered", "notes": "Horween Chromexcel, brass hardware"},
-    {"id": 2, "customer_id": 2, "item": "Weekender duffel", "start": date(2026, 7, 8), "due": date(2026, 7, 29), "price": 620.00, "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim"},
-    {"id": 3, "customer_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 7, 15), "due": date(2026, 7, 24), "price": 140.00, "status": "ready", "notes": "Hand-stitched, gold foil initials"},
-    {"id": 4, "customer_id": 4, "item": "Messenger bag", "start": date(2026, 7, 18), "due": date(2026, 7, 30), "price": 480.00, "status": "rush", "notes": "Client travels on the 31st"},
-    {"id": 5, "customer_id": 5, "item": "Belt, 38mm", "start": date(2026, 7, 20), "due": date(2026, 7, 27), "price": 95.00, "status": "in_progress", "notes": "English bridle leather"},
-    {"id": 6, "customer_id": 6, "item": "Camera strap", "start": date(2026, 7, 19), "due": date(2026, 7, 25), "price": 110.00, "status": "ready", "notes": "Padded, nickel rivets"},
-    {"id": 7, "customer_id": 7, "item": "Tote bag", "start": date(2026, 7, 17), "due": date(2026, 8, 1), "price": 310.00, "status": "in_progress", "notes": "Natural veg-tan, will patina"},
-    {"id": 8, "customer_id": 1, "item": "Passport holder (x2)", "start": date(2026, 7, 22), "due": date(2026, 7, 28), "price": 130.00, "status": "in_progress", "notes": "Gift for anniversary"},
-    {"id": 9, "customer_id": 8, "item": "Watch strap", "start": date(2026, 7, 24), "due": date(2026, 7, 29), "price": 85.00, "status": "rush", "notes": "Custom buckle from client's own"},
-    {"id": 10, "customer_id": 9, "item": "Laptop sleeve", "start": date(2026, 7, 23), "due": date(2026, 7, 31), "price": 165.00, "status": "in_progress", "notes": "13-inch, felt lining"},
-    {"id": 11, "customer_id": 10, "item": "Card holder", "start": date(2026, 7, 26), "due": date(2026, 8, 2), "price": 75.00, "status": "in_progress", "notes": "Minimalist, 3-slot"},
-    {"id": 12, "customer_id": 3, "item": "Travel journal cover", "start": date(2026, 7, 21), "due": date(2026, 7, 27), "price": 120.00, "status": "ready", "notes": "Refillable, brass corners"},
+    {"id": 1, "client_id": 1, "item": "Full-grain briefcase", "start": date(2026, 7, 1), "due": date(2026, 7, 15), "price": 850.00, "status": "delivered", "notes": "Horween Chromexcel, brass hardware"},
+    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": date(2026, 7, 8), "due": date(2026, 7, 29), "price": 620.00, "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim"},
+    {"id": 3, "client_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 7, 15), "due": date(2026, 7, 24), "price": 140.00, "status": "ready", "notes": "Hand-stitched, gold foil initials"},
+    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": date(2026, 7, 18), "due": date(2026, 7, 30), "price": 480.00, "status": "rush", "notes": "Client travels on the 31st"},
+    {"id": 5, "client_id": 5, "item": "Belt, 38mm", "start": date(2026, 7, 20), "due": date(2026, 7, 27), "price": 95.00, "status": "in_progress", "notes": "English bridle leather"},
+    {"id": 6, "client_id": 6, "item": "Camera strap", "start": date(2026, 7, 19), "due": date(2026, 7, 25), "price": 110.00, "status": "ready", "notes": "Padded, nickel rivets"},
+    {"id": 7, "client_id": 7, "item": "Tote bag", "start": date(2026, 7, 17), "due": date(2026, 8, 1), "price": 310.00, "status": "in_progress", "notes": "Natural veg-tan, will patina"},
+    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": date(2026, 7, 22), "due": date(2026, 7, 28), "price": 130.00, "status": "in_progress", "notes": "Gift for anniversary"},
+    {"id": 9, "client_id": 8, "item": "Watch strap", "start": date(2026, 7, 24), "due": date(2026, 7, 29), "price": 85.00, "status": "rush", "notes": "Custom buckle from client's own"},
+    {"id": 10, "client_id": 9, "item": "Laptop sleeve", "start": date(2026, 7, 23), "due": date(2026, 7, 31), "price": 165.00, "status": "in_progress", "notes": "13-inch, felt lining"},
+    {"id": 11, "client_id": 10, "item": "Card holder", "start": date(2026, 7, 26), "due": date(2026, 8, 2), "price": 75.00, "status": "in_progress", "notes": "Minimalist, 3-slot"},
+    {"id": 12, "client_id": 3, "item": "Travel journal cover", "start": date(2026, 7, 21), "due": date(2026, 7, 27), "price": 120.00, "status": "ready", "notes": "Refillable, brass corners"},
 ]
 
 _SAMPLE_DOCUMENTS = [
@@ -145,19 +162,17 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
     admin.set_password(admin_password)
     db.session.add(admin)
 
-    customers_by_id = {}
-    for c in _SAMPLE_CUSTOMERS:
-        customer = Customer(
+    for c in _SAMPLE_CLIENTS:
+        client = Client(
             id=c["id"], company_id=company.id,
             first_name=c["first_name"], last_name=c["last_name"],
             email=c["email"], phone=c["phone"],
         )
-        db.session.add(customer)
-        customers_by_id[c["id"]] = customer
+        db.session.add(client)
 
     for o in _SAMPLE_ORDERS:
         order = Order(
-            id=o["id"], customer_id=o["customer_id"], item=o["item"],
+            id=o["id"], client_id=o["client_id"], item=o["item"],
             start=o["start"], due=o["due"], price=o["price"],
             status=o["status"], notes=o["notes"],
         )

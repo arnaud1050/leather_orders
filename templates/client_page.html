@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <a class="back-link" href="{{ return_to }}">&larr; Back to timeline</a>
+
+  <header class="detail-header">
+    <h1>
+      {{ client.name }}
+      {% if client.is_returning %}
+      <span class="pill pill--returning" title="Second order or later">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+        Returning
+      </span>
+      {% endif %}
+    </h1>
+    <p class="detail-subtitle">Client</p>
+  </header>
+
+  <div class="client-stats">
+    <div class="client-stats__item">
+      <span class="client-stats__value">${{ '%.2f'|format(client.lifetime_value) }}</span>
+      <span class="client-stats__label">Lifetime value</span>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('edit_client', client_id=client.id) }}" class="detail-form">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <label>First name<input type="text" name="first_name" value="{{ client.first_name }}" required></label>
+    <label>Last name<input type="text" name="last_name" value="{{ client.last_name }}" required></label>
+    <label>Email<input type="email" name="email" value="{{ client.email }}"></label>
+    <label>Phone<input type="tel" name="phone" value="{{ client.phone }}"></label>
+    <fieldset>
+      <legend>How did you hear about us?</legend>
+      <div class="checkbox-group">
+        {% for option in source_options %}
+        <label class="checkbox-group__item">
+          <input type="checkbox" name="source" value="{{ option }}" {% if option in selected_sources %}checked{% endif %}>
+          {{ option }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div>
+      <button type="submit" class="btn-primary">Save changes</button>
+    </div>
+  </form>
+
+  <section class="detail-orders">
+    <h2>Orders</h2>
+    {% if orders %}
+    <ul class="detail-order-list">
+      {% for o in orders %}
+      <li>
+        <a href="{{ url_for('order_page', order_id=o.id) }}?return_to={{ return_to }}">{{ o.item }}</a>
+        — ${{ '%.2f'|format(o.price) }}
+        — due {{ o.due.strftime('%b') }} {{ o.due.day }}, {{ o.due.year }}
+        <span class="dot dot--{{ o.status }}"></span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="detail-note">No orders on file for this client yet.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}
