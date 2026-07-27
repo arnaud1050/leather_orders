@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Settings — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Settings</h1>
+    <p class="detail-subtitle">Company preferences</p>
+  </header>
+
+  <section class="detail-orders">
+    <h2>How did you hear about us?</h2>
+    <p class="detail-note">
+      These are the options shown as checkboxes on a client's page. An option
+      can't be deleted once a client has been tagged with it — hide it
+      instead to remove it from new selections while keeping existing answers.
+    </p>
+
+    <ul class="settings-source-list">
+      {% for option in source_options %}
+      <li class="settings-source-list__item {% if not option.is_active %}settings-source-list__item--hidden{% endif %}">
+        <span class="settings-source-list__label">
+          {{ option.label }}
+          {% if not option.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('toggle_source_option', source_option_id=option.id) }}">
+            <button type="submit" class="btn-secondary">{{ 'Unhide' if not option.is_active else 'Hide' }}</button>
+          </form>
+          {% if option.can_delete %}
+          <form method="post" action="{{ url_for('delete_source_option', source_option_id=option.id) }}">
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="{{ url_for('add_source_option') }}" class="detail-form settings-source-add">
+      <label>Add a new option<input type="text" name="label" placeholder="e.g. Word of Mouth" required></label>
+      <div>
+        <button type="submit" class="btn-primary">Add</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

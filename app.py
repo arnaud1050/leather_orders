@@ -18,7 +18,7 @@ from flask_login import (
     LoginManager, current_user, login_required, login_user, logout_user,
 )
 
-from models import Client, Company, Document, Order, User, db, seed_if_empty
+from models import Client, Company, Document, Order, Payment, SourceOption, User, db, seed_if_empty
 
 app = Flask(__name__)
 
@@ -53,19 +53,6 @@ STATUS_LABELS = {
     "delivered": "Delivered",
     "rush": "Rush",
 }
-
-# Matches the "How did you hear about BY MONSIEUR" checkboxes on the
-# bymonsieur.ca contact form. A client's selections are stored as a single
-# comma-separated string in Client.source (see edit_client()).
-SOURCE_OPTIONS = [
-    "Google Search",
-    "Word of Mouth",
-    "Craft Market / Open Studio",
-    "Instagram",
-    "Facebook",
-    "LinkedIn",
-    "Other",
-]
 
 
 def get_order_or_404(order_id: int) -> Order:
@@ -298,14 +285,22 @@ def timeline_window(year: int, month: int, day: int):
 def client_page(client_id: int):
     client = get_client_or_404(client_id)
     return_to = request.args.get("return_to") or url_for("timeline_view")
-    selected_sources = [s.strip() for s in (client.source or "").split(",") if s.strip()]
+    # Selectable options = active ones, plus any now-hidden option this
+    # client already has (so existing data stays visible), deduped and
+    # ordered by sort_order.
+    active_options = SourceOption.query.filter_by(
+        company_id=current_user.company_id, is_active=True
+    ).all()
+    source_options = sorted(
+        {o.id: o for o in active_options + client.sources}.values(),
+        key=lambda o: o.sort_order,
+    )
     return render_template(
         "client_page.html",
         client=client,
         orders=client.orders,
         return_to=return_to,
-        source_options=SOURCE_OPTIONS,
-        selected_sources=selected_sources,
+        source_options=source_options,
         active_view=None,
     )
 
@@ -318,8 +313,13 @@ def edit_client(client_id: int):
     client.last_name = request.form.get("last_name", "").strip() or client.last_name
     client.email = request.form.get("email", "").strip()
     client.phone = request.form.get("phone", "").strip()
-    selected_sources = [s for s in request.form.getlist("source") if s in SOURCE_OPTIONS]
-    client.source = ", ".join(selected_sources)
+
+    source_ids = [int(i) for i in request.form.getlist("source_ids") if i.isdigit()]
+    client.sources = SourceOption.query.filter(
+        SourceOption.id.in_(source_ids),
+        SourceOption.company_id == current_user.company_id,
+    ).all()
+
     db.session.commit()
     return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
@@ -393,6 +393,7 @@ def order_page(order_id: int):
         order=order,
         status_labels=STATUS_LABELS,
         return_to=return_to,
+        today=date.today(),
         active_view=None,
     )
 
@@ -425,6 +426,161 @@ def edit_order(order_id: int):
     db.session.commit()
     return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
+
+
+@app.route("/orders/<int:order_id>/payments", methods=["POST"])
+@login_required
+def add_payment(order_id: int):
+    order = get_order_or_404(order_id)
+    amount_str = request.form.get("amount")
+    paid_date_str = request.form.get("paid_date")
+    if amount_str and paid_date_str:
+        try:
+            amount = float(amount_str)
+        except ValueError:
+            abort(400)
+        db.session.add(Payment(
+            order_id=order.id,
+            amount=amount,
+            paid_date=date.fromisoformat(paid_date_str),
+        ))
+        db.session.commit()
+    return_to = request.form.get("return_to") or url_for("timeline_view")
+    return redirect(return_to)
+
+
+@app.route("/orders/<int:order_id>/payments/<int:payment_id>/delete", methods=["POST"])
+@login_required
+def delete_payment(order_id: int, payment_id: int):
+    order = get_order_or_404(order_id)
+    payment = Payment.query.filter_by(id=payment_id, order_id=order.id).first()
+    if payment is not None:
+        db.session.delete(payment)
+        db.session.commit()
+    return_to = request.form.get("return_to") or url_for("timeline_view")
+    return redirect(return_to)
+
+
+# ---------------------------------------------------------------------------
+# Settings — currently just the per-company "how did you hear about us"
+# options shown as checkboxes on the client page. Options are never
+# hard-deleted once a client references one (see SourceOption.can_delete in
+# models.py) so historical answers/stats stay intact; hiding is the only way
+# to retire one from the checkbox list.
+# ---------------------------------------------------------------------------
+
+def get_source_option_or_404(source_option_id: int) -> SourceOption:
+    option = SourceOption.query.filter_by(
+        id=source_option_id, company_id=current_user.company_id
+    ).first()
+    if option is None:
+        abort(404)
+    return option
+
+
+@app.route("/settings")
+@login_required
+def settings():
+    source_options = (
+        SourceOption.query.filter_by(company_id=current_user.company_id)
+        .order_by(SourceOption.sort_order)
+        .all()
+    )
+    return render_template(
+        "settings.html",
+        source_options=source_options,
+        active_view="settings",
+    )
+
+
+@app.route("/settings/sources", methods=["POST"])
+@login_required
+def add_source_option():
+    label = request.form.get("label", "").strip()
+    if label:
+        max_sort_order = (
+            SourceOption.query.filter_by(company_id=current_user.company_id)
+            .count()
+        )
+        db.session.add(SourceOption(
+            company_id=current_user.company_id,
+            label=label,
+            sort_order=max_sort_order,
+        ))
+        db.session.commit()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/sources/<int:source_option_id>/toggle", methods=["POST"])
+@login_required
+def toggle_source_option(source_option_id: int):
+    option = get_source_option_or_404(source_option_id)
+    option.is_active = not option.is_active
+    db.session.commit()
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/sources/<int:source_option_id>/delete", methods=["POST"])
+@login_required
+def delete_source_option(source_option_id: int):
+    option = get_source_option_or_404(source_option_id)
+    if option.can_delete:
+        db.session.delete(option)
+        db.session.commit()
+    return redirect(url_for("settings"))
+
+
+# ---------------------------------------------------------------------------
+# Analytics — company-wide client and revenue stats. "Paid revenue" is
+# always the sum of recorded Payment rows, never inferred from order
+# status, since studios run different deposit schemes (see Payment's
+# docstring in models.py). "Average value per client" is lifetime spend
+# per client (sum of their orders), averaged only over clients who've
+# actually ordered — not average order price.
+# ---------------------------------------------------------------------------
+
+@app.route("/analytics")
+@login_required
+def analytics():
+    clients = Client.query.filter_by(company_id=current_user.company_id).all()
+    clients_with_orders = [c for c in clients if c.orders]
+    avg_value_per_client = (
+        sum(c.lifetime_value for c in clients_with_orders) / len(clients_with_orders)
+        if clients_with_orders else 0
+    )
+    top_clients = sorted(
+        clients_with_orders, key=lambda c: c.lifetime_value, reverse=True
+    )[:5]
+
+    # Include hidden SourceOptions too — a hidden-but-historically-used
+    # source should still show up in stats (that's the whole point of
+    # hiding instead of deleting once a client references it).
+    source_options = SourceOption.query.filter_by(company_id=current_user.company_id).all()
+    total_clients = len(clients)
+    source_breakdown = [
+        (option.label, len(option.clients) / total_clients * 100)
+        for option in source_options
+    ] if total_clients else []
+    source_breakdown = [(label, pct) for label, pct in source_breakdown if pct > 0]
+
+    payments = (
+        Payment.query.join(Order).join(Client)
+        .filter(Client.company_id == current_user.company_id)
+        .all()
+    )
+    total_revenue = sum(p.amount for p in payments)
+    this_year = date.today().year
+    revenue_ytd = sum(p.amount for p in payments if p.paid_date.year == this_year)
+
+    return render_template(
+        "analytics.html",
+        avg_value_per_client=avg_value_per_client,
+        top_clients=top_clients,
+        source_breakdown=source_breakdown,
+        total_revenue=total_revenue,
+        revenue_ytd=revenue_ytd,
+        active_view="analytics",
+    )
 
 
 if __name__ == "__main__":

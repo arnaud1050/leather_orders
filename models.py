@@ -25,6 +25,10 @@ class Company(db.Model):
 
     users = db.relationship("User", back_populates="company")
     clients = db.relationship("Client", back_populates="company")
+    source_options = db.relationship(
+        "SourceOption", back_populates="company",
+        order_by="SourceOption.sort_order",
+    )
 
 
 class User(db.Model, UserMixin):
@@ -44,6 +48,38 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.password_hash, password)
 
 
+client_sources = db.Table(
+    "client_sources",
+    db.Column("client_id", db.Integer, db.ForeignKey("clients.id"), primary_key=True),
+    db.Column("source_option_id", db.Integer, db.ForeignKey("source_options.id"), primary_key=True),
+)
+
+
+class SourceOption(db.Model):
+    """A company-configurable "how did you hear about us" choice.
+
+    Never hard-deleted once at least one client references it (see
+    can_delete below) — stats/reporting need history to stay intact.
+    Instead it's hidden (is_active=False): it stops appearing as a
+    selectable option on the client page, but stays visible/readable on
+    any client that already had it checked.
+    """
+    __tablename__ = "source_options"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
+    label = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    company = db.relationship("Company", back_populates="source_options")
+    clients = db.relationship("Client", secondary=client_sources, back_populates="sources")
+
+    @property
+    def can_delete(self):
+        return len(self.clients) == 0
+
+
 class Client(db.Model):
     __tablename__ = "clients"
 
@@ -56,12 +92,12 @@ class Client(db.Model):
     # Populated when a client originates from the bymonsieur.ca contact
     # form (via a Make.com webhook, see /api/leads) rather than being added
     # by staff. Blank for manually-created clients.
-    source = db.Column(db.String(120))
     inquiry_type = db.Column(db.String(120))
     first_message = db.Column(db.Text)
 
     company = db.relationship("Company", back_populates="clients")
     orders = db.relationship("Order", back_populates="client")
+    sources = db.relationship("SourceOption", secondary=client_sources, back_populates="clients")
 
     @hybrid_property
     def name(self):
@@ -91,6 +127,32 @@ class Order(db.Model):
 
     client = db.relationship("Client", back_populates="orders")
     documents = db.relationship("Document", back_populates="order")
+    payments = db.relationship("Payment", back_populates="order", cascade="all, delete-orphan")
+
+    @property
+    def amount_paid(self):
+        return sum(payment.amount for payment in self.payments)
+
+    @property
+    def balance_due(self):
+        return self.price - self.amount_paid
+
+
+class Payment(db.Model):
+    """A single payment recorded against an order — deposit, balance, or
+    anything in between. Deliberately generic (just an amount + a date):
+    different clients/studios run different deposit schemes (e.g. Joe's is
+    ~50% up front, order due balance at pickup), so nothing here assumes a
+    fixed split or a fixed number of payments per order.
+    """
+    __tablename__ = "payments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    paid_date = db.Column(db.Date, nullable=False)
+
+    order = db.relationship("Order", back_populates="payments")
 
 
 class Document(db.Model):
@@ -128,24 +190,43 @@ _SAMPLE_CLIENTS = [
 # written) so the timeline's default window has plenty to show around today.
 # client_id 1 and 3 each get a second order below, so they show up as
 # "returning" clients in the seeded data.
+#
+# "payments" is optional per order — orders without it have no deposit
+# recorded yet (matches real orders that haven't been confirmed with a
+# deposit). Where present, amounts are rough ~50% deposits, not full
+# payment, except the one delivered order (fully settled, as it would be
+# by pickup).
 _SAMPLE_ORDERS = [
-    {"id": 1, "client_id": 1, "item": "Full-grain briefcase", "start": date(2026, 7, 1), "due": date(2026, 7, 15), "price": 850.00, "status": "delivered", "notes": "Horween Chromexcel, brass hardware"},
-    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": date(2026, 7, 8), "due": date(2026, 7, 29), "price": 620.00, "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim"},
-    {"id": 3, "client_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 7, 15), "due": date(2026, 7, 24), "price": 140.00, "status": "ready", "notes": "Hand-stitched, gold foil initials"},
-    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": date(2026, 7, 18), "due": date(2026, 7, 30), "price": 480.00, "status": "rush", "notes": "Client travels on the 31st"},
+    {"id": 1, "client_id": 1, "item": "Full-grain briefcase", "start": date(2026, 7, 1), "due": date(2026, 7, 15), "price": 850.00, "status": "delivered", "notes": "Horween Chromexcel, brass hardware", "payments": [(425.00, date(2026, 7, 1)), (425.00, date(2026, 7, 15))]},
+    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": date(2026, 7, 8), "due": date(2026, 7, 29), "price": 620.00, "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim", "payments": [(310.00, date(2026, 7, 8))]},
+    {"id": 3, "client_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 7, 15), "due": date(2026, 7, 24), "price": 140.00, "status": "ready", "notes": "Hand-stitched, gold foil initials", "payments": [(70.00, date(2026, 7, 15))]},
+    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": date(2026, 7, 18), "due": date(2026, 7, 30), "price": 480.00, "status": "rush", "notes": "Client travels on the 31st", "payments": [(240.00, date(2026, 7, 18))]},
     {"id": 5, "client_id": 5, "item": "Belt, 38mm", "start": date(2026, 7, 20), "due": date(2026, 7, 27), "price": 95.00, "status": "in_progress", "notes": "English bridle leather"},
-    {"id": 6, "client_id": 6, "item": "Camera strap", "start": date(2026, 7, 19), "due": date(2026, 7, 25), "price": 110.00, "status": "ready", "notes": "Padded, nickel rivets"},
+    {"id": 6, "client_id": 6, "item": "Camera strap", "start": date(2026, 7, 19), "due": date(2026, 7, 25), "price": 110.00, "status": "ready", "notes": "Padded, nickel rivets", "payments": [(55.00, date(2026, 7, 19))]},
     {"id": 7, "client_id": 7, "item": "Tote bag", "start": date(2026, 7, 17), "due": date(2026, 8, 1), "price": 310.00, "status": "in_progress", "notes": "Natural veg-tan, will patina"},
-    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": date(2026, 7, 22), "due": date(2026, 7, 28), "price": 130.00, "status": "in_progress", "notes": "Gift for anniversary"},
+    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": date(2026, 7, 22), "due": date(2026, 7, 28), "price": 130.00, "status": "in_progress", "notes": "Gift for anniversary", "payments": [(65.00, date(2026, 7, 22))]},
     {"id": 9, "client_id": 8, "item": "Watch strap", "start": date(2026, 7, 24), "due": date(2026, 7, 29), "price": 85.00, "status": "rush", "notes": "Custom buckle from client's own"},
     {"id": 10, "client_id": 9, "item": "Laptop sleeve", "start": date(2026, 7, 23), "due": date(2026, 7, 31), "price": 165.00, "status": "in_progress", "notes": "13-inch, felt lining"},
     {"id": 11, "client_id": 10, "item": "Card holder", "start": date(2026, 7, 26), "due": date(2026, 8, 2), "price": 75.00, "status": "in_progress", "notes": "Minimalist, 3-slot"},
-    {"id": 12, "client_id": 3, "item": "Travel journal cover", "start": date(2026, 7, 21), "due": date(2026, 7, 27), "price": 120.00, "status": "ready", "notes": "Refillable, brass corners"},
+    {"id": 12, "client_id": 3, "item": "Travel journal cover", "start": date(2026, 7, 21), "due": date(2026, 7, 27), "price": 120.00, "status": "ready", "notes": "Refillable, brass corners", "payments": [(60.00, date(2026, 7, 21))]},
 ]
 
 _SAMPLE_DOCUMENTS = [
     {"label": "Mockup", "filename": "mockup_v1.pdf"},
     {"label": "Invoice", "filename": "invoice_draft.pdf"},
+]
+
+# Default "how did you hear about us" options, matching the checkboxes on
+# the bymonsieur.ca contact form. Editable per-company from /settings once
+# seeded — this list is only ever used to seed a brand new company.
+_DEFAULT_SOURCE_OPTIONS = [
+    "Google Search",
+    "Word of Mouth",
+    "Craft Market / Open Studio",
+    "Instagram",
+    "Facebook",
+    "LinkedIn",
+    "Other",
 ]
 
 
@@ -161,6 +242,9 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
     admin = User(company_id=company.id, username="admin")
     admin.set_password(admin_password)
     db.session.add(admin)
+
+    for i, label in enumerate(_DEFAULT_SOURCE_OPTIONS):
+        db.session.add(SourceOption(company_id=company.id, label=label, sort_order=i))
 
     for c in _SAMPLE_CLIENTS:
         client = Client(
@@ -180,5 +264,7 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
         db.session.flush()  # assigns order.id if not already set
         for doc in _SAMPLE_DOCUMENTS:
             db.session.add(Document(order_id=order.id, label=doc["label"], filename=doc["filename"]))
+        for amount, paid_date in o.get("payments", []):
+            db.session.add(Payment(order_id=order.id, amount=amount, paid_date=paid_date))
 
     db.session.commit()

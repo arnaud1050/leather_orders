@@ -36,8 +36,8 @@
       <div class="checkbox-group">
         {% for option in source_options %}
         <label class="checkbox-group__item">
-          <input type="checkbox" name="source" value="{{ option }}" {% if option in selected_sources %}checked{% endif %}>
-          {{ option }}
+          <input type="checkbox" name="source_ids" value="{{ option.id }}" {% if option in client.sources %}checked{% endif %}>
+          {{ option.label }}{% if not option.is_active %} <span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
         </label>
         {% endfor %}
       </div>
