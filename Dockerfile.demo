@@ -2,6 +2,10 @@ FROM python:3.13-alpine
 
 WORKDIR /app
 
+# su-exec: lets the entrypoint start as root (to fix bind-mount ownership)
+# and then drop to appuser before running the app.
+RUN apk add --no-cache su-exec
+
 # Install dependencies first so this layer is cached unless requirements.txt changes
 COPY requirements.txt .
 RUN pip install --no-cache-dir \
@@ -16,12 +20,12 @@ COPY . /app
 # Non-root user, plus a data dir for when persistence (SQLite, etc.) is added
 RUN adduser -D appuser \
     && mkdir -p /app/data \
-    && chown -R appuser:appuser /app
-
-USER appuser
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/entrypoint.sh
 
 EXPOSE 5555
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 # app.py defines `app = Flask(__name__)`, so gunicorn targets "app:app".
 # Bound to 5555 (not the usual 5000) to match the demo deployment's nginx
 # config, which proxies demo.arnaudrouillot.com to http://demo:5555 over the
