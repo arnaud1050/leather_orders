@@ -202,6 +202,19 @@ body {
    Legend
    --------------------------------------------------------------------- */
 
+.legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 18px 2px 22px;
+}
+
+.legend-row .legend {
+  padding: 0;
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -209,6 +222,12 @@ body {
   padding: 18px 2px 22px;
   font-size: 0.72rem;
   letter-spacing: 0.02em;
+}
+
+.legend__new-order {
+  font-size: 0.72rem;
+  padding: 7px 14px;
+  text-decoration: none;
 }
 
 .legend__item {
@@ -674,6 +693,29 @@ dialog.modal::backdrop {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.detail-form fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius);
+}
+
+.detail-form fieldset[hidden] {
+  display: none;
+}
+
+.detail-form legend {
+  padding: 0 4px;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.06em;

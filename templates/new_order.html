@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}New order — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <a class="back-link" href="{{ return_to }}">&larr; Back to timeline</a>
+
+  <header class="detail-header">
+    <h1>New order</h1>
+    <p class="detail-subtitle">Create an order</p>
+  </header>
+
+  <form method="post" class="detail-form">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <label>Customer
+      <select name="customer_id" id="customer-select" required>
+        <option value="" disabled selected>Select a customer</option>
+        <option value="new">+ Add new customer</option>
+        {% for customer in customers %}
+        <option value="{{ customer.id }}">{{ customer.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <fieldset id="new-customer-fields" hidden>
+      <legend>New customer</legend>
+      <label>First name<input type="text" name="new_first_name"></label>
+      <label>Last name<input type="text" name="new_last_name"></label>
+      <label>Email<input type="email" name="new_email"></label>
+      <label>Phone<input type="tel" name="new_phone"></label>
+    </fieldset>
+    <label>Item<input type="text" name="item" required></label>
+    <label>Start date<input type="date" name="start" value="{{ today.isoformat() }}" required></label>
+    <label>Due date<input type="date" name="due" required></label>
+    <label>Price<input type="number" name="price" step="0.01" min="0" value="0.00" required></label>
+    <label>Status
+      <select name="status">
+        {% for key, label in status_labels.items() %}
+        <option value="{{ key }}" {% if key == 'in_progress' %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Notes<textarea name="notes" rows="3"></textarea></label>
+    <div>
+      <button type="submit" class="btn-primary">Create order</button>
+    </div>
+  </form>
+
+</div>
+
+<script>
+  const customerSelect = document.getElementById('customer-select');
+  const newCustomerFields = document.getElementById('new-customer-fields');
+  const newFirstName = newCustomerFields.querySelector('[name="new_first_name"]');
+  const newLastName = newCustomerFields.querySelector('[name="new_last_name"]');
+
+  function syncNewCustomerFields() {
+    const isNew = customerSelect.value === 'new';
+    newCustomerFields.hidden = !isNew;
+    newFirstName.required = isNew;
+    newLastName.required = isNew;
+  }
+
+  customerSelect.addEventListener('change', syncNewCustomerFields);
+  syncNewCustomerFields();
+</script>
+{% endblock %}

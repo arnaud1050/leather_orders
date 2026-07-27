@@ -307,6 +307,64 @@ def edit_customer(customer_id: int):
     return redirect(return_to)
 
 
+@app.route("/orders/new", methods=["GET", "POST"])
+@login_required
+def new_order():
+    customers = (
+        Customer.query.filter_by(company_id=current_user.company_id)
+        .order_by(Customer.first_name, Customer.last_name)
+        .all()
+    )
+    return_to = request.values.get("return_to") or url_for("timeline_view")
+
+    if request.method == "POST":
+        customer_id = request.form.get("customer_id", "")
+        if customer_id == "new":
+            first_name = request.form.get("new_first_name", "").strip()
+            last_name = request.form.get("new_last_name", "").strip()
+            if not first_name or not last_name:
+                abort(400)
+            customer = Customer(
+                company_id=current_user.company_id,
+                first_name=first_name,
+                last_name=last_name,
+                email=request.form.get("new_email", "").strip(),
+                phone=request.form.get("new_phone", "").strip(),
+            )
+            db.session.add(customer)
+            db.session.flush()  # assigns customer.id
+        else:
+            customer = Customer.query.filter_by(
+                id=customer_id if customer_id.isdigit() else None,
+                company_id=current_user.company_id,
+            ).first()
+            if customer is None:
+                abort(400)
+
+        status = request.form.get("status")
+        order = Order(
+            customer_id=customer.id,
+            item=request.form.get("item", "").strip(),
+            start=date.fromisoformat(request.form.get("start")),
+            due=date.fromisoformat(request.form.get("due")),
+            price=float(request.form.get("price") or 0),
+            status=status if status in STATUS_LABELS else "in_progress",
+            notes=request.form.get("notes", "").strip(),
+        )
+        db.session.add(order)
+        db.session.commit()
+        return redirect(return_to)
+
+    return render_template(
+        "new_order.html",
+        customers=customers,
+        status_labels=STATUS_LABELS,
+        return_to=return_to,
+        today=date.today(),
+        active_view=None,
+    )
+
+
 @app.route("/orders/<int:order_id>")
 @login_required
 def order_page(order_id: int):

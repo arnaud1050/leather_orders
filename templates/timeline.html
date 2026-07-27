@@ -32,11 +32,14 @@
     </div>
   </header>
 
-  <div class="legend">
-    <span class="legend__item"><span class="dot dot--in_progress"></span>In progress</span>
-    <span class="legend__item"><span class="dot dot--ready"></span>Ready for pickup</span>
-    <span class="legend__item"><span class="dot dot--delivered"></span>Delivered</span>
-    <span class="legend__item"><span class="dot dot--rush"></span>Rush</span>
+  <div class="legend-row">
+    <div class="legend">
+      <span class="legend__item"><span class="dot dot--in_progress"></span>In progress</span>
+      <span class="legend__item"><span class="dot dot--ready"></span>Ready for pickup</span>
+      <span class="legend__item"><span class="dot dot--delivered"></span>Delivered</span>
+      <span class="legend__item"><span class="dot dot--rush"></span>Rush</span>
+    </div>
+    <a href="{{ url_for('new_order', return_to=request.path) }}" class="btn-primary legend__new-order">+ New order</a>
   </div>
 
   <div class="timeline" style="--window-days: {{ window_days }}; --week-count: {{ week_headers|length }};">
