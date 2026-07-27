@@ -405,8 +405,19 @@ body {
    --------------------------------------------------------------------- */
 
 .timeline {
+  position: relative;
   border: 1px solid var(--hairline);
   background: var(--paper);
+}
+
+.timeline__corner-patch {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 160px;
+  height: 34px;
+  background: var(--paper);
+  pointer-events: none;
 }
 
 .timeline__row {
@@ -432,7 +443,8 @@ body {
 .timeline__label {
   padding: 10px 12px;
   font-size: 0.74rem;
-  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--ink);
   border: none;
   border-right: 1px solid var(--hairline);
@@ -446,6 +458,15 @@ body {
   text-align: left;
   width: 100%;
   cursor: pointer;
+}
+
+.timeline__row:not(.timeline__row--header) .timeline__label {
+  background: var(--ink);
+  color: #fff;
+}
+
+.timeline__row--header .timeline__label {
+  background: var(--paper);
 }
 
 .timeline__label:hover {
@@ -482,8 +503,8 @@ body {
 }
 
 .timeline__week-label {
-  font-family: var(--font-mono);
   font-size: 0.66rem;
+  font-weight: 600;
   color: var(--ink-soft);
   letter-spacing: 0.04em;
   padding-left: 6px;
