@@ -467,6 +467,7 @@ body {
 
 .timeline__row--header .timeline__label {
   background: var(--paper);
+  cursor: default;
 }
 
 .timeline__label:hover {
