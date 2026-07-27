@@ -55,7 +55,7 @@
       <div class="timeline__track">
         <div class="timeline__bar timeline__bar--{{ row.status }} {% if row.truncated_start %}timeline__bar--open-start{% endif %} {% if row.truncated_end %}timeline__bar--open-end{% endif %}"
              style="grid-column: {{ row.col_start }} / span {{ row.span }};"
-             title="{{ row.notes }}"
+             title="{{ row.item }}"
              data-open-order="{{ row.id }}">
           <span class="timeline__bar-label">{{ row.item }}</span>
         </div>
