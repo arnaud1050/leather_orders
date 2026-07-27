@@ -1,4 +1,4 @@
-FROM python:3.13-alpine
+FROM python:3.14-alpine
 
 WORKDIR /app
 
@@ -29,5 +29,8 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 # app.py defines `app = Flask(__name__)`, so gunicorn targets "app:app".
 # Bound to 5555 (not the usual 5000) to match the demo deployment's nginx
 # config, which proxies demo.arnaudrouillot.com to http://demo:5555 over the
-# shared website_network.
-CMD ["gunicorn", "--bind", "0.0.0.0:5555", "--workers", "2", "app:app"]
+# shared website_network. --preload loads the app once in the master
+# process before forking workers, so the startup db.create_all()/
+# seed_if_empty() in app.py runs exactly once instead of racing across
+# workers (which caused duplicate-id inserts).
+CMD ["gunicorn", "--bind", "0.0.0.0:5555", "--workers", "2", "--preload", "app:app"]
