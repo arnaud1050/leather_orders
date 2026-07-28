@@ -68,9 +68,12 @@
     {% for row in rows %}
     <div class="timeline__row" data-status="{{ row.status }}" data-start="{{ row.start.isoformat() }}" data-due="{{ row.due.isoformat() }}" data-client-value="{{ row.client.lifetime_value }}">
       <button type="button" class="timeline__label" data-open-client="{{ row.client.id }}">
-        {{ row.client.name }}
+        <span class="timeline__label-name">{{ row.client.name }}</span>
         {% if row.client.is_returning %}
         <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor" title="Returning client"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+        {% endif %}
+        {% if row.order_type %}
+        <span class="pill timeline__type-pill">{{ row.order_type.label }}</span>
         {% endif %}
       </button>
       <div class="timeline__track">
@@ -120,7 +123,9 @@
       <label class="modal__field">Item<input type="text" name="item" value="{{ row.item }}" required></label>
       <label class="modal__field">Start<input type="date" name="start" value="{{ row.start.isoformat() }}" required></label>
       <label class="modal__field">Due<input type="date" name="due" value="{{ row.due.isoformat() }}" required></label>
-      <label class="modal__field">Price<input type="number" name="price" value="{{ '%.2f'|format(row.price) }}" step="0.01" min="0" required></label>
+      {# Read-only: the total is the sum of the order's line items, which are
+         edited on the full order page (there's no room for a line editor here). #}
+      <div class="modal__field">Total<span class="modal__readout">${{ '%.2f'|format(row.total) }}</span></div>
       <label class="modal__field">Status
         <select name="status">
           {% for key, label in status_labels.items() %}

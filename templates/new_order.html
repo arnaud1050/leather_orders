@@ -3,7 +3,7 @@
 {% block content %}
 <div class="ledger">
 
-  <a class="back-link" href="{{ return_to }}">&larr; Back to timeline</a>
+  <a class="back-link" href="{{ return_to }}">&larr; {{ back_label }}</a>
 
   <header class="detail-header">
     <h1>New order</h1>
@@ -32,6 +32,17 @@
     <label>Start date<input type="date" name="start" value="{{ today.isoformat() }}" required></label>
     <label>Due date<input type="date" name="due" required></label>
     <label>Price<input type="number" name="price" step="0.01" min="0" value="0.00" required></label>
+    <p class="detail-note detail-form__note">Becomes the order's first line item. Break it into several (materials, surcharges) from the order page.</p>
+    {% if order_types %}
+    <label>Order type
+      <select name="order_type_id">
+        <option value="">—</option>
+        {% for order_type in order_types %}
+        <option value="{{ order_type.id }}">{{ order_type.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
     <label>Status
       <select name="status">
         {% for key, label in status_labels.items() %}

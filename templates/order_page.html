@@ -3,7 +3,7 @@
 {% block content %}
 <div class="ledger">
 
-  <a class="back-link" href="{{ return_to }}">&larr; Back to timeline</a>
+  <a class="back-link" href="{{ return_to }}">&larr; {{ back_label }}</a>
 
   <header class="detail-header">
     <h1>{{ order.item }}</h1>
@@ -18,7 +18,16 @@
     <label>Item<input type="text" name="item" value="{{ order.item }}" required></label>
     <label>Start date<input type="date" name="start" value="{{ order.start.isoformat() }}" required></label>
     <label>Due date<input type="date" name="due" value="{{ order.due.isoformat() }}" required></label>
-    <label>Price<input type="number" name="price" value="{{ '%.2f'|format(order.price) }}" step="0.01" min="0" required></label>
+    {% if order_types %}
+    <label>Order type
+      <select name="order_type_id">
+        <option value="">—</option>
+        {% for order_type in order_types %}
+        <option value="{{ order_type.id }}" {% if order.order_type_id == order_type.id %}selected{% endif %}>{{ order_type.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
     <label>Status
       <select name="status">
         {% for key, label in status_labels.items() %}
@@ -31,6 +40,86 @@
       <button type="submit" class="btn-primary">Save changes</button>
     </div>
   </form>
+
+  <section class="detail-lines">
+    <h2>Line items</h2>
+    {% if order.lines %}
+    <ul class="doc-list">
+      {% for line in order.lines %}
+      <li class="doc-list__item">
+        <span class="doc-list__label">{{ line.description }}</span>
+        <span class="doc-list__filename">{{ line.quantity }} &times; ${{ '%.2f'|format(line.unit_price) }}</span>
+        <span class="doc-list__amount">${{ '%.2f'|format(line.total) }}</span>
+        <form method="post" action="{{ url_for('delete_order_line', order_id=order.id, line_id=line.id) }}" class="doc-list__delete-form">
+          <input type="hidden" name="return_to" value="{{ request.path }}">
+          <button type="submit" class="doc-list__delete">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="line-totals">
+      <p><span>Subtotal</span> <strong>${{ '%.2f'|format(order.subtotal) }}</strong></p>
+      {% for tax in order.tax_lines %}
+      <p><span>{{ tax.label }} ({{ tax.rate_percent }}%)</span> <strong>${{ '%.2f'|format(tax.amount) }}</strong></p>
+      {% endfor %}
+      <p class="line-totals__total"><span>Order total</span> <strong>${{ '%.2f'|format(order.total) }}</strong></p>
+    </div>
+    {% if order.tax_status != 'ok' %}
+    <p class="warning-note">
+      {% if order.tax_status == 'no_client_province' %}
+        No sales tax is being charged — <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a>
+        has no province on file, and the rate follows the client's province.
+      {% elif order.tax_status == 'unknown_province' %}
+        No sales tax is being charged — "{{ order.client.province }}" isn't a province this app has rates for.
+      {% else %}
+        No sales tax is being charged — the company holds no registration number
+        for {{ order.client.province }}'s taxes. Add one in <a href="{{ url_for('settings') }}">Settings</a> if that's wrong.
+      {% endif %}
+    </p>
+    {% endif %}
+    {% if order.is_issued %}
+    <p class="detail-note">
+      Invoice {{ order.invoice.number }} has been issued, so this order's total is
+      frozen at what the client was billed. Editing lines below won't change it.
+    </p>
+    {% endif %}
+    {% else %}
+    <p class="detail-note">No line items yet — this order is worth $0.00 until one is added.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('add_order_line', order_id=order.id) }}" class="detail-form detail-inline-add">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <label>Description<input type="text" name="description" placeholder="e.g. Brass hardware upgrade" required></label>
+      <label>Qty<input type="number" name="quantity" value="1" min="1" step="1" required></label>
+      <label>Unit price<input type="number" name="unit_price" step="0.01" min="0" required></label>
+      <div>
+        <button type="submit" class="btn-primary">Add line</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-invoice">
+    <h2>Invoice</h2>
+    {% if order.invoice %}
+    <ul class="doc-list">
+      <li class="doc-list__item">
+        <a class="doc-list__label" href="{{ url_for('invoice_page', invoice_id=order.invoice.id) }}?return_to={{ request.path }}">{{ order.invoice.number }}</a>
+        <span class="doc-list__filename">
+          issued {{ order.invoice.issued_date.strftime('%b') }} {{ order.invoice.issued_date.day }}, {{ order.invoice.issued_date.year }}
+        </span>
+        <span class="pill pill--{{ order.invoice.display_status }}">{{ invoice_status_labels[order.invoice.display_status] }}</span>
+      </li>
+    </ul>
+    {% else %}
+    <p class="detail-note">Not invoiced yet. Creating one assigns the next number in the company's sequence.</p>
+    <form method="post" action="{{ url_for('create_invoice', order_id=order.id) }}" class="detail-form detail-inline-add">
+      <label>Payment due<input type="date" name="due_date" value="{{ order.due.isoformat() }}"></label>
+      <div>
+        <button type="submit" class="btn-primary">Create invoice</button>
+      </div>
+    </form>
+    {% endif %}
+  </section>
 
   <section class="detail-payments">
     <h2>Payments</h2>
@@ -50,7 +139,11 @@
       {% for payment in order.payments %}
       <li class="doc-list__item">
         <span class="doc-list__label">${{ '%.2f'|format(payment.amount) }}</span>
-        <span class="doc-list__filename">{{ payment.paid_date.strftime('%b') }} {{ payment.paid_date.day }}, {{ payment.paid_date.year }}</span>
+        <span class="doc-list__filename">
+          {{ payment.paid_date.strftime('%b') }} {{ payment.paid_date.day }}, {{ payment.paid_date.year }}
+          &middot; {{ payment_method_labels.get(payment.method, payment.method) }}
+          {% if payment.reference %}&middot; <span class="doc-list__ref">{{ payment.reference }}</span>{% endif %}
+        </span>
         <form method="post" action="{{ url_for('delete_payment', order_id=order.id, payment_id=payment.id) }}" class="doc-list__delete-form">
           <input type="hidden" name="return_to" value="{{ return_to }}">
           <button type="submit" class="doc-list__delete">Remove</button>
@@ -66,6 +159,14 @@
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <label>Amount<input type="number" name="amount" step="0.01" min="0" required></label>
       <label>Date<input type="date" name="paid_date" value="{{ today.isoformat() }}" required></label>
+      <label>Method
+        <select name="method">
+          {% for key, label in payment_method_labels.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Reference<input type="text" name="reference" placeholder="E-transfer code, Square payment id…"></label>
       <div>
         <button type="submit" class="btn-primary">Add payment</button>
       </div>

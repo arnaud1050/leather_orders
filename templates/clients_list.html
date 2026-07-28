@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Clients — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  {% macro sort_link(key, label, numeric=False) %}
+  {% set next_dir = 'desc' if sort_by == key and sort_dir == 'asc' else 'asc' %}
+  <a href="{{ url_for('clients_list', sort=key, dir=next_dir) }}" class="sort-link {{ 'is-active' if sort_by == key else '' }} {{ 'is-numeric' if numeric else '' }}">
+    {{ label }}
+    {% if sort_by == key %}
+    <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      {% if sort_dir == 'asc' %}<path d="M6 15l6-6 6 6" />{% else %}<path d="M6 9l6 6 6-6" />{% endif %}
+    </svg>
+    {% endif %}
+  </a>
+  {% endmacro %}
+
+  <header class="detail-header">
+    <h1>Clients</h1>
+    <p class="detail-subtitle">Every client on file</p>
+  </header>
+
+  <div class="client-stats">
+    <div class="client-stats__item">
+      <span class="client-stats__value">{{ clients|length }}</span>
+      <span class="client-stats__label">Client{{ 's' if clients|length != 1 else '' }}</span>
+    </div>
+    <div class="client-stats__item">
+      <span class="client-stats__value">{{ clients|selectattr('is_returning')|list|length }}</span>
+      <span class="client-stats__label">Returning</span>
+    </div>
+  </div>
+
+  <div class="legend-row">
+    <a href="{{ url_for('new_client', return_to=request.path) }}" class="btn-primary legend__new-order">+ Add client</a>
+  </div>
+
+  {% if clients %}
+  <div class="table-scroll">
+    <table class="invoice-table">
+      <thead>
+        <tr>
+          <th>{{ sort_link('name', 'Name') }}</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th class="is-numeric">{{ sort_link('orders', 'Orders', numeric=True) }}</th>
+          <th class="is-numeric">{{ sort_link('value', 'Lifetime value', numeric=True) }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for client in clients %}
+        <tr>
+          <td>
+            <a href="{{ url_for('client_page', client_id=client.id) }}?return_to={{ request.path }}">{{ client.name }}</a>
+            {% if client.is_returning %}
+            <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor" title="Returning client"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+            {% endif %}
+          </td>
+          <td>{{ client.email or '—' }}</td>
+          <td class="is-mono">{{ client.phone or '—' }}</td>
+          <td class="is-numeric">{{ client.orders|length }}</td>
+          <td class="is-numeric">${{ '%.2f'|format(client.lifetime_value) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="detail-note">No clients on file yet.</p>
+  {% endif %}
+
+</div>
+{% endblock %}

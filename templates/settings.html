@@ -9,6 +9,56 @@
   </header>
 
   <section class="detail-orders">
+    <h2>Company details</h2>
+    <p class="detail-note">
+      Printed at the top of every invoice. Editing these doesn't change
+      invoices already issued — each one keeps the details it was issued
+      with, so a reprint always matches what the client received. Drafts
+      do pick up changes.
+    </p>
+    <form method="post" action="{{ url_for('update_company_details') }}" class="detail-form settings-form">
+      <label>Company name<input type="text" name="name" value="{{ company.name }}" required></label>
+      <label>Street address<input type="text" name="street" value="{{ company.street or '' }}" placeholder="4820 rue Sainte-Catherine E, Studio 3"></label>
+      <div class="field-row">
+        <label>City<input type="text" name="city" value="{{ company.city or '' }}"></label>
+        <label>Province
+          <select name="province">
+            <option value="">—</option>
+            {% for code, label in provinces.items() %}
+            <option value="{{ code }}" {% if code == company.province %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Postal code<input type="text" name="postal_code" value="{{ company.postal_code or '' }}" placeholder="H1V 1M6" maxlength="10"></label>
+      </div>
+      <label>GST/HST number<input type="text" name="gst_number" value="{{ company.gst_number or '' }}" placeholder="123456789 RT0001"></label>
+      <label>PST / RST number<input type="text" name="pst_number" value="{{ company.pst_number or '' }}" placeholder="BC, Saskatchewan or Manitoba only"></label>
+      <label>QST number<input type="text" name="qst_number" value="{{ company.qst_number or '' }}" placeholder="1234567890 TQ0001"></label>
+      <label>NEQ<input type="text" name="neq" value="{{ company.neq or '' }}" placeholder="1234567890"></label>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Invoicing</h2>
+    <p class="detail-note">
+      Every invoice this company issues is numbered from one sequence, no
+      matter how it gets paid. Changing the prefix starts a new run — it
+      doesn't renumber invoices already sent. Next number:
+      <span class="is-mono">{{ next_number }}</span>
+    </p>
+    <form method="post" action="{{ url_for('update_invoicing_settings') }}" class="detail-form settings-form">
+      <label>Invoice prefix<input type="text" name="invoice_prefix" value="{{ company.invoice_prefix }}" maxlength="10" required></label>
+      <label>Payment instructions<textarea name="payment_instructions" rows="3" placeholder="Where to send an e-transfer, who to make a cheque out to…">{{ company.payment_instructions or '' }}</textarea></label>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
     <h2>How did you hear about us?</h2>
     <p class="detail-note">
       These are the options shown as checkboxes on a client's page. An option
@@ -39,6 +89,47 @@
 
     <form method="post" action="{{ url_for('add_source_option') }}" class="detail-form settings-source-add">
       <label>Add a new option<input type="text" name="label" placeholder="e.g. Word of Mouth" required></label>
+      <div>
+        <button type="submit" class="btn-primary">Add</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Order types</h2>
+    <p class="detail-note">
+      Optional categories for an order (e.g. Custom Order, White Label,
+      Consulting/Sampling) — shown as a dropdown on the order page, a pill
+      next to the client's name on the timeline, and a column on the orders
+      list. With none defined, the dropdown doesn't appear at all. A type
+      can't be deleted once an order has been tagged with it — hide it
+      instead to remove it from new selections while keeping existing orders
+      labelled correctly.
+    </p>
+
+    <ul class="settings-source-list">
+      {% for order_type in order_types %}
+      <li class="settings-source-list__item {% if not order_type.is_active %}settings-source-list__item--hidden{% endif %}">
+        <span class="settings-source-list__label">
+          {{ order_type.label }}
+          {% if not order_type.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('toggle_order_type', order_type_id=order_type.id) }}">
+            <button type="submit" class="btn-secondary">{{ 'Unhide' if not order_type.is_active else 'Hide' }}</button>
+          </form>
+          {% if order_type.can_delete %}
+          <form method="post" action="{{ url_for('delete_order_type', order_type_id=order_type.id) }}">
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="{{ url_for('add_order_type') }}" class="detail-form settings-source-add">
+      <label>Add a new type<input type="text" name="label" placeholder="e.g. Custom Order" required></label>
       <div>
         <button type="submit" class="btn-primary">Add</button>
       </div>

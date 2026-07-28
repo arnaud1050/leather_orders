@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}{{ invoice.number }} — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <a class="back-link no-print" href="{{ return_to }}">&larr; {{ back_label }}</a>
+
+  {# Everything inside .invoice-doc is what prints; the controls below it
+     are marked .no-print so "Print" produces the document alone. #}
+  <article class="invoice-doc">
+    {# issuer, not company: an issued invoice prints the details it was
+       issued with, not today's settings. See Invoice.issuer. #}
+    <header class="invoice-doc__header">
+      <div>
+        <h1 class="invoice-doc__company">{{ issuer.name }}</h1>
+        {% if issuer.address %}<p class="invoice-doc__issuer-address">{{ issuer.address }}</p>{% endif %}
+        {% if issuer.registrations %}
+        <p class="invoice-doc__issuer-reg">
+          {% for label, value in issuer.registrations %}<span>{{ label }} <span class="is-mono">{{ value }}</span></span>{% endfor %}
+        </p>
+        {% endif %}
+      </div>
+      <div class="invoice-doc__ref">
+        <span class="invoice-doc__meta">Invoice</span>
+        <span class="invoice-doc__number">{{ invoice.number }}</span>
+        <span class="pill pill--{{ invoice.display_status }}">{{ invoice_status_labels[invoice.display_status] }}</span>
+      </div>
+    </header>
+
+    <div class="invoice-doc__parties">
+      <div>
+        <span class="invoice-doc__label">Billed to</span>
+        {# pre-line in the stylesheet keeps the address's own line breaks —
+           cheaper and safer than turning newlines into markup here, and it
+           means blank contact fields simply don't emit a line. #}
+        <p class="invoice-doc__party">
+          <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a>
+          {%- for entry in [order.client.formatted_address, order.client.email, order.client.phone] | select | list %}
+{{ entry }}
+          {%- endfor -%}
+        </p>
+      </div>
+      <div>
+        <span class="invoice-doc__label">Issued</span>
+        <p class="invoice-doc__party is-mono">{{ invoice.issued_date.strftime('%Y-%m-%d') }}</p>
+        <span class="invoice-doc__label">Payment due</span>
+        <p class="invoice-doc__party is-mono">{{ invoice.due_date.strftime('%Y-%m-%d') if invoice.due_date else '—' }}</p>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="invoice-table invoice-table--doc">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="is-numeric">Qty</th>
+            <th class="is-numeric">Unit</th>
+            <th class="is-numeric">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in order.lines %}
+          <tr>
+            <td>{{ line.description }}</td>
+            <td class="is-numeric">{{ line.quantity }}</td>
+            <td class="is-numeric">${{ '%.2f'|format(line.unit_price) }}</td>
+            <td class="is-numeric">${{ '%.2f'|format(line.total) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="detail-note">This order has no line items.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="invoice-doc__totals">
+      <p><span>Subtotal</span> <strong>${{ '%.2f'|format(invoice.subtotal) }}</strong></p>
+      {% for tax in order.tax_lines %}
+      <p><span>{{ tax.label }} ({{ tax.rate_percent }}%)</span> <strong>${{ '%.2f'|format(tax.amount) }}</strong></p>
+      {% endfor %}
+      <p class="invoice-doc__total"><span>Total</span> <strong>${{ '%.2f'|format(order.total) }}</strong></p>
+      <p><span>Paid</span> <strong>&minus;${{ '%.2f'|format(order.amount_paid) }}</strong></p>
+      <p class="invoice-doc__balance"><span>Balance due</span> <strong>${{ '%.2f'|format(order.balance_due) }}</strong></p>
+    </div>
+
+    {% if issuer.payment_instructions and not order.is_settled and invoice.status != 'void' %}
+    <section class="invoice-doc__pay">
+      <span class="invoice-doc__label">How to pay</span>
+      <p>{{ issuer.payment_instructions }}</p>
+    </section>
+    {% endif %}
+
+    {% if order.payments %}
+    <section class="invoice-doc__payments">
+      <span class="invoice-doc__label">Payments received</span>
+      <ul>
+        {% for payment in order.payments %}
+        <li>
+          <span class="is-mono">{{ payment.paid_date.strftime('%Y-%m-%d') }}</span>
+          &middot; {{ payment_method_labels.get(payment.method, payment.method) }}
+          {% if payment.reference %}<span class="doc-list__ref">({{ payment.reference }})</span>{% endif %}
+          <span class="invoice-doc__payment-amount">${{ '%.2f'|format(payment.amount) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if invoice.notes %}
+    <p class="invoice-doc__notes">{{ invoice.notes }}</p>
+    {% endif %}
+  </article>
+
+  <section class="invoice-admin no-print">
+    {% if invoice.status == 'draft' and order.tax_status != 'ok' %}
+    <p class="warning-note">
+      {% if order.tax_status == 'no_client_province' %}
+        No tax on this invoice: <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a>
+        has no province on file, and the rate depends on where the client is.
+      {% elif order.tax_status == 'unknown_province' %}
+        No tax on this invoice: "{{ order.client.province }}" isn't a province this app has rates for.
+      {% else %}
+        No tax on this invoice: the company holds no registration number for
+        {{ order.client.province }}'s taxes. Add one in
+        <a href="{{ url_for('settings') }}">Settings</a> if that's wrong.
+      {% endif %}
+      Whatever is shown here is frozen the moment you mark it sent.
+    </p>
+    {% endif %}
+
+    <h2>Invoice settings</h2>
+    <form method="post" action="{{ url_for('set_invoice_status', invoice_id=invoice.id) }}" class="detail-form">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <label>Status
+        <select name="status">
+          {% for key in settable_statuses %}
+          <option value="{{ key }}" {% if key == invoice.status %}selected{% endif %}>{{ invoice_status_labels[key] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Payment due<input type="date" name="due_date" value="{{ invoice.due_date.isoformat() if invoice.due_date else '' }}"></label>
+      <label>Notes<textarea name="notes" rows="2" placeholder="Shown on the invoice">{{ invoice.notes or '' }}</textarea></label>
+      <div class="invoice-admin__buttons">
+        <button type="submit" class="btn-primary">Save</button>
+        <button type="button" class="btn-secondary" id="print-invoice">Print / save as PDF</button>
+      </div>
+    </form>
+    <p class="detail-note">
+      "Paid" isn't something you set here — it appears on its own once
+      <a href="{{ url_for('order_page', order_id=order.id) }}?return_to={{ request.path }}">this order's payments</a>
+      cover the total, whether they came in as cash, e-transfer or Square.
+    </p>
+  </section>
+
+</div>
+
+<script>
+  document.getElementById('print-invoice').addEventListener('click', function () {
+    window.print();
+  });
+</script>
+{% endblock %}

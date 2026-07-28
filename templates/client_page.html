@@ -3,7 +3,7 @@
 {% block content %}
 <div class="ledger">
 
-  <a class="back-link" href="{{ return_to }}">&larr; Back to timeline</a>
+  <a class="back-link" href="{{ return_to }}">&larr; {{ back_label }}</a>
 
   <header class="detail-header">
     <h1>
@@ -31,6 +31,25 @@
     <label>Last name<input type="text" name="last_name" value="{{ client.last_name }}" required></label>
     <label>Email<input type="email" name="email" value="{{ client.email }}"></label>
     <label>Phone<input type="tel" name="phone" value="{{ client.phone }}"></label>
+    <label>Street address<input type="text" name="street" value="{{ client.street or '' }}" placeholder="Printed on this client's invoices"></label>
+    <div class="field-row">
+      <label>City<input type="text" name="city" value="{{ client.city or '' }}"></label>
+      <label>Province
+        <select name="province">
+          <option value="">—</option>
+          {% for code, label in provinces.items() %}
+          <option value="{{ code }}" {% if code == client.province %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Postal code<input type="text" name="postal_code" value="{{ client.postal_code or '' }}" maxlength="10"></label>
+    </div>
+    {% if not client.province %}
+    <p class="detail-note detail-form__note">
+      Without a province, orders for this client are billed with no sales tax —
+      the rate is set by where the client is.
+    </p>
+    {% endif %}
     <fieldset>
       <legend>How did you hear about us?</legend>
       <div class="checkbox-group">
@@ -54,9 +73,12 @@
       {% for o in orders %}
       <li>
         <a href="{{ url_for('order_page', order_id=o.id) }}?return_to={{ return_to }}">{{ o.item }}</a>
-        — ${{ '%.2f'|format(o.price) }}
+        — ${{ '%.2f'|format(o.total) }}
         — due {{ o.due.strftime('%b') }} {{ o.due.day }}, {{ o.due.year }}
         <span class="dot dot--{{ o.status }}"></span>
+        {% if o.invoice %}
+        <a class="invoice-ref" href="{{ url_for('invoice_page', invoice_id=o.invoice.id) }}?return_to={{ return_to }}">{{ o.invoice.number }}</a>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>

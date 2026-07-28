@@ -61,6 +61,26 @@
         <span class="stat-card__value">${{ '%.2f'|format(revenue_ytd) }}</span>
         <span class="stat-card__label">Revenue YTD</span>
       </div>
+      <div class="stat-card">
+        <span class="stat-card__value">${{ '%.2f'|format(outstanding) }}</span>
+        <span class="stat-card__label">Outstanding on issued invoices</span>
+      </div>
+
+      <div class="stat-card stat-card--list">
+        <span class="stat-card__label">Revenue by payment method</span>
+        {% if method_breakdown %}
+        <ul class="stat-card__ranked-list">
+          {% for label, amount in method_breakdown %}
+          <li>
+            <span>{{ label }}</span>
+            <span>${{ '%.2f'|format(amount) }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="detail-note">No payments recorded yet.</p>
+        {% endif %}
+      </div>
     </div>
   </section>
 

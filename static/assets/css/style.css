@@ -472,6 +472,9 @@ body {
 
 .timeline__label:hover {
   color: var(--status-progress);
+}
+
+.timeline__label:hover .timeline__label-name {
   text-decoration: underline;
 }
 
@@ -481,6 +484,13 @@ body {
   margin-left: 6px;
   flex-shrink: 0;
   color: var(--status-ready);
+}
+
+.timeline__type-pill {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.56rem;
+  flex-shrink: 0;
 }
 
 .timeline__track {
@@ -662,6 +672,18 @@ dialog.modal::backdrop {
   border-color: var(--ink);
 }
 
+/* Derived values shown inside a modal field slot (e.g. an order total,
+   which is computed from line items and so isn't editable here). */
+.modal__readout {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+  padding: 8px 0;
+}
+
 .modal__documents {
   display: flex;
   flex-direction: column;
@@ -752,20 +774,13 @@ dialog.modal::backdrop {
   font-weight: 600;
 }
 
+/* Shape/typography come from the shared .pill rule further down; this
+   only picks the colour and the bits specific to sitting inside an <h1>. */
 .pill--returning {
-  display: inline-flex;
-  align-items: center;
+  --pill-color: var(--status-ready);
   gap: 5px;
   margin-left: 10px;
-  padding: 3px 10px;
   vertical-align: middle;
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--status-ready);
-  border: 1px solid var(--status-ready);
-  border-radius: 999px;
 }
 
 .pill--returning svg {
@@ -915,7 +930,10 @@ dialog.modal::backdrop {
 
 .detail-orders h2,
 .detail-documents h2,
-.detail-payments h2 {
+.detail-payments h2,
+.detail-lines h2,
+.detail-invoice h2,
+.invoice-admin h2 {
   font-size: 0.9rem;
   font-weight: 600;
   margin: 0 0 10px;
@@ -947,6 +965,13 @@ dialog.modal::backdrop {
 
 .detail-order-list a:hover {
   color: var(--status-progress);
+}
+
+/* Secondary link in a row that already has one — the order is the subject,
+   the client is context, so it shouldn't compete for weight. */
+.detail-order-list__client {
+  font-weight: 400;
+  color: var(--ink-soft);
 }
 
 .doc-list__item {
@@ -987,9 +1012,398 @@ dialog.modal::backdrop {
   color: #000;
 }
 
-.detail-payments__add {
+.doc-list__amount {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+
+/* Sits after .doc-list__amount, so the Remove button keeps its own
+   margin-left rather than both fighting for the same auto gap. */
+.doc-list__amount + .doc-list__delete-form {
+  margin-left: 16px;
+}
+
+.doc-list__ref {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+
+.detail-payments__add,
+.detail-inline-add {
   margin-top: 16px;
   max-width: 320px;
+}
+
+.detail-form__note {
+  margin-top: -6px;
+}
+
+.line-totals {
+  max-width: 480px;
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.line-totals p {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 6px;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+}
+
+.line-totals strong {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.line-totals__total {
+  padding-top: 8px;
+  border-top: 1px solid var(--ink);
+  font-weight: 600;
+  color: var(--ink) !important;
+}
+
+/* Something the user should notice and can act on — distinct from
+   .detail-note, which is passive explanation. */
+.warning-note {
+  max-width: 480px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--status-ready);
+  background: rgba(201, 143, 0, 0.07);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.warning-note a {
+  color: var(--status-progress);
+}
+
+.detail-lines,
+.detail-invoice {
+  margin-bottom: 40px;
+}
+
+/* ---------------------------------------------------------------------
+   Invoices
+   --------------------------------------------------------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  border: 1px solid var(--hairline);
+  background: var(--paper);
+}
+
+.invoice-table th {
+  text-align: left;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ink);
+  white-space: nowrap;
+}
+
+.invoice-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+.invoice-table tr:last-child td {
+  border-bottom: none;
+}
+
+.invoice-table a {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.invoice-table a:hover {
+  color: var(--status-progress);
+}
+
+.invoice-table .is-numeric {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.invoice-table th.is-numeric {
+  font-family: var(--font-body);
+}
+
+.is-mono {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.detail-uninvoiced {
+  margin-top: 40px;
+}
+
+.invoice-ref {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.invoice-ref:hover {
+  color: var(--status-progress);
+}
+
+/* Status pills. --pill-color per status keeps this to one rule, matching
+   how chip/dot/bar share --chip-color. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--pill-color, var(--ink-soft));
+  border: 1px solid var(--pill-color, var(--hairline));
+  border-radius: 999px;
+}
+
+.pill--draft { --pill-color: var(--ink-soft); }
+.pill--sent { --pill-color: var(--status-progress); }
+.pill--paid { --pill-color: var(--status-delivered); }
+.pill--void { --pill-color: var(--status-rush); }
+
+/* Order statuses, same colors as the timeline/calendar dots+bars. */
+.pill--in_progress { --pill-color: var(--status-progress); }
+.pill--ready { --pill-color: var(--status-ready); }
+.pill--delivered { --pill-color: var(--status-delivered); }
+.pill--rush { --pill-color: var(--status-rush); }
+
+/* Sortable column headers (orders_list.html / clients_list.html) */
+.sort-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.sort-link:hover {
+  color: var(--status-progress);
+}
+
+.sort-link.is-active {
+  color: var(--ink);
+}
+
+.sort-link.is-numeric {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.sort-arrow {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+/* The printable document itself */
+.invoice-doc {
+  border: 1px solid var(--hairline);
+  background: var(--paper);
+  padding: 32px;
+  margin-bottom: 40px;
+}
+
+.invoice-doc__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.invoice-doc__company {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.invoice-doc__meta {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.invoice-doc__issuer-address {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  white-space: pre-line;  /* keeps the address's own line breaks */
+}
+
+/* Registration numbers wrap onto as many lines as they need rather than
+   forcing the header wider. */
+.invoice-doc__issuer-reg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.invoice-doc__pay {
+  margin-top: 32px;
+  max-width: 480px;
+}
+
+.invoice-doc__pay p {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.invoice-doc__ref {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.invoice-doc__number {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.invoice-doc__parties {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 24px;
+  padding: 24px 0;
+}
+
+.invoice-doc__label {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.invoice-doc__party {
+  margin: 6px 0 16px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  white-space: pre-line;  /* keeps the address's own line breaks */
+}
+
+.invoice-doc__party a {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.invoice-doc__party a:hover {
+  color: var(--status-progress);
+}
+
+.invoice-doc__totals {
+  margin: 20px 0 0;
+  margin-left: auto;
+  max-width: 280px;
+}
+
+.invoice-doc__totals p {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 6px;
+  font-size: 0.86rem;
+}
+
+.invoice-doc__totals strong {
+  font-family: var(--font-mono);
+}
+
+.invoice-doc__totals p:not(.invoice-doc__total):not(.invoice-doc__balance) {
+  color: var(--ink-soft);
+}
+
+.invoice-doc__total {
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  font-weight: 600;
+}
+
+.invoice-doc__balance {
+  padding-top: 8px;
+  border-top: 1px solid var(--ink);
+  font-weight: 600;
+}
+
+.invoice-doc__payments {
+  margin-top: 32px;
+}
+
+.invoice-doc__payments ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  max-width: 480px;
+}
+
+.invoice-doc__payments li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.invoice-doc__payment-amount {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.invoice-doc__notes {
+  margin: 24px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.invoice-admin__buttons {
+  display: flex;
+  gap: 8px;
 }
 
 /* ---------------------------------------------------------------------
@@ -1118,6 +1532,30 @@ dialog.modal::backdrop {
   margin-bottom: 0;
 }
 
+/* Wider than .settings-source-add — these forms carry addresses and
+   multi-line instructions, not a single short label. */
+.settings-form {
+  max-width: 420px;
+  margin-bottom: 8px;
+}
+
+/* Short related fields sharing a line (city / province / postal code).
+   Wraps rather than squeezing once the form gets narrow. */
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.detail-form .field-row label {
+  flex: 1 1 110px;
+  min-width: 0;
+}
+
+.detail-form .field-row label:first-child {
+  flex: 2 1 150px;
+}
+
 /* ---------------------------------------------------------------------
    Responsive
    --------------------------------------------------------------------- */
@@ -1157,5 +1595,44 @@ dialog.modal::backdrop {
     position: sticky;
     left: 0;
     background: var(--paper);
+  }
+
+  .invoice-doc__parties {
+    grid-template-columns: 1fr;
+  }
+  .invoice-doc {
+    padding: 20px;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Print — used by the invoice page's "Print / save as PDF" button, so
+   what comes out is the document alone, without the app around it.
+   --------------------------------------------------------------------- */
+
+@media print {
+  .view-switch,
+  .site-footer,
+  .no-print {
+    display: none !important;
+  }
+
+  .ledger {
+    margin: 0;
+    padding: 0;
+    max-width: none;
+  }
+
+  .invoice-doc {
+    border: none;
+    padding: 0;
+  }
+
+  .invoice-doc__party a {
+    color: var(--ink);
+  }
+
+  .table-scroll {
+    overflow-x: visible;
   }
 }

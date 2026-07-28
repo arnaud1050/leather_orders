@@ -13,6 +13,9 @@
   <nav class="view-switch">
     <a href="{{ url_for('timeline_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'timeline' else '' }}">Timeline</a>
     <a href="{{ url_for('calendar_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'calendar' else '' }}">Calendar</a>
+    <a href="{{ url_for('orders_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'orders' else '' }}">Orders</a>
+    <a href="{{ url_for('clients_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'clients' else '' }}">Clients</a>
+    <a href="{{ url_for('invoices') }}" class="view-switch__link {{ 'is-active' if active_view == 'invoices' else '' }}">Invoices</a>
     <a href="{{ url_for('analytics') }}" class="view-switch__link {{ 'is-active' if active_view == 'analytics' else '' }}">Analytics</a>
     <a href="{{ url_for('settings') }}" class="view-switch__link {{ 'is-active' if active_view == 'settings' else '' }}">Settings</a>
     <a href="{{ url_for('logout') }}" class="view-switch__logout">Log out</a>

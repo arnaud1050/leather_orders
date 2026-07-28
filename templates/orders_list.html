@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Orders — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  {% macro sort_link(key, label, numeric=False) %}
+  {% set next_dir = 'desc' if sort_by == key and sort_dir == 'asc' else 'asc' %}
+  <a href="{{ url_for('orders_list', sort=key, dir=next_dir) }}" class="sort-link {{ 'is-active' if sort_by == key else '' }} {{ 'is-numeric' if numeric else '' }}">
+    {{ label }}
+    {% if sort_by == key %}
+    <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      {% if sort_dir == 'asc' %}<path d="M6 15l6-6 6 6" />{% else %}<path d="M6 9l6 6 6-6" />{% endif %}
+    </svg>
+    {% endif %}
+  </a>
+  {% endmacro %}
+
+  <header class="detail-header">
+    <h1>Orders</h1>
+    <p class="detail-subtitle">Every order on file, across all clients</p>
+  </header>
+
+  <div class="client-stats">
+    <div class="client-stats__item">
+      <span class="client-stats__value" id="order-count">{{ orders|length }}</span>
+      <span class="client-stats__label" id="order-count-label">Order{{ 's' if orders|length != 1 else '' }}</span>
+    </div>
+    <div class="client-stats__item">
+      <span class="client-stats__value" id="order-balance-total">${{ '%.2f'|format(orders|sum(attribute='balance_due')) }}</span>
+      <span class="client-stats__label">Balance due, shown orders</span>
+    </div>
+  </div>
+
+  <div class="legend-row">
+    {% if orders %}
+    <div class="legend" id="status-legend">
+      {% for key, label in status_labels.items() %}
+      <button type="button" class="legend__item" data-status="{{ key }}"><span class="dot dot--{{ key }}"></span>{{ label }}</button>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <a href="{{ url_for('new_order', return_to=request.path) }}" class="btn-primary legend__new-order">+ Add order</a>
+  </div>
+
+  {% if orders %}
+  <div class="table-scroll">
+    <table class="invoice-table" id="orders-table">
+      <thead>
+        <tr>
+          <th>{{ sort_link('item', 'Item') }}</th>
+          <th>{{ sort_link('client', 'Client') }}</th>
+          {% if has_order_types %}<th>{{ sort_link('type', 'Type') }}</th>{% endif %}
+          <th>{{ sort_link('status', 'Status') }}</th>
+          <th>{{ sort_link('start', 'Start') }}</th>
+          <th>{{ sort_link('due', 'Due') }}</th>
+          <th class="is-numeric">{{ sort_link('total', 'Total', numeric=True) }}</th>
+          <th class="is-numeric">{{ sort_link('paid', 'Paid', numeric=True) }}</th>
+          <th class="is-numeric">{{ sort_link('balance', 'Balance', numeric=True) }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr data-status="{{ order.status }}" data-balance="{{ order.balance_due }}">
+          <td><a href="{{ url_for('order_page', order_id=order.id) }}?return_to={{ request.path }}">{{ order.item }}</a></td>
+          <td><a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a></td>
+          {% if has_order_types %}
+          <td>{% if order.order_type %}<span class="pill">{{ order.order_type.label }}</span>{% else %}&mdash;{% endif %}</td>
+          {% endif %}
+          <td><span class="pill pill--{{ order.status }}">{{ status_labels[order.status] }}</span></td>
+          <td class="is-mono">{{ order.start.strftime('%Y-%m-%d') }}</td>
+          <td class="is-mono">{{ order.due.strftime('%Y-%m-%d') }}</td>
+          <td class="is-numeric">${{ '%.2f'|format(order.total) }}</td>
+          <td class="is-numeric">${{ '%.2f'|format(order.amount_paid) }}</td>
+          <td class="is-numeric">${{ '%.2f'|format(order.balance_due) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="detail-note">No orders on file yet.</p>
+  {% endif %}
+
+</div>
+
+<script>
+  // Status filter, same pattern as the timeline (see timeline.html):
+  // persisted in localStorage (own key, independent of the timeline's
+  // filter) so it survives sort-link navigation on this page.
+  (function () {
+    var HIDDEN_KEY = 'orders-list-hidden-statuses';
+
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#orders-table tbody tr'));
+    var legendButtons = document.querySelectorAll('#status-legend .legend__item');
+    var orderCount = document.getElementById('order-count');
+    var orderCountLabel = document.getElementById('order-count-label');
+    var balanceTotal = document.getElementById('order-balance-total');
+
+    if (!rows.length) return;
+
+    function getHidden() {
+      try {
+        return JSON.parse(localStorage.getItem(HIDDEN_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function applyFilter() {
+      var hidden = getHidden();
+      var visible = 0;
+      var balance = 0;
+      rows.forEach(function (row) {
+        var isHidden = hidden.indexOf(row.dataset.status) !== -1;
+        row.hidden = isHidden;
+        if (!isHidden) {
+          visible++;
+          balance += parseFloat(row.dataset.balance);
+        }
+      });
+      legendButtons.forEach(function (btn) {
+        btn.classList.toggle('legend__item--off', hidden.indexOf(btn.dataset.status) !== -1);
+      });
+      orderCount.textContent = visible;
+      orderCountLabel.textContent = 'Order' + (visible !== 1 ? 's' : '');
+      balanceTotal.textContent = '$' + balance.toFixed(2);
+    }
+
+    legendButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var hidden = getHidden();
+        var status = btn.dataset.status;
+        var index = hidden.indexOf(status);
+        if (index === -1) {
+          hidden.push(status);
+        } else {
+          hidden.splice(index, 1);
+        }
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+        applyFilter();
+      });
+    });
+
+    applyFilter();
+  })();
+</script>
+{% endblock %}
