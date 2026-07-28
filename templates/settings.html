@@ -8,6 +8,13 @@
     <p class="detail-subtitle">Company preferences</p>
   </header>
 
+  <nav class="settings-nav">
+    <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
+    <a href="{{ url_for('settings_preferences') }}" class="settings-nav__link {{ 'is-active' if section == 'preferences' else '' }}">Order preferences</a>
+  </nav>
+
+  {% if section == 'invoicing' %}
+
   <section class="detail-orders">
     <h2>Company details</h2>
     <p class="detail-note">
@@ -57,6 +64,8 @@
       </div>
     </form>
   </section>
+
+  {% elif section == 'preferences' %}
 
   <section class="detail-orders">
     <h2>How did you hear about us?</h2>
@@ -135,6 +144,8 @@
       </div>
     </form>
   </section>
+
+  {% endif %}
 
 </div>
 {% endblock %}

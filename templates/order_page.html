@@ -13,6 +13,13 @@
     </p>
   </header>
 
+  <nav class="settings-nav">
+    <a href="{{ url_for('order_page', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'details' else '' }}">Details</a>
+    <a href="{{ url_for('order_billing', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'billing' else '' }}">Billing</a>
+  </nav>
+
+  {% if section == 'details' %}
+
   <form method="post" action="{{ url_for('edit_order', order_id=order.id) }}" class="detail-form">
     <input type="hidden" name="return_to" value="{{ return_to }}">
     <label>Item<input type="text" name="item" value="{{ order.item }}" required></label>
@@ -40,6 +47,21 @@
       <button type="submit" class="btn-primary">Save changes</button>
     </div>
   </form>
+
+  <section class="detail-documents">
+    <h2>Documents</h2>
+    <ul class="doc-list">
+      {% for doc in order.documents %}
+      <li class="doc-list__item">
+        <span class="doc-list__label">{{ doc.label }}</span>
+        <span class="doc-list__filename">{{ doc.filename }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="detail-note">Upload / download isn't wired up yet — these are placeholders standing in for the real thing.</p>
+  </section>
+
+  {% elif section == 'billing' %}
 
   <section class="detail-lines">
     <h2>Line items</h2>
@@ -173,18 +195,7 @@
     </form>
   </section>
 
-  <section class="detail-documents">
-    <h2>Documents</h2>
-    <ul class="doc-list">
-      {% for doc in order.documents %}
-      <li class="doc-list__item">
-        <span class="doc-list__label">{{ doc.label }}</span>
-        <span class="doc-list__filename">{{ doc.filename }}</span>
-      </li>
-      {% endfor %}
-    </ul>
-    <p class="detail-note">Upload / download isn't wired up yet — these are placeholders standing in for the real thing.</p>
-  </section>
+  {% endif %}
 
 </div>
 {% endblock %}

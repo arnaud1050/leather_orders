@@ -489,6 +489,10 @@ def new_client():
 @app.route("/clients/<int:client_id>")
 @login_required
 def client_page(client_id: int):
+    """The client page's "Information" tab — see client_orders() for the
+    other tab. Kept at the bare /clients/<id> URL (rather than e.g.
+    /clients/<id>/info) since every other page's links to a client already
+    point here and there's no reason to churn all of them."""
     client = get_client_or_404(client_id)
     return_to = request.args.get("return_to") or url_for("timeline_view")
     # Selectable options = active ones, plus any now-hidden option this
@@ -503,12 +507,28 @@ def client_page(client_id: int):
     )
     return render_template(
         "client_page.html",
+        section="info",
         client=client,
-        orders=client.orders,
         return_to=return_to,
         back_label=back_label(return_to),
         source_options=source_options,
         provinces=PROVINCES,
+        active_view=None,
+    )
+
+
+@app.route("/clients/<int:client_id>/orders")
+@login_required
+def client_orders(client_id: int):
+    client = get_client_or_404(client_id)
+    return_to = request.args.get("return_to") or url_for("timeline_view")
+    return render_template(
+        "client_page.html",
+        section="orders",
+        client=client,
+        orders=client.orders,
+        return_to=return_to,
+        back_label=back_label(return_to),
         active_view=None,
     )
 
@@ -633,6 +653,9 @@ def new_order():
 @app.route("/orders/<int:order_id>")
 @login_required
 def order_page(order_id: int):
+    """The order page's "Details" tab — see order_billing() for the other
+    tab. Kept at the bare /orders/<id> URL (rather than e.g. /orders/<id>/details)
+    since every other page's links to an order already point here."""
     order = get_order_or_404(order_id)
     return_to = request.args.get("return_to") or url_for("timeline_view")
     # Same "active options ∪ whatever's already selected" pattern as the
@@ -648,11 +671,27 @@ def order_page(order_id: int):
     )
     return render_template(
         "order_page.html",
+        section="details",
         order=order,
         status_labels=STATUS_LABELS,
+        order_types=order_types,
+        return_to=return_to,
+        back_label=back_label(return_to),
+        active_view=None,
+    )
+
+
+@app.route("/orders/<int:order_id>/billing")
+@login_required
+def order_billing(order_id: int):
+    order = get_order_or_404(order_id)
+    return_to = request.args.get("return_to") or url_for("timeline_view")
+    return render_template(
+        "order_page.html",
+        section="billing",
+        order=order,
         payment_method_labels=PAYMENT_METHOD_LABELS,
         invoice_status_labels=INVOICE_STATUS_LABELS,
-        order_types=order_types,
         return_to=return_to,
         back_label=back_label(return_to),
         today=date.today(),
@@ -892,6 +931,28 @@ def get_order_type_or_404(order_type_id: int) -> OrderType:
 @app.route("/settings")
 @login_required
 def settings():
+    # No content of its own — just lands on the first category. Bookmarks
+    # and the nav's "Settings" link both go through here.
+    return redirect(url_for("settings_invoicing"))
+
+
+@app.route("/settings/invoicing")
+@login_required
+def settings_invoicing():
+    company = db.session.get(Company, current_user.company_id)
+    return render_template(
+        "settings.html",
+        section="invoicing",
+        company=company,
+        provinces=PROVINCES,
+        next_number=next_invoice_number(company),
+        active_view="settings",
+    )
+
+
+@app.route("/settings/preferences")
+@login_required
+def settings_preferences():
     source_options = (
         SourceOption.query.filter_by(company_id=current_user.company_id)
         .order_by(SourceOption.sort_order)
@@ -902,14 +963,11 @@ def settings():
         .order_by(OrderType.sort_order)
         .all()
     )
-    company = db.session.get(Company, current_user.company_id)
     return render_template(
         "settings.html",
+        section="preferences",
         source_options=source_options,
         order_types=order_types,
-        company=company,
-        provinces=PROVINCES,
-        next_number=next_invoice_number(company),
         active_view="settings",
     )
 
@@ -934,7 +992,7 @@ def update_company_details():
     company.qst_number = request.form.get("qst_number", "").strip() or None
     company.neq = request.form.get("neq", "").strip() or None
     db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_invoicing"))
 
 
 @app.route("/settings/invoicing", methods=["POST"])
@@ -949,7 +1007,7 @@ def update_invoicing_settings():
         company.invoice_prefix = prefix[:10]
     company.payment_instructions = request.form.get("payment_instructions", "").strip() or None
     db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_invoicing"))
 
 
 @app.route("/settings/sources", methods=["POST"])
@@ -967,7 +1025,7 @@ def add_source_option():
             sort_order=max_sort_order,
         ))
         db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_preferences"))
 
 
 @app.route("/settings/sources/<int:source_option_id>/toggle", methods=["POST"])
@@ -976,7 +1034,7 @@ def toggle_source_option(source_option_id: int):
     option = get_source_option_or_404(source_option_id)
     option.is_active = not option.is_active
     db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_preferences"))
 
 
 @app.route("/settings/sources/<int:source_option_id>/delete", methods=["POST"])
@@ -986,7 +1044,7 @@ def delete_source_option(source_option_id: int):
     if option.can_delete:
         db.session.delete(option)
         db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_preferences"))
 
 
 # Order types (Custom Order / White Label / Consulting-Sampling, or whatever
@@ -1007,7 +1065,7 @@ def add_order_type():
             sort_order=max_sort_order,
         ))
         db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_preferences"))
 
 
 @app.route("/settings/order-types/<int:order_type_id>/toggle", methods=["POST"])
@@ -1016,7 +1074,7 @@ def toggle_order_type(order_type_id: int):
     order_type = get_order_type_or_404(order_type_id)
     order_type.is_active = not order_type.is_active
     db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_preferences"))
 
 
 @app.route("/settings/order-types/<int:order_type_id>/delete", methods=["POST"])
@@ -1026,7 +1084,7 @@ def delete_order_type(order_type_id: int):
     if order_type.can_delete:
         db.session.delete(order_type)
         db.session.commit()
-    return redirect(url_for("settings"))
+    return redirect(url_for("settings_preferences"))
 
 
 # ---------------------------------------------------------------------------

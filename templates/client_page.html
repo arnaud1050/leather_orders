@@ -5,25 +5,33 @@
 
   <a class="back-link" href="{{ return_to }}">&larr; {{ back_label }}</a>
 
-  <header class="detail-header">
-    <h1>
-      {{ client.name }}
-      {% if client.is_returning %}
-      <span class="pill pill--returning" title="Second order or later">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
-        Returning
-      </span>
-      {% endif %}
-    </h1>
-    <p class="detail-subtitle">Client</p>
+  <header class="detail-header detail-header--with-stat">
+    <div>
+      <h1>
+        {{ client.name }}
+        {% if client.is_returning %}
+        <span class="pill pill--returning" title="Second order or later">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+          Returning
+        </span>
+        {% endif %}
+      </h1>
+      <p class="detail-subtitle">Client</p>
+    </div>
+    <div class="client-stats client-stats--inline">
+      <div class="client-stats__item">
+        <span class="client-stats__value">${{ '%.2f'|format(client.lifetime_value) }}</span>
+        <span class="client-stats__label">Lifetime value</span>
+      </div>
+    </div>
   </header>
 
-  <div class="client-stats">
-    <div class="client-stats__item">
-      <span class="client-stats__value">${{ '%.2f'|format(client.lifetime_value) }}</span>
-      <span class="client-stats__label">Lifetime value</span>
-    </div>
-  </div>
+  <nav class="settings-nav">
+    <a href="{{ url_for('client_page', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'info' else '' }}">Information</a>
+    <a href="{{ url_for('client_orders', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
+  </nav>
+
+  {% if section == 'info' %}
 
   <form method="post" action="{{ url_for('edit_client', client_id=client.id) }}" class="detail-form">
     <input type="hidden" name="return_to" value="{{ return_to }}">
@@ -66,8 +74,9 @@
     </div>
   </form>
 
+  {% elif section == 'orders' %}
+
   <section class="detail-orders">
-    <h2>Orders</h2>
     {% if orders %}
     <ul class="detail-order-list">
       {% for o in orders %}
@@ -86,6 +95,8 @@
     <p class="detail-note">No orders on file for this client yet.</p>
     {% endif %}
   </section>
+
+  {% endif %}
 
 </div>
 {% endblock %}
