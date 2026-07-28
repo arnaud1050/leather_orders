@@ -72,16 +72,16 @@
         {% if row.client.is_returning %}
         <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor" title="Returning client"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
         {% endif %}
-        {% if row.order_type %}
-        <span class="pill timeline__type-pill">{{ row.order_type.label }}</span>
-        {% endif %}
       </button>
       <div class="timeline__track">
         <div class="timeline__bar timeline__bar--{{ row.status }} {% if row.truncated_start %}timeline__bar--open-start{% endif %} {% if row.truncated_end %}timeline__bar--open-end{% endif %}"
              style="grid-column: {{ row.col_start }} / span {{ row.span }};"
              title="{{ row.item }}"
              data-open-order="{{ row.id }}">
-          <span class="timeline__bar-label">{{ row.item }}</span>
+          <span class="timeline__bar-label">
+            {{ row.item }}
+            {% if row.order_type %}<span class="timeline__bar-type">&middot; {{ row.order_type.label }}</span>{% endif %}
+          </span>
         </div>
       </div>
     </div>
