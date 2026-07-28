@@ -25,7 +25,7 @@
     </p>
     <form method="post" action="{{ url_for('update_company_details') }}" class="detail-form settings-form">
       <label>Company name<input type="text" name="name" value="{{ company.name }}" required></label>
-      <label>Street address<input type="text" name="street" value="{{ company.street or '' }}" placeholder="4820 rue Sainte-Catherine E, Studio 3"></label>
+      <label>Street address<input type="text" name="street" value="{{ company.street or '' }}" placeholder="543 Cambie Street, Studio 3"></label>
       <div class="field-row">
         <label>City<input type="text" name="city" value="{{ company.city or '' }}"></label>
         <label>Province
@@ -36,7 +36,7 @@
             {% endfor %}
           </select>
         </label>
-        <label>Postal code<input type="text" name="postal_code" value="{{ company.postal_code or '' }}" placeholder="H1V 1M6" maxlength="10"></label>
+        <label>Postal code<input type="text" name="postal_code" value="{{ company.postal_code or '' }}" placeholder="V6H 3P7" maxlength="10"></label>
       </div>
       <label>GST/HST number<input type="text" name="gst_number" value="{{ company.gst_number or '' }}" placeholder="123456789 RT0001"></label>
       <label>PST / RST number<input type="text" name="pst_number" value="{{ company.pst_number or '' }}" placeholder="BC, Saskatchewan or Manitoba only"></label>

@@ -932,19 +932,19 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
     # Address and registration numbers here are placeholders in the right
     # shape, NOT the studio's real ones — same caveat as prices and lead
     # times. Replace them from /settings before issuing anything real.
-    # pst_number is deliberately left unset: a Quebec seller charges QST,
-    # not PST, and it keeps the "blank registrations don't print" path in
-    # the sample data.
+    # BC charges GST + PST (not QST/NEQ, which are Quebec-specific), so
+    # qst_number/neq are left unset entirely rather than blanked strings —
+    # same "blank registrations don't print" path the sample data has always
+    # exercised, just via the BC side of it now.
     company = Company(
         name="By Monsieur",
         invoice_prefix="BM",
-        street="4820 rue Sainte-Catherine E, Studio 3",
-        city="Montréal",
-        province="QC",
-        postal_code="H1V 1M6",
+        street="Laurel Street, Studio 3",
+        city="Vancouver",
+        province="BC",
+        postal_code="V6H 3P7",
         gst_number="123456789 RT0001",
-        qst_number="1234567890 TQ0001",
-        neq="1234567890",
+        pst_number="PST-1234-5678",
         payment_instructions=(
             "E-transfer to payments@example.com — no security question needed.\n"
             "Cash accepted at pickup. Cheques payable to By Monsieur."
