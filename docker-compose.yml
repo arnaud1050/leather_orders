@@ -13,3 +13,23 @@ services:
       # default if this isn't set. Put the real value in a local .env file
       # (already gitignored) rather than committing it here.
       - SECRET_KEY=${SECRET_KEY:-dev-not-secure}
+      # --- Communications module (see communications/) ---
+      # All optional: unset, the app runs exactly as before and the
+      # integrations page explains what's missing.
+      #
+      # Encrypts OAuth tokens at rest. Without it a key is derived from
+      # SECRET_KEY, which means rotating SECRET_KEY makes every stored
+      # token unreadable. Generate with:
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - COMMS_ENCRYPTION_KEY=${COMMS_ENCRYPTION_KEY:-}
+      # OAuth client from the Google Cloud console. The redirect URI must
+      # match one registered on that client exactly.
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:5000/integrations/google/callback}
+      # Background sync. Must be set on exactly ONE process — gunicorn runs
+      # 2 workers here, and two schedulers would sync every mailbox twice.
+      # Left off, "Sync now" on the integrations page still works.
+      - RUN_SCHEDULER=${RUN_SCHEDULER:-0}
+      # Set to 1 once this is behind TLS, so the session cookie is Secure.
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}

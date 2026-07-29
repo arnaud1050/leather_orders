@@ -1,3 +1,16 @@
 Flask>=3.0
 Flask-SQLAlchemy>=3.1
 Flask-Login>=0.6
+
+# Communications module (see communications/). Vendor imports are lazy, so
+# the app still boots and every existing view still works if these are
+# missing — only the integrations page reports the module as unavailable.
+cryptography>=42.0          # Fernet, for OAuth tokens at rest
+requests>=2.31              # token revocation; also a google-auth transport
+google-auth>=2.28
+google-auth-oauthlib>=1.2   # OAuth 2.0 web flow
+google-api-python-client>=2.120
+APScheduler>=3.10           # background sync, only when RUN_SCHEDULER=1
+
+# Tests only — not imported by the app. `python -m pytest`.
+pytest>=8.0

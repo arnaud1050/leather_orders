@@ -55,7 +55,7 @@
           {% if cell is none %}
           <td class="day day--empty"></td>
           {% else %}
-          <td class="day {% if cell.is_today %}day--today{% endif %} {% if not cell.orders %}day--quiet{% endif %}">
+          <td class="day {% if cell.is_today %}day--today{% endif %} {% if not cell.orders and not cell.events %}day--quiet{% endif %}">
             <div class="day__number">
               {{ cell.day }}
               {% if cell.is_today %}<span class="day__rivet" title="Today"></span>{% endif %}
@@ -65,6 +65,17 @@
               <div class="chip chip--{{ order.status }}" title="{{ order.notes }}">
                 <span class="chip__client">{{ order.client.name }}</span>
                 <span class="chip__item">{{ order.item }}</span>
+              </div>
+              {% endfor %}
+              {# Google Calendar events, read-only. Deliberately a different
+                 shape from an order chip — an appointment isn't an order,
+                 and the four status colors are spoken for. #}
+              {% for event in cell.events %}
+              <div class="chip chip--event" title="{{ event.description or '' }}">
+                <span class="chip__client">
+                  {% if not event.all_day and event.start_time %}{{ event.start_time.strftime('%H:%M') }}{% else %}All day{% endif %}
+                </span>
+                <span class="chip__item">{{ event.title or '(untitled event)' }}</span>
               </div>
               {% endfor %}
             </div>

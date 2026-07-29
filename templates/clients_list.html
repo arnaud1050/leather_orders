@@ -20,6 +20,13 @@
     <p class="detail-subtitle">Every client on file</p>
   </header>
 
+  {# Leads (unmatched email) is a sibling of the client roster rather than a
+     section of it — see communications/routes.py, leads(). #}
+  <nav class="settings-nav">
+    <a href="{{ url_for('clients_list') }}" class="settings-nav__link is-active">Clients</a>
+    <a href="{{ url_for('communications.leads') }}" class="settings-nav__link">Leads</a>
+  </nav>
+
   <div class="client-stats">
     <div class="client-stats__item">
       <span class="client-stats__value">{{ clients|length }}</span>

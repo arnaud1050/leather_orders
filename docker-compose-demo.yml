@@ -20,6 +20,20 @@ services:
       # (seed_if_empty() in models.py) — sets the "admin" user's password.
       # Ignored on every subsequent start once ./data-demo/atelier.db exists.
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      # --- Communications module (see communications/) ---
+      # Kept in sync by hand with docker-compose.yml, same as everything
+      # else in these two files. Note the redirect URI differs: it has to
+      # match the public URL this deployment is reached at, and be
+      # registered on the Google OAuth client.
+      - COMMS_ENCRYPTION_KEY=${COMMS_ENCRYPTION_KEY:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://demo.arnaudrouillot.com/integrations/google/callback}
+      # One process only — see docker-compose.yml.
+      - RUN_SCHEDULER=${RUN_SCHEDULER:-0}
+      # This deployment sits behind nginx with TLS, so the session cookie
+      # should be Secure by default here (unlike the local one).
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}
     networks:
       - website_network
 

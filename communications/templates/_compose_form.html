@@ -1,0 +1,28 @@
+{# Compose / reply. One form for both — a reply just carries thread_id,
+   matching the single send_message() endpoint behind it.
+
+   Callers pass: send_account, return_to, and optionally `thread`,
+   `client`, `to_value`, `subject_value`, `heading`. #}
+{% if send_account %}
+<form method="post" action="{{ url_for('communications.send_message') }}" class="detail-form compose-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="return_to" value="{{ return_to }}">
+  {% if thread %}<input type="hidden" name="thread_id" value="{{ thread.id }}">{% endif %}
+  {% if client %}<input type="hidden" name="client_id" value="{{ client.id }}">{% endif %}
+
+  <p class="detail-note">Sending as <span class="is-mono">{{ send_account.email_address }}</span></p>
+
+  <label>To<input type="text" name="to" value="{{ to_value or '' }}" placeholder="client@example.com" required></label>
+  <label>Cc<input type="text" name="cc" placeholder="Optional, comma separated"></label>
+  <label>Subject<input type="text" name="subject" value="{{ subject_value or '' }}"></label>
+  <label>Message<textarea name="body_text" rows="8" required></textarea></label>
+  <div>
+    <button type="submit" class="btn-primary">{{ 'Send reply' if thread else 'Send' }}</button>
+  </div>
+</form>
+{% else %}
+<p class="detail-note">
+  No mailbox is connected for sending. Connect one under
+  <a href="{{ url_for('communications.integrations') }}">Settings → Integrations</a>.
+</p>
+{% endif %}

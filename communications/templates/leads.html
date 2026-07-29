@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Leads — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <div>
+      <h1>Leads</h1>
+      <p class="detail-subtitle">Email from senders not yet on file</p>
+    </div>
+  </header>
+
+  <nav class="settings-nav">
+    <a href="{{ url_for('clients_list') }}" class="settings-nav__link">Clients</a>
+    <a href="{{ url_for('communications.leads') }}" class="settings-nav__link is-active">Leads</a>
+  </nav>
+
+  {% if notice %}
+  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  {% endif %}
+
+  <section class="detail-orders">
+    <p class="detail-note">
+      Conversations whose sender doesn't match any client's email address.
+      Opening one offers to create a client from it — nothing here is added
+      to the client list until you say so, so newsletters and suppliers can
+      simply be left alone.
+    </p>
+    {% with return_to = url_for('communications.leads') %}
+      {% include "_thread_list.html" %}
+    {% endwith %}
+  </section>
+
+</div>
+{% endblock %}

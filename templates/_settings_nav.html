@@ -1,0 +1,10 @@
+{# Sub-nav shared by every /settings category. Extracted from settings.html
+   when the communications module added a category of its own: the module
+   owns its template (communications/templates/integrations.html) but must
+   not own a private copy of this nav, or the two drift the first time a
+   category is added. Each page passes `section`. #}
+<nav class="settings-nav">
+  <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
+  <a href="{{ url_for('settings_preferences') }}" class="settings-nav__link {{ 'is-active' if section == 'preferences' else '' }}">Order preferences</a>
+  <a href="{{ url_for('communications.integrations') }}" class="settings-nav__link {{ 'is-active' if section == 'integrations' else '' }}">Integrations</a>
+</nav>

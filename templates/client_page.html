@@ -26,10 +26,7 @@
     </div>
   </header>
 
-  <nav class="settings-nav">
-    <a href="{{ url_for('client_page', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'info' else '' }}">Information</a>
-    <a href="{{ url_for('client_orders', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
-  </nav>
+  {% include "_client_nav.html" %}
 
   {% if section == 'info' %}
 

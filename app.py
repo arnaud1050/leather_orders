@@ -22,6 +22,13 @@ from models import (
     Client, Company, Document, Invoice, Order, OrderLine, OrderType, Payment,
     SourceOption, User, db, next_invoice_number, run_migrations, seed_if_empty,
 )
+# Self-contained module: its own models, services, templates and blueprint
+# (see communications/__init__.py). Importing it here registers its tables
+# with db.create_all() below; register() attaches its routes. Nothing in
+# this file calls Gmail — the module's services are the only entry point.
+import communications.jobs as communications_jobs
+import communications.routes as communications_routes
+from communications.services import calendar_service
 
 app = Flask(__name__)
 
@@ -29,13 +36,30 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(DATA_DIR, "atelier.db")
+# DATABASE_URL overrides the default SQLite file. Two reasons it's an env
+# var rather than a constant: tests and scripts need to point at a throwaway
+# database (Flask-SQLAlchemy builds its engine at import, so overriding the
+# config afterwards is too late and silently writes to the real file), and
+# it's the single change needed to move to Postgres/MySQL later — see
+# "Known gaps" in CLAUDE.md.
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+    "DATABASE_URL", "sqlite:///" + os.path.join(DATA_DIR, "atelier.db")
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Set a real SECRET_KEY via the environment in production/Docker — this
 # fallback is only safe for local dev.
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-not-secure")
+# Defence in depth behind the communications blueprint's CSRF tokens: Lax
+# stops the session cookie riding along on cross-site POSTs at all, so a
+# forged form never even reaches the token check.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+# Only over TLS in production. Off by default because local dev is plain
+# http and a Secure cookie there means nobody can log in at all.
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE") == "1"
 
 db.init_app(app)
+communications_routes.register(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -50,6 +74,11 @@ with app.app_context():
     db.create_all()
     run_migrations()  # adds columns create_all can't; see models.py
     seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
+
+# Background mailbox/calendar sync. A no-op unless RUN_SCHEDULER=1 — with
+# two gunicorn workers an unguarded scheduler would start twice and race
+# itself, so exactly one process should set it. See communications/jobs.py.
+communications_jobs.start_scheduler(app)
 
 STATUS_LABELS = {
     "in_progress": "In progress",
@@ -230,6 +259,12 @@ def month_view(year: int, month: int):
     cal = Calendar(firstweekday=6)  # Sunday-first, feels right for a paper ledger
     weeks = cal.monthdayscalendar(year, month)
     grouped = orders_by_day(year, month)
+    # Google Calendar events, read from the local mirror rather than from
+    # Google — this view renders on every page load and mustn't depend on a
+    # third-party round trip (see communications/services/calendar_service.py).
+    # Empty for a company with no calendar connected, so the grid is
+    # unchanged for anyone not using the integration.
+    events = calendar_service.events_by_day(current_user.company_id, year, month)
     today = date.today()
 
     # weeks_data: list of weeks, each week a list of (day_number, [orders]) or None for padding
@@ -243,6 +278,7 @@ def month_view(year: int, month: int):
                 week_data.append({
                     "day": day,
                     "orders": grouped.get(day, []),
+                    "events": events.get(day, []),
                     "is_today": date(year, month, day) == today,
                 })
         weeks_data.append(week_data)

@@ -1,0 +1,9 @@
+{# Sub-nav shared by the client page's tabs, including the one the
+   communications module adds. Extracted for the same reason as
+   _settings_nav.html: the module owns its own template but must not own a
+   private copy of this nav. Each page passes `section` and `return_to`. #}
+<nav class="settings-nav">
+  <a href="{{ url_for('client_page', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'info' else '' }}">Information</a>
+  <a href="{{ url_for('client_orders', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
+  <a href="{{ url_for('communications.client_emails', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'emails' else '' }}">Emails</a>
+</nav>

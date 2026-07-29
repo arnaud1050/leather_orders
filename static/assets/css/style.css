@@ -1650,6 +1650,179 @@ dialog.modal::backdrop {
 }
 
 /* ---------------------------------------------------------------------
+   Communications module (see communications/) — connected mailboxes,
+   email threads, calendar events. Reuses the existing pill / settings-list
+   / invoice-table vocabulary wherever it fits rather than inventing a
+   parallel one; these rules only cover what genuinely has no equivalent.
+   --------------------------------------------------------------------- */
+
+/* Account states, on the same --pill-color scheme as order/invoice pills.
+   Reusing the existing status hues on purpose: "connected" reading the
+   same green as "delivered" is a feature, not a collision. */
+.pill--connected { --pill-color: var(--status-delivered); }
+.pill--paused { --pill-color: var(--ink-soft); }
+.pill--error { --pill-color: var(--status-rush); }
+
+/* Secondary line under a connected account: provider, last sync, errors. */
+.integration-meta {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.integration-meta--error {
+  color: var(--status-rush);
+}
+
+/* What a mailbox actually granted — one chip per scope. */
+.integration-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.integration-scope {
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+}
+
+/* An unmatched conversation. Amber rather than red: it's something to look
+   at, not something that's gone wrong. */
+.pill--lead { --pill-color: var(--status-ready); }
+
+/* A synced calendar event on the month grid. Dashed left edge in the
+   neutral hairline rather than a fifth status color: an appointment isn't
+   an order status, and the four hues are deliberately spoken for (see
+   "Design language" in CLAUDE.md). */
+.chip--event {
+  border-left: 4px dashed var(--hairline);
+  background: transparent;
+}
+
+.chip--event .chip__client {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+/* Conversation list, on the client's Emails tab and the lead inbox. */
+.thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.thread-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.thread-list__item:last-child {
+  border-bottom: none;
+}
+
+.thread-list__subject {
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.thread-list__subject:hover {
+  color: var(--status-progress);
+}
+
+.thread-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+.thread-list__preview {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* One message inside a thread. Incoming and outgoing are distinguished by
+   a border on opposite sides rather than by alignment — a chat-bubble
+   layout would read as a different product than the rest of this app. */
+.message {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+
+.message--outgoing {
+  border-left: 3px solid var(--status-progress);
+}
+
+.message--incoming {
+  border-left: 3px solid var(--status-delivered);
+}
+
+.message__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.message__sender {
+  font-weight: 600;
+}
+
+.message__meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+
+/* pre-wrap keeps the sender's line breaks without needing |safe on text
+   that came from outside — same reasoning as the invoice page's address
+   block, which uses pre-line for the same reason. */
+.message__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.message__attachments {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  font-size: 0.85rem;
+}
+
+.compose-form textarea {
+  font-family: var(--font-body);
+}
+
+/* A heading *within* a section, below the section's own <h2>. */
+.detail-subheading {
+  margin: 24px 0 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* ---------------------------------------------------------------------
    Print — used by the invoice page's "Print / save as PDF" button, so
    what comes out is the document alone, without the app around it.
    --------------------------------------------------------------------- */

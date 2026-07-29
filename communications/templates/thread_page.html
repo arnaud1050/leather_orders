@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ thread.display_subject }} — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <a class="back-link" href="{{ return_to }}">&larr; Back</a>
+
+  <header class="detail-header">
+    <div>
+      <h1>{{ thread.display_subject }}</h1>
+      <p class="detail-subtitle">
+        {% if thread.client %}
+        <a href="{{ url_for('client_page', client_id=thread.client.id) }}">{{ thread.client.name }}</a>
+        {% else %}
+        Not linked to a client
+        {% endif %}
+        · {{ thread.account.email_address }}
+      </p>
+    </div>
+  </header>
+
+  {% if notice %}
+  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  {% endif %}
+
+  {% if thread.is_lead %}
+  <section class="detail-orders">
+    <h2>Create a client</h2>
+    <p class="detail-note">
+      Nobody on file matches <span class="is-mono">{{ thread.counterparty or 'this sender' }}</span>.
+      Creating a client links this conversation to them, and any other
+      unmatched conversation from the same address.
+    </p>
+    <form method="post" action="{{ url_for('communications.convert_lead', thread_id=thread.id) }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <div class="field-row">
+        <label>First name<input type="text" name="first_name" placeholder="From the sender's name if blank"></label>
+        <label>Last name<input type="text" name="last_name"></label>
+      </div>
+      <label>Email<input type="email" name="email" value="{{ thread.counterparty or '' }}" required></label>
+      <div>
+        <button type="submit" class="btn-primary">Create client</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="detail-orders">
+    <h2>Messages</h2>
+    {% for message in thread.messages %}
+    <article class="message message--{{ message.direction }}">
+      <header class="message__header">
+        <span class="message__sender">{{ message.sender_display }}</span>
+        <span class="message__meta">
+          {{ 'received' if message.is_incoming else 'sent' }}
+          {% if message.received_date %}{{ message.received_date.strftime('%b %d, %Y at %H:%M') }} UTC{% endif %}
+        </span>
+      </header>
+      {% if message.recipient_list %}
+      <p class="message__meta">To: {{ message.recipient_list|join(', ') }}</p>
+      {% endif %}
+      {#  body_text only, never body_html: the HTML comes from an arbitrary
+          sender, and piping it through |safe onto our own origin is stored
+          XSS. Escaped text with preserved line breaks is what a message
+          actually needs to be readable. #}
+      <div class="message__body">{{ message.body_text or '(no plain-text body)' }}</div>
+      {% if message.attachments %}
+      <ul class="message__attachments">
+        {% for attachment in message.attachments %}
+        <li>
+          {% if attachment.is_downloaded %}
+          <a href="{{ url_for('communications.download_attachment', attachment_id=attachment.id) }}">{{ attachment.filename }}</a>
+          {% else %}
+          <span>{{ attachment.filename }}</span>
+          {% endif %}
+          <span class="message__meta">{{ attachment.size_display }}{% if not attachment.is_downloaded %} · not downloaded{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="detail-note">This conversation has no messages stored.</p>
+    {% endfor %}
+  </section>
+
+  <section class="detail-orders">
+    <h2>Reply</h2>
+    {% with to_value = thread.counterparty,
+            subject_value = ('Re: ' ~ thread.display_subject) if not thread.display_subject.lower().startswith('re:') else thread.display_subject,
+            client = thread.client %}
+      {% include "_compose_form.html" %}
+    {% endwith %}
+  </section>
+
+</div>
+{% endblock %}

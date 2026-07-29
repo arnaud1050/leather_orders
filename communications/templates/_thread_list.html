@@ -1,0 +1,25 @@
+{# One row per conversation. Shared by the client's Emails tab and the lead
+   inbox, which show the same thing with a different heading. Callers pass
+   `threads` and `return_to`. #}
+{% if threads %}
+<ul class="thread-list">
+  {% for thread in threads %}
+  <li class="thread-list__item">
+    <a class="thread-list__subject" href="{{ url_for('communications.thread_page', thread_id=thread.id, return_to=return_to) }}">
+      {{ thread.display_subject }}
+    </a>
+    <span class="thread-list__meta">
+      {{ thread.counterparty or '—' }}
+      · {{ thread.message_count }} message{{ '' if thread.message_count == 1 else 's' }}
+      {% if thread.last_message_date %}· {{ thread.last_message_date.strftime('%b %d, %Y') }}{% endif %}
+      {% if thread.is_lead %}<span class="pill pill--lead">Unmatched</span>{% endif %}
+    </span>
+    {% if thread.latest_message %}
+    <span class="thread-list__preview">{{ thread.latest_message.preview }}</span>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="detail-note">No conversations yet.</p>
+{% endif %}

@@ -8,10 +8,7 @@
     <p class="detail-subtitle">Company preferences</p>
   </header>
 
-  <nav class="settings-nav">
-    <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
-    <a href="{{ url_for('settings_preferences') }}" class="settings-nav__link {{ 'is-active' if section == 'preferences' else '' }}">Order preferences</a>
-  </nav>
+  {% include "_settings_nav.html" %}
 
   {% if section == 'invoicing' %}
 
