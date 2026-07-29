@@ -58,6 +58,22 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 # http and a Secure cookie there means nobody can log in at all.
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE") == "1"
 
+# Behind a TLS-terminating reverse proxy (the demo deployment's nginx), the
+# request arrives at gunicorn as plain http, so request.url reads
+# "http://..." — and oauthlib refuses to parse an http authorization
+# response at all ("OAuth 2 MUST utilize https"), which breaks the Google
+# callback specifically. ProxyFix rebuilds scheme/host from
+# X-Forwarded-Proto / -Host so it reads what the browser actually used.
+#
+# Opt-in, because these headers are only trustworthy when something we
+# control sets them: exposed directly, any client could send
+# X-Forwarded-Proto: https and forge the origin. Set it on the deployment
+# that really is behind a proxy, and nowhere else.
+if os.environ.get("TRUST_PROXY_HEADERS") == "1":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 db.init_app(app)
 communications_routes.register(app)
 

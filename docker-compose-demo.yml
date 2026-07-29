@@ -34,6 +34,11 @@ services:
       # This deployment sits behind nginx with TLS, so the session cookie
       # should be Secure by default here (unlike the local one).
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}
+      # ...and for the same reason, honour X-Forwarded-Proto/-Host from that
+      # nginx, so request.url reads https and the Google OAuth callback can
+      # be parsed at all. Safe only because this container is unreachable
+      # except through the proxy (no host port on website_network).
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-1}
     networks:
       - website_network
 

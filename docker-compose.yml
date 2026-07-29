@@ -33,3 +33,8 @@ services:
       - RUN_SCHEDULER=${RUN_SCHEDULER:-0}
       # Set to 1 once this is behind TLS, so the session cookie is Secure.
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
+      # Set to 1 only if this sits behind a reverse proxy that sets
+      # X-Forwarded-Proto/-Host. Off here because this deployment publishes
+      # a host port directly, where those headers come from the client and
+      # would let anyone forge the request's scheme and host.
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-0}
