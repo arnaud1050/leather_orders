@@ -51,7 +51,7 @@
       Every invoice this company issues is numbered from one sequence, no
       matter how it gets paid. Changing the prefix starts a new run — it
       doesn't renumber invoices already sent. Next number:
-      <span class="is-mono">{{ next_number }}</span>
+      {{ next_number }}
     </p>
     <form method="post" action="{{ url_for('update_invoicing_settings') }}" class="detail-form settings-form">
       <label>Invoice prefix<input type="text" name="invoice_prefix" value="{{ company.invoice_prefix }}" maxlength="10" required></label>
@@ -63,6 +63,26 @@
   </section>
 
   {% elif section == 'preferences' %}
+
+  <section class="detail-orders">
+    <h2>Time zone</h2>
+    <p class="detail-note">
+      Times are stored in UTC and shown in this zone. Changing it re-labels
+      what's already on file rather than moving anything.
+    </p>
+    <form method="post" action="{{ url_for('update_preferences') }}" class="detail-form">
+      <label>Time zone
+        <select name="timezone">
+          {% for value, label in time_zones %}
+          <option value="{{ value }}" {% if company.timezone == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div>
+        <button type="submit" class="btn-primary">Save time zone</button>
+      </div>
+    </form>
+  </section>
 
   <section class="detail-orders">
     <h2>How did you hear about us?</h2>

@@ -33,6 +33,7 @@
 
   <div class="legend-row">
     {% if orders %}
+    <span class="legend__label">Filter by</span>
     <div class="legend" id="status-legend">
       {% for key, label in status_labels.items() %}
       <button type="button" class="legend__item" data-status="{{ key }}"><span class="dot dot--{{ key }}"></span>{{ label }}</button>
@@ -44,7 +45,7 @@
 
   {% if orders %}
   <div class="table-scroll">
-    <table class="invoice-table" id="orders-table">
+    <table class="invoice-table invoice-table--no-mono" id="orders-table">
       <thead>
         <tr>
           <th>{{ sort_link('item', 'Item') }}</th>
@@ -62,13 +63,18 @@
         {% for order in orders %}
         <tr data-status="{{ order.status }}" data-balance="{{ order.balance_due }}">
           <td><a href="{{ url_for('order_page', order_id=order.id) }}?return_to={{ request.path }}">{{ order.item }}</a></td>
-          <td><a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a></td>
+          <td>
+            <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a>
+            {% if order.client.is_returning %}
+            <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor" title="Returning client"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+            {% endif %}
+          </td>
           {% if has_order_types %}
           <td>{% if order.order_type %}<span class="pill">{{ order.order_type.label }}</span>{% else %}&mdash;{% endif %}</td>
           {% endif %}
           <td><span class="pill pill--{{ order.status }}">{{ status_labels[order.status] }}</span></td>
-          <td class="is-mono">{{ order.start.strftime('%Y-%m-%d') }}</td>
-          <td class="is-mono">{{ order.due.strftime('%Y-%m-%d') }}</td>
+          <td>{{ order.start.strftime('%Y-%m-%d') }}</td>
+          <td>{{ order.due.strftime('%Y-%m-%d') }}</td>
           <td class="is-numeric">${{ '%.2f'|format(order.total) }}</td>
           <td class="is-numeric">${{ '%.2f'|format(order.amount_paid) }}</td>
           <td class="is-numeric">${{ '%.2f'|format(order.balance_due) }}</td>
@@ -77,6 +83,10 @@
       </tbody>
     </table>
   </div>
+  <p class="timeline__legend-note">
+    <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+    Returning client
+  </p>
   {% else %}
   <p class="detail-note">No orders on file yet.</p>
   {% endif %}

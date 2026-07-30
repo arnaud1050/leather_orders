@@ -6,7 +6,7 @@
   <header class="ledger__header">
     <div class="ledger__mark">
       <h1>Calendar</h1>
-      <p class="detail-subtitle">Orders due, by day</p>
+      <p class="detail-subtitle">Appointments, by day</p>
     </div>
 
     <nav class="ledger__nav">
@@ -28,17 +28,9 @@
 
     <div class="ledger__summary">
       <span class="ledger__summary-count">{{ month_total }}</span>
-      <span class="ledger__summary-label">order{{ 's' if month_total != 1 else '' }}<br>due this month</span>
+      <span class="ledger__summary-label">appointment{{ 's' if month_total != 1 else '' }}<br>this month</span>
     </div>
   </header>
-
-  <div class="legend">
-    {% for key, label in status_labels.items() %}
-    <span class="legend__item">
-      <span class="dot dot--{{ key }}"></span>{{ label }}
-    </span>
-    {% endfor %}
-  </div>
 
   <table class="calendar">
     <thead>
@@ -55,27 +47,20 @@
           {% if cell is none %}
           <td class="day day--empty"></td>
           {% else %}
-          <td class="day {% if cell.is_today %}day--today{% endif %} {% if not cell.orders and not cell.events %}day--quiet{% endif %}">
+          <td class="day {% if cell.is_today %}day--today{% endif %} {% if not cell.events %}day--quiet{% endif %}">
             <div class="day__number">
               {{ cell.day }}
               {% if cell.is_today %}<span class="day__rivet" title="Today"></span>{% endif %}
             </div>
-            <div class="day__orders">
-              {% for order in cell.orders %}
-              <div class="chip chip--{{ order.status }}" title="{{ order.notes }}">
-                <span class="chip__client">{{ order.client.name }}</span>
-                <span class="chip__item">{{ order.item }}</span>
-              </div>
-              {% endfor %}
-              {# Google Calendar events, read-only. Deliberately a different
-                 shape from an order chip — an appointment isn't an order,
-                 and the four status colors are spoken for. #}
+            <div class="day__events">
+              {# Google Calendar events, read-only — this calendar shows only
+                 synced appointments; orders live on the timeline. #}
               {% for event in cell.events %}
               <div class="chip chip--event" title="{{ event.description or '' }}">
-                <span class="chip__client">
-                  {% if not event.all_day and event.start_time %}{{ event.start_time.strftime('%H:%M') }}{% else %}All day{% endif %}
+                <span class="chip__title">{{ event.title or '(untitled event)' }}</span>
+                <span class="chip__time">
+                  {% if not event.all_day and event.start_time %}{{ event.start_time|local_time }}{% if event.end_time %} - {{ event.end_time|local_time }}{% endif %}{% else %}All day{% endif %}
                 </span>
-                <span class="chip__item">{{ event.title or '(untitled event)' }}</span>
               </div>
               {% endfor %}
             </div>

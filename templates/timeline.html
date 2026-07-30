@@ -33,15 +33,12 @@
   </header>
 
   <div class="legend-row">
+    <span class="legend__label">Filter by</span>
     <div class="legend" id="status-legend">
       <button type="button" class="legend__item" data-status="in_progress"><span class="dot dot--in_progress"></span>In progress</button>
       <button type="button" class="legend__item" data-status="ready"><span class="dot dot--ready"></span>Ready for pickup</button>
       <button type="button" class="legend__item" data-status="delivered"><span class="dot dot--delivered"></span>Delivered</button>
       <button type="button" class="legend__item" data-status="rush"><span class="dot dot--rush"></span>Rush</button>
-      <span class="legend__item legend__item--static">
-        <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
-        Returning client
-      </span>
     </div>
     <label class="timeline__sort">
       Sort by
@@ -91,6 +88,14 @@
     <div class="timeline__empty">No orders scheduled in this window.</div>
     {% endif %}
   </div>
+
+  {# Not a filter — just a key for the star shown next to a returning
+     client's name, kept below the table so it doesn't read as one of the
+     clickable status buttons above. #}
+  <p class="timeline__legend-note">
+    <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
+    Returning client
+  </p>
 
   {# Quick-view/edit modals. One per client/order visible in this window,
      opened via the buttons above. Each links out to a full page as well. #}

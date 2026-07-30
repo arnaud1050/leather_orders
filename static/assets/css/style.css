@@ -10,6 +10,7 @@
   --hairline: #83898d;
 
   /* status colors — kept distinct from each other */
+  --status-pending: #ba25ba;    /* purple */
   --status-progress: #2f6fa6;   /* steel blue */
   --status-ready: #c98f00;      /* gold/amber */
   --status-delivered: #2f7d4f;  /* forest green */
@@ -20,7 +21,7 @@
   --radius: 2px;
   --font-display: sans-serif;
   --font-body: "Inter", -apple-system, sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  --font-mono: "Roboto Mono", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -45,7 +46,7 @@ body {
   flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  max-width: 980px;
+  max-width: 1200px;
   width: 100%;
   margin: 40px auto 0;
   padding: 0 24px;
@@ -56,7 +57,7 @@ body {
    --------------------------------------------------------------------- */
 
 .view-switch {
-  max-width: 980px;
+  max-width: 1200px;
   width: 100%;
   margin: 24px auto 0;
   padding: 0 24px;
@@ -141,8 +142,7 @@ body {
 
 .ledger__year {
   display: block;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 1.2rem;
   color: var(--ink-soft);
   letter-spacing: 0.08em;
 }
@@ -220,10 +220,21 @@ body {
   margin-left: auto;
 }
 
+/* Precedes the status filter buttons in .legend-row — plain text, same
+   weight as "Sort by", so it reads as a caption rather than another
+   clickable filter. */
+.legend__label {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+/* Extra breathing room beyond .legend-row's own 18px gap, so the sort
+   control doesn't read as part of the status filter group next to it. */
 .timeline__sort {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  margin-left: 24px;
   font-size: 0.72rem;
   color: var(--ink-soft);
 }
@@ -338,7 +349,6 @@ body {
 }
 
 .day__number {
-  font-family: var(--font-mono);
   font-size: 0.76rem;
   font-weight: 500;
   color: var(--ink);
@@ -356,7 +366,7 @@ body {
   display: inline-block;
 }
 
-.day__orders {
+.day__events {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -383,6 +393,23 @@ body {
 }
 
 .chip__item {
+  display: block;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip__title {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip__time {
   display: block;
   color: var(--ink-soft);
   white-space: nowrap;
@@ -571,13 +598,29 @@ body {
   font-style: italic;
 }
 
+/* Key for the returning-client star, below the table rather than in
+   .legend-row — it isn't a filter, so it shouldn't sit among the buttons
+   that are. */
+.timeline__legend-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 2px 0;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.timeline__legend-note .timeline__star {
+  margin-left: 0;
+}
+
 /* ---------------------------------------------------------------------
    Footer
    --------------------------------------------------------------------- */
 
 .site-footer {
   flex-shrink: 0;
-  max-width: 980px;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
   padding: 24px 24px 32px;
@@ -714,6 +757,7 @@ dialog.modal::backdrop {
   cursor: pointer;
   border: 1px solid var(--ink);
   font-family: inherit;
+  white-space: nowrap;
 }
 
 .btn-primary {
@@ -1020,7 +1064,6 @@ dialog.modal::backdrop {
 
 .doc-list__amount {
   margin-left: auto;
-  font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--ink);
 }
@@ -1032,7 +1075,6 @@ dialog.modal::backdrop {
 }
 
 .doc-list__ref {
-  font-family: var(--font-mono);
   font-size: 0.74rem;
 }
 
@@ -1063,7 +1105,6 @@ dialog.modal::backdrop {
 }
 
 .line-totals strong {
-  font-family: var(--font-mono);
   font-weight: 500;
   color: var(--ink);
 }
@@ -1165,8 +1206,35 @@ dialog.modal::backdrop {
   font-family: var(--font-body);
 }
 
+/* Orders / Clients / Invoices list tables — no mono font for now. */
+.invoice-table--no-mono .is-numeric {
+  font-family: var(--font-body);
+}
+
+/* The printable invoice document's own numeric columns aren't covered by
+   .invoice-table--no-mono (a different table class), so scoped here. */
+.invoice-doc .is-numeric {
+  font-family: var(--font-body);
+}
+
+/* Recent activity (audit log) — "Detail" can be a long freeform message, so
+   this variant fixes the table to the container width and wraps text
+   instead of forcing a horizontal scroll. */
+.invoice-table--wrap {
+  table-layout: fixed;
+}
+
+.invoice-table--wrap td {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.invoice-table--wrap th:nth-child(1), .invoice-table--wrap td:nth-child(1) { width: 16%; }
+.invoice-table--wrap th:nth-child(2), .invoice-table--wrap td:nth-child(2) { width: 18%; }
+.invoice-table--wrap th:nth-child(3), .invoice-table--wrap td:nth-child(3) { width: 52%; }
+.invoice-table--wrap th:nth-child(4), .invoice-table--wrap td:nth-child(4) { width: 14%; }
+
 .is-mono {
-  font-family: var(--font-mono);
   font-size: 0.78rem;
 }
 
@@ -1310,7 +1378,6 @@ dialog.modal::backdrop {
 }
 
 .invoice-doc__number {
-  font-family: var(--font-mono);
   font-size: 1rem;
   font-weight: 500;
 }
@@ -1362,10 +1429,6 @@ dialog.modal::backdrop {
   font-size: 0.86rem;
 }
 
-.invoice-doc__totals strong {
-  font-family: var(--font-mono);
-}
-
 .invoice-doc__totals p:not(.invoice-doc__total):not(.invoice-doc__balance) {
   color: var(--ink-soft);
 }
@@ -1406,7 +1469,6 @@ dialog.modal::backdrop {
 
 .invoice-doc__payment-amount {
   margin-left: auto;
-  font-family: var(--font-mono);
   color: var(--ink);
 }
 
@@ -1569,6 +1631,38 @@ dialog.modal::backdrop {
 .settings-source-list__actions {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Connected-mailbox list on the Integrations page — each account carries
+   more (meta line, granted-scope pills) than a source-option row, so it
+   gets the full page width rather than the 480px cap other source lists
+   use, and its own item layout below. */
+.settings-source-list--wide {
+  max-width: none;
+}
+
+.integration-account {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.integration-account__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.integration-account__email {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.integration-account__row .settings-source-list__actions {
+  margin-left: auto;
 }
 
 .settings-source-add {
@@ -1598,6 +1692,18 @@ dialog.modal::backdrop {
 
 .detail-form .field-row label:first-child {
   flex: 2 1 150px;
+}
+
+/* Sync frequency / lookback window — two fields of equal weight, wide
+   enough that neither uppercase caption wraps onto a second line. */
+.settings-form--sync {
+  max-width: 520px;
+}
+
+.settings-form--sync .field-row--sync label,
+.settings-form--sync .field-row--sync label:first-child {
+  flex: 1 1 0;
+  white-space: nowrap;
 }
 
 /* ---------------------------------------------------------------------
@@ -1667,7 +1773,6 @@ dialog.modal::backdrop {
 .integration-meta {
   display: block;
   margin-top: 4px;
-  font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--ink-soft);
 }
@@ -1692,23 +1797,69 @@ dialog.modal::backdrop {
   border-radius: 999px;
 }
 
-/* An unmatched conversation. Amber rather than red: it's something to look
-   at, not something that's gone wrong. */
-.pill--lead { --pill-color: var(--status-ready); }
-
-/* A synced calendar event on the month grid. Dashed left edge in the
-   neutral hairline rather than a fifth status color: an appointment isn't
-   an order status, and the four hues are deliberately spoken for (see
-   "Design language" in CLAUDE.md). */
-.chip--event {
-  border-left: 4px dashed var(--hairline);
-  background: transparent;
+/* A lead that arrived since you last opened the inbox. Filled rather than
+   outlined like the other pills, because it's the one thing on the row that
+   should catch the eye first. */
+.pill--new {
+  --pill-color: var(--day-today);
+  color: var(--paper);
+  background: var(--day-today);
 }
 
-.chip--event .chip__client {
+/* Unread-count badge on a nav link. Red is reserved for exactly this and the
+   today marker — it's the app's only "look here now" colour, so nothing else
+   should start using it. */
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  margin-left: 5px;
+  padding: 0 5px;
   font-family: var(--font-mono);
-  font-weight: 500;
-  color: var(--ink-soft);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background: var(--day-today);
+  border-radius: 999px;
+  /* The count is decoration around a link that already says "Leads"; letting
+     it be selected or dragged just gets in the way of clicking. */
+  user-select: none;
+}
+
+/* A status note sharing a .legend-row with the button it explains. The row is
+   already a centred flex line, so the note only has to drop the vertical
+   margins it carries when it's a standalone block. */
+.legend-row__note {
+  flex: 1 1 320px;
+  margin: 0;
+  max-width: 620px;
+}
+
+/* A new row in the thread list, marked with the same red as the badge so the
+   two obviously refer to the same thing. The edge and the padding that keeps
+   it clear of the text both live on .thread-list__item (transparent until a
+   row is new) — carrying them here instead made the line sit tight against
+   the subject and the triage buttons, and shifted every new row sideways. */
+.thread-list__item--new {
+  border-left-color: var(--day-today);
+}
+
+/* The badge is a "look now" cue for someone at the screen; on paper it's
+   noise attached to a nav that doesn't print either. */
+@media print {
+  .nav-badge {
+    display: none;
+  }
+}
+
+/* A synced calendar event on the month grid — its own --status-pending
+   purple rather than one of the four order statuses, since an appointment
+   isn't an order status (see "Design language" in CLAUDE.md). */
+.chip--event {
+  border-left: 4px solid var(--status-pending);
 }
 
 /* Conversation list, on the client's Emails tab and the lead inbox. */
@@ -1722,12 +1873,24 @@ dialog.modal::backdrop {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px 0;
+  padding: 12px 0 12px 14px;
   border-bottom: 1px solid var(--hairline);
+  /* Reserved on every row so marking one new (see .thread-list__item--new)
+     only colours the edge — nothing moves, and the text keeps its gap. */
+  border-left: 2px solid transparent;
 }
 
 .thread-list__item:last-child {
   border-bottom: none;
+}
+
+/* Subject and its "New" pill on one line. Needed because .thread-list__item
+   is a column — without this the pill would sit on a row of its own. */
+.thread-list__heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .thread-list__subject {
@@ -1745,14 +1908,29 @@ dialog.modal::backdrop {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   color: var(--ink-soft);
 }
 
 .thread-list__preview {
   font-size: 0.85rem;
   color: var(--ink-soft);
+}
+
+/* Triage buttons on a lead row. Each is its own <form> (the app has no JS
+   layer for this), so they need laying out as a row rather than stacking as
+   block elements. */
+.thread-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.thread-list__actions .btn-secondary {
+  padding: 4px 10px;
+  font-size: 0.68rem;
 }
 
 /* One message inside a thread. Incoming and outgoing are distinguished by
@@ -1781,13 +1959,23 @@ dialog.modal::backdrop {
   margin-bottom: 8px;
 }
 
+/* Coloured to match the message's own left edge, so "You" and the client's
+   name are each tied to the side of the conversation they came from without
+   needing a second label to say so. */
 .message__sender {
   font-weight: 600;
 }
 
+.message--incoming .message__sender {
+  color: var(--status-delivered);
+}
+
+.message--outgoing .message__sender {
+  color: var(--status-progress);
+}
+
 .message__meta {
   margin: 0;
-  font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--ink-soft);
 }
@@ -1808,8 +1996,21 @@ dialog.modal::backdrop {
   font-size: 0.85rem;
 }
 
+/* The reply form overrides .detail-form's 360px cap: answering a full-width
+   message in a box a third that wide reads as an afterthought, and the
+   textarea should match the .message blocks above it. Only the message box
+   wants the room, so the header fields are capped individually. */
+.compose-form {
+  max-width: none;
+}
+
+.compose-form__field {
+  max-width: 360px;
+}
+
 .compose-form textarea {
   font-family: var(--font-body);
+  width: 100%;
 }
 
 /* A heading *within* a section, below the section's own <h2>. */

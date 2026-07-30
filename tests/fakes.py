@@ -64,6 +64,11 @@ class FakeEmailProvider(base.EmailProvider):
     def rfc822_message_id(self, provider_message_id):
         return f"<{provider_message_id}@mail.example.com>"
 
+    def trash_thread(self, thread_id):
+        TRASH_LOG.append(thread_id)
+        if type(self).fail_with:
+            raise type(self).fail_with
+
     def send_email(self, to, subject, body_text, cc=None, bcc=None,
                    reply_to_message_id=None, thread_id=None):
         record = {
@@ -133,6 +138,7 @@ class FakeCalendarProvider(base.CalendarProvider):
 SENT_LOG: list = []
 CALENDAR_LOG: list = []
 FETCH_LOG: list = []
+TRASH_LOG: list = []
 
 
 @contextmanager
@@ -156,6 +162,7 @@ def fake_providers(threads=None, events=None, email_error=None, calendar_error=N
     SENT_LOG.clear()
     CALENDAR_LOG.clear()
     FETCH_LOG.clear()
+    TRASH_LOG.clear()
 
     email_factory = FakeEmailProvider
     calendar_factory = FakeCalendarProvider

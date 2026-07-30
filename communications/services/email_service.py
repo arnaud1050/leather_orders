@@ -21,7 +21,9 @@ from models import Client, db
 
 from communications.models import (
     AUDIT_CLIENT_CREATED_FROM_EMAIL, AUDIT_EMAIL_SENT, AUDIT_SYNC_RUN,
-    DIRECTION_OUTGOING, EmailMessage, EmailThread, utcnow,
+    AUDIT_THREAD_TRASHED, DIRECTION_INCOMING, DIRECTION_OUTGOING,
+    DISMISSED_HIDDEN, DISMISSED_TRASHED, EmailMessage, EmailThread,
+    LeadReadState, utcnow,
 )
 from communications.providers import email_provider_for
 from communications.providers.base import ProviderError
@@ -57,14 +59,31 @@ def lead_threads(company_id: int, limit: int = 100) -> list[EmailThread]:
 
     Only threads with at least one *incoming* message: an outgoing-only
     thread to an unknown address is us mailing a supplier, not a lead.
+
+    Shares `_lead_thread_query` with the badge count deliberately. When this
+    filtered in Python and the badge filtered in SQL, the two could report
+    different numbers for the same inbox.
     """
-    threads = (
-        EmailThread.query.filter_by(company_id=company_id, client_id=None)
+    return (
+        _lead_thread_query(company_id)
         .order_by(EmailThread.last_message_date.desc().nullslast())
         .limit(limit)
         .all()
     )
-    return [t for t in threads if any(m.is_incoming for m in t.messages)]
+
+
+def dismissed_lead_threads(company_id: int, limit: int = 100) -> list[EmailThread]:
+    """Leads that were hidden or trashed — the "show dismissed" view.
+
+    Ordered by when they were dismissed rather than by message date, since
+    what someone looking at this list wants is "what did I just get rid of".
+    """
+    return (
+        _lead_thread_query(company_id, dismissed=True)
+        .order_by(EmailThread.dismissed_at.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 def get_thread(company_id: int, thread_id: int) -> EmailThread | None:
@@ -72,8 +91,73 @@ def get_thread(company_id: int, thread_id: int) -> EmailThread | None:
     return EmailThread.query.filter_by(id=thread_id, company_id=company_id).first()
 
 
-def unread_lead_count(company_id: int) -> int:
-    return len(lead_threads(company_id))
+# ---------------------------------------------------------------------------
+# The "new leads" badge.
+#
+# Counted rather than stored, from one timestamp per user (LeadReadState) —
+# so it can't drift out of sync with the threads it describes, the same
+# reasoning as Order.total and Invoice.display_status elsewhere in the app.
+#
+# It falls to zero on its own in both the ways it should: a sync that brings
+# nothing new leaves the count alone, converting a lead attaches a client so
+# the thread stops being a lead at all, and opening the page moves the
+# marker.
+# ---------------------------------------------------------------------------
+
+def _lead_thread_query(company_id: int, dismissed: bool = False):
+    """Threads that count as leads: no client, something incoming, not triaged away.
+
+    `messages.any(...)` compiles to an EXISTS, so the badge is one COUNT
+    query rather than loading every thread and its messages — this runs on
+    every page render (see the context processor in routes.py).
+
+    `dismissed=True` returns the triaged-away ones instead, for the "show
+    dismissed" view. One query either way so the two lists can't disagree
+    about what a lead is.
+    """
+    query = EmailThread.query.filter(
+        EmailThread.company_id == company_id,
+        EmailThread.client_id.is_(None),
+        EmailThread.messages.any(EmailMessage.direction == DIRECTION_INCOMING),
+    )
+    if dismissed:
+        return query.filter(EmailThread.dismissed_at.isnot(None))
+    return query.filter(EmailThread.dismissed_at.is_(None))
+
+
+def leads_seen_at(company_id: int, user_id: int):
+    """When this user last opened the lead inbox, or None if never.
+
+    Read-only: deliberately does not create the row, because this is called
+    on every page render and a GET should not write.
+    """
+    state = LeadReadState.query.filter_by(company_id=company_id, user_id=user_id).first()
+    return state.seen_at if state else None
+
+
+def new_lead_count(company_id: int, user_id: int) -> int:
+    """How many lead threads have arrived since this user last looked."""
+    query = _lead_thread_query(company_id)
+    seen_at = leads_seen_at(company_id, user_id)
+    if seen_at is not None:
+        query = query.filter(EmailThread.created_at > seen_at)
+    return query.count()
+
+
+def mark_leads_seen(company_id: int, user_id: int) -> None:
+    """Move this user's marker to now, clearing the badge. Commits.
+
+    Committing here rather than leaving it to the caller because the caller
+    is a GET route rendering a page — there's no wider transaction for it to
+    join, and a marker that didn't persist would show the same "new" leads
+    on every visit.
+    """
+    state = LeadReadState.query.filter_by(company_id=company_id, user_id=user_id).first()
+    if state is None:
+        state = LeadReadState(company_id=company_id, user_id=user_id)
+        db.session.add(state)
+    state.seen_at = utcnow()
+    db.session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +343,71 @@ def sync_now(company_id: int) -> list:
 # ---------------------------------------------------------------------------
 # Leads
 # ---------------------------------------------------------------------------
+
+def dismiss_thread(company_id: int, thread_id: int) -> EmailThread:
+    """Hide a lead from the inbox without touching the mailbox. Commits.
+
+    The row is kept, not deleted — deleting it would only mean the next sync
+    re-downloads the thread and it reappears. Fully reversible from the
+    "dismissed" view, which is what makes this the right default action for
+    triage: being wrong costs nothing.
+    """
+    thread = get_thread(company_id, thread_id)
+    if thread is None:
+        raise EmailServiceError("That conversation no longer exists.")
+    thread.dismiss(DISMISSED_HIDDEN)
+    db.session.commit()
+    return thread
+
+
+def restore_thread(company_id: int, thread_id: int) -> EmailThread:
+    """Put a hidden lead back in the inbox. Commits.
+
+    Deliberately refuses a trashed thread: the mail is in Gmail's Trash, and
+    un-trashing is a Gmail action. Restoring it here would show it in Leads
+    again while the message stayed trashed — a button that appears to work
+    and doesn't.
+    """
+    thread = get_thread(company_id, thread_id)
+    if thread is None:
+        raise EmailServiceError("That conversation no longer exists.")
+    if thread.was_trashed:
+        raise EmailServiceError(
+            "That conversation was moved to Gmail's Trash. Recover it in Gmail "
+            "and it will come back on the next sync."
+        )
+    thread.restore()
+    db.session.commit()
+    return thread
+
+
+def trash_thread(company_id: int, thread_id: int) -> EmailThread:
+    """Move a conversation to the provider's Trash, and dismiss it here.
+
+    Recoverable, never permanent — see EmailProvider.trash_thread. The
+    provider call happens first: if Gmail refuses, nothing local changes, so
+    the app never claims to have trashed mail that's still sitting in the
+    inbox. Commits, for the same reason send_email does.
+    """
+    thread = get_thread(company_id, thread_id)
+    if thread is None:
+        raise EmailServiceError("That conversation no longer exists.")
+
+    account = account_service.get_account(company_id, thread.email_account_id)
+    if account is None:
+        raise EmailServiceError("The mailbox this conversation came from is no longer connected.")
+
+    email_provider_for(account).trash_thread(thread.provider_thread_id)
+
+    thread.dismiss(DISMISSED_TRASHED)
+    audit.record(
+        company_id, AUDIT_THREAD_TRASHED,
+        f"Moved {thread.display_subject!r} from {account.email_address} to Trash. "
+        "Recoverable in Gmail for 30 days.",
+    )
+    db.session.commit()
+    return thread
+
 
 def create_client_from_thread(company_id: int, thread_id: int, **overrides) -> Client:
     """Turn an unmatched conversation into a client, and attach it.

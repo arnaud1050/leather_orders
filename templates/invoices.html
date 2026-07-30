@@ -21,7 +21,7 @@
 
   {% if invoices %}
   <div class="table-scroll">
-    <table class="invoice-table">
+    <table class="invoice-table invoice-table--no-mono">
       <thead>
         <tr>
           <th>Number</th>
@@ -40,7 +40,7 @@
           <td><a href="{{ url_for('invoice_page', invoice_id=invoice.id) }}?return_to={{ request.path }}">{{ invoice.number }}</a></td>
           <td><a href="{{ url_for('client_page', client_id=invoice.order.client.id) }}?return_to={{ request.path }}">{{ invoice.order.client.name }}</a></td>
           <td><a href="{{ url_for('order_page', order_id=invoice.order.id) }}?return_to={{ request.path }}">{{ invoice.order.item }}</a></td>
-          <td class="is-mono">{{ invoice.issued_date.strftime('%Y-%m-%d') }}</td>
+          <td>{{ invoice.issued_date.strftime('%Y-%m-%d') }}</td>
           <td class="is-numeric">${{ '%.2f'|format(invoice.order.total) }}</td>
           <td class="is-numeric">${{ '%.2f'|format(invoice.order.amount_paid) }}</td>
           <td class="is-numeric">${{ '%.2f'|format(invoice.order.balance_due) }}</td>

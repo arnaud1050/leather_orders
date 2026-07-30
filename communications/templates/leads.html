@@ -10,23 +10,65 @@
     </div>
   </header>
 
-  <nav class="settings-nav">
-    <a href="{{ url_for('clients_list') }}" class="settings-nav__link">Clients</a>
-    <a href="{{ url_for('communications.leads') }}" class="settings-nav__link is-active">Leads</a>
-  </nav>
+  {% with section = 'leads' %}{% include "_clients_nav.html" %}{% endwith %}
 
   {% if notice %}
   <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
   {% endif %}
 
+  {# Same "Sync now" action as the integrations page, and the same
+     email_service.sync_now() behind it — return_to brings you back here
+     instead of bouncing to Settings.
+
+     Whichever sync-status note applies sits on the same line as the button,
+     since it's explaining that button. .legend__new-order's margin-left:auto
+     keeps the button right-aligned regardless of whether a note is there. #}
+  <div class="legend-row">
+    {% if not has_accounts %}
+    <p class="warning-note legend-row__note">
+      No mailbox is connected, so there's nothing to sync. Connect one under
+      <a href="{{ url_for('communications.integrations') }}">Settings → Integrations</a>.
+    </p>
+    {% elif not scheduler_enabled %}
+    <p class="detail-note legend-row__note">
+      Automatic syncing isn't running in this process, so new mail arrives when
+      you use "Sync now".
+    </p>
+    {% endif %}
+    <form method="post" action="{{ url_for('communications.sync_now') }}" class="legend__new-order">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ url_for('communications.leads') }}">
+      <button type="submit" class="btn-primary" {% if not has_accounts %}disabled{% endif %}>
+        Sync now
+      </button>
+    </form>
+  </div>
+
   <section class="detail-orders">
+    {% if showing_dismissed %}
+    <h2>Dismissed</h2>
+    <p class="detail-note">
+      Conversations you've hidden or moved to Trash. Hidden ones can be
+      restored here; trashed ones live in Gmail's Trash and come back on the
+      next sync if you recover them there.
+      <a href="{{ url_for('communications.leads') }}">Back to the lead inbox</a>
+    </p>
+    {% else %}
     <p class="detail-note">
       Conversations whose sender doesn't match any client's email address.
       Opening one offers to create a client from it — nothing here is added
-      to the client list until you say so, so newsletters and suppliers can
-      simply be left alone.
+      to the client list until you say so. <strong>Hide</strong> clears it from
+      this list without touching the mailbox; <strong>Move to Trash</strong>
+      also puts it in Gmail's Trash.
+      {% if dismissed_count %}
+      <a href="{{ url_for('communications.leads', show='dismissed') }}">Show {{ dismissed_count }} dismissed</a>
+      {% endif %}
     </p>
-    {% with return_to = url_for('communications.leads') %}
+    {% endif %}
+    {# rstrip('?') because Flask's full_path appends a bare "?" when there's
+       no query string, which would otherwise end up in every return_to. #}
+    {% with return_to = request.full_path.rstrip('?'), show_actions = true,
+            flag_new = not showing_dismissed %}
       {% include "_thread_list.html" %}
     {% endwith %}
   </section>

@@ -10,15 +10,31 @@ tenant later is additive.
 """
 
 import os
-from datetime import date, timedelta
-from calendar import Calendar, month_name
 
-from flask import Flask, render_template, request, redirect, url_for, abort
-from flask_login import (
+# Load .env before ANY other project import. Not stylistic: communications/
+# config.py reads os.environ at *module* level, so loading after that import
+# leaves the module reporting itself unconfigured while a perfectly good .env
+# sits on disk. `python app.py` never reads .env on its own (only the
+# `flask run` CLI does), which is exactly how that bit us.
+#
+# Optional dependency — the app must still boot where it isn't installed and
+# the environment is set directly, as in both Docker deployments.
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    pass
+else:
+    load_dotenv()
+
+from datetime import date, timedelta  # noqa: E402 — must follow load_dotenv
+from calendar import Calendar, month_name  # noqa: E402
+
+from flask import Flask, render_template, request, redirect, url_for, abort  # noqa: E402
+from flask_login import (  # noqa: E402
     LoginManager, current_user, login_required, login_user, logout_user,
 )
 
-from models import (
+from models import (  # noqa: E402
     Client, Company, Document, Invoice, Order, OrderLine, OrderType, Payment,
     SourceOption, User, db, next_invoice_number, run_migrations, seed_if_empty,
 )
@@ -26,9 +42,10 @@ from models import (
 # (see communications/__init__.py). Importing it here registers its tables
 # with db.create_all() below; register() attaches its routes. Nothing in
 # this file calls Gmail — the module's services are the only entry point.
-import communications.jobs as communications_jobs
-import communications.routes as communications_routes
-from communications.services import calendar_service
+import communications.jobs as communications_jobs  # noqa: E402
+import communications.migrations as communications_migrations  # noqa: E402
+import communications.routes as communications_routes  # noqa: E402
+from communications.services import calendar_service  # noqa: E402
 
 app = Flask(__name__)
 
@@ -89,6 +106,11 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
     run_migrations()  # adds columns create_all can't; see models.py
+    # The module keeps its own column migrations, so the root model file
+    # doesn't have to know what it stores. Called here because app.py is the
+    # composition root — a call either way between models.py and the module
+    # would be circular.
+    communications_migrations.run_migrations()
     seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
 
 # Background mailbox/calendar sync. A no-op unless RUN_SCHEDULER=1 — with
@@ -131,6 +153,27 @@ PROVINCES = {
     "SK": "Saskatchewan",
     "YT": "Yukon",
 }
+
+# Zones offered at /settings/preferences. A curated list, not
+# zoneinfo.available_timezones() — that's ~600 entries in no useful order, and
+# every one of them is a way to mislabel a studio's own mail. Canada first
+# (west to east), then the couple of places its clients and suppliers are.
+# Anything missing is one line here; the stored value is the IANA name, so
+# nothing but this list has to change.
+TIME_ZONES = [
+    ("America/Vancouver", "Vancouver (Pacific)"),
+    ("America/Edmonton", "Edmonton (Mountain)"),
+    ("America/Regina", "Regina (Central, no DST)"),
+    ("America/Winnipeg", "Winnipeg (Central)"),
+    ("America/Toronto", "Toronto (Eastern)"),
+    ("America/Halifax", "Halifax (Atlantic)"),
+    ("America/St_Johns", "St. John's (Newfoundland)"),
+    ("America/New_York", "New York (Eastern)"),
+    ("America/Los_Angeles", "Los Angeles (Pacific)"),
+    ("Europe/London", "London"),
+    ("Europe/Paris", "Paris"),
+    ("UTC", "UTC"),
+]
 
 # "paid" is derived from the order's payments rather than set by hand, so
 # it isn't offered as something staff can pick — see Invoice.display_status.
@@ -209,20 +252,6 @@ def get_client_or_404(client_id: int) -> Client:
     return client
 
 
-def orders_by_day(year: int, month: int) -> dict[int, list[Order]]:
-    """Map day-of-month -> list of orders due that day, for the given month."""
-    grouped: dict[int, list[Order]] = {}
-    orders = (
-        Order.query.join(Client)
-        .filter(Client.company_id == current_user.company_id)
-        .all()
-    )
-    for order in orders:
-        if order.due.year == year and order.due.month == month:
-            grouped.setdefault(order.due.day, []).append(order)
-    return grouped
-
-
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
@@ -274,16 +303,16 @@ def month_view(year: int, month: int):
 
     cal = Calendar(firstweekday=6)  # Sunday-first, feels right for a paper ledger
     weeks = cal.monthdayscalendar(year, month)
-    grouped = orders_by_day(year, month)
     # Google Calendar events, read from the local mirror rather than from
     # Google — this view renders on every page load and mustn't depend on a
     # third-party round trip (see communications/services/calendar_service.py).
-    # Empty for a company with no calendar connected, so the grid is
-    # unchanged for anyone not using the integration.
+    # Empty for a company with no calendar connected, so the grid is just
+    # empty days for anyone not using the integration. This calendar shows
+    # only synced appointments, not orders — orders live on the timeline.
     events = calendar_service.events_by_day(current_user.company_id, year, month)
     today = date.today()
 
-    # weeks_data: list of weeks, each week a list of (day_number, [orders]) or None for padding
+    # weeks_data: list of weeks, each week a list of (day_number, [events]) or None for padding
     weeks_data = []
     for week in weeks:
         week_data = []
@@ -293,7 +322,6 @@ def month_view(year: int, month: int):
             else:
                 week_data.append({
                     "day": day,
-                    "orders": grouped.get(day, []),
                     "events": events.get(day, []),
                     "is_today": date(year, month, day) == today,
                 })
@@ -302,7 +330,7 @@ def month_view(year: int, month: int):
     prev_month, prev_year = (12, year - 1) if month == 1 else (month - 1, year)
     next_month, next_year = (1, year + 1) if month == 12 else (month + 1, year)
 
-    month_total = sum(len(v) for v in grouped.values())
+    month_total = sum(len(v) for v in events.values())
 
     return render_template(
         "calendar.html",
@@ -312,7 +340,6 @@ def month_view(year: int, month: int):
         month=month,
         prev_month=prev_month, prev_year=prev_year,
         next_month=next_month, next_year=next_year,
-        status_labels=STATUS_LABELS,
         month_total=month_total,
         today_year=today.year, today_month=today.month,
         active_view="calendar",
@@ -1018,6 +1045,8 @@ def settings_preferences():
     return render_template(
         "settings.html",
         section="preferences",
+        company=db.session.get(Company, current_user.company_id),
+        time_zones=TIME_ZONES,
         source_options=source_options,
         order_types=order_types,
         active_view="settings",
@@ -1060,6 +1089,25 @@ def update_invoicing_settings():
     company.payment_instructions = request.form.get("payment_instructions", "").strip() or None
     db.session.commit()
     return redirect(url_for("settings_invoicing"))
+
+
+@app.route("/settings/preferences", methods=["POST"])
+@login_required
+def update_preferences():
+    """The company's display timezone.
+
+    Only affects rendering — stored timestamps stay naive UTC (see the
+    communications module), so switching zones re-labels history rather than
+    rewriting it. Anything outside TIME_ZONES is ignored rather than stored:
+    an unknown zone name would make every time on the page fall back to UTC
+    with nothing to say why.
+    """
+    company = db.session.get(Company, current_user.company_id)
+    chosen = request.form.get("timezone", "").strip()
+    if chosen in dict(TIME_ZONES):
+        company.timezone = chosen
+        db.session.commit()
+    return redirect(url_for("settings_preferences"))
 
 
 @app.route("/settings/sources", methods=["POST"])

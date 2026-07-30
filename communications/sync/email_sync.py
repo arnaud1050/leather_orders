@@ -27,8 +27,8 @@ from models import Client, db
 
 from communications import config
 from communications.models import (
-    AUDIT_SYNC_FAILED, EmailAccount, EmailAttachment, EmailMessage,
-    EmailSyncSettings, EmailThread, utcnow,
+    AUDIT_SYNC_FAILED, DIRECTION_INCOMING, EmailAccount, EmailAttachment,
+    EmailMessage, EmailSyncSettings, EmailThread, utcnow,
 )
 from communications.providers import email_provider_for
 from communications.providers.base import ProviderError
@@ -49,6 +49,7 @@ class SyncResult:
     messages_created: int = 0
     threads_matched: int = 0
     threads_skipped: int = 0
+    threads_resurfaced: int = 0
     attachments_saved: int = 0
     error: str | None = None
     errors: list[str] = field(default_factory=list)
@@ -65,6 +66,8 @@ class SyncResult:
             f"in {self.threads_created} new thread(s), "
             f"{self.threads_matched} matched to a client"
             + (f", {self.threads_skipped} unmatched discarded" if self.threads_skipped else "")
+            + (f", {self.threads_resurfaced} dismissed reopened"
+               if self.threads_resurfaced else "")
         )
 
 
@@ -238,6 +241,24 @@ def _store_message(account, settings, thread, fetched, result, provider) -> None
     db.session.add(message)
     db.session.flush()
     result.messages_created += 1
+
+    # A dismissed sender writing again is new signal, so the thread comes
+    # back to the inbox — a bespoke enquiry hidden by mistake gets a second
+    # chance instead of going silent forever. Only for genuinely new incoming
+    # mail: this function returns early on a message it has already stored,
+    # so re-syncing an old window can't resurrect the same thread repeatedly.
+    #
+    # Not for trashed threads. Their mail is in Gmail's Trash and the sync
+    # query excludes it (-in:trash), so a new message here would mean someone
+    # recovered it in Gmail — but if that ever changes, un-hiding something
+    # the user explicitly threw away would be the wrong way to be wrong.
+    if (
+        fetched.direction == DIRECTION_INCOMING
+        and thread.is_dismissed
+        and not thread.was_trashed
+    ):
+        thread.restore()
+        result.threads_resurfaced += 1
 
     for attachment in fetched.attachments:
         _store_attachment(account, settings, message, attachment, result, provider)

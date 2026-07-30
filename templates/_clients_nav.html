@@ -1,0 +1,12 @@
+{# Sub-nav for the client roster and the lead inbox. Extracted so the "new
+   leads" badge is declared once — it was duplicated across clients_list.html
+   and the module's leads.html, which is exactly how two copies drift.
+   Callers pass `section` ("clients" or "leads"). #}
+<nav class="settings-nav">
+  <a href="{{ url_for('clients_list') }}" class="settings-nav__link {{ 'is-active' if section == 'clients' else '' }}">Clients</a>
+  <a href="{{ url_for('communications.leads') }}" class="settings-nav__link {{ 'is-active' if section == 'leads' else '' }}">
+    Leads
+    {% set pending = new_lead_count() %}
+    {% if pending %}<span class="nav-badge" title="{{ pending }} new lead{{ 's' if pending != 1 }} since you last looked">{{ pending }}</span>{% endif %}
+  </a>
+</nav>

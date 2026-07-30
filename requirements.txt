@@ -1,10 +1,15 @@
 Flask>=3.0
 Flask-SQLAlchemy>=3.1
 Flask-Login>=0.6
+# zoneinfo has no IANA database of its own on Windows, where a stock Python
+# raises ZoneInfoNotFoundError for "America/Vancouver" — the timezone setting
+# at /settings/preferences needs this to resolve at all.
+tzdata>=2024.1
 
 # Communications module (see communications/). Vendor imports are lazy, so
 # the app still boots and every existing view still works if these are
 # missing — only the integrations page reports the module as unavailable.
+python-dotenv>=1.0          # loads .env in app.py; see the note there on ordering
 cryptography>=42.0          # Fernet, for OAuth tokens at rest
 requests>=2.31              # token revocation; also a google-auth transport
 google-auth>=2.28

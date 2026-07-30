@@ -19,6 +19,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 db = SQLAlchemy()
 
+# The studio is in Vancouver, so that's the default a new company gets rather
+# than UTC — a time only means something to the person reading it in their own
+# zone. TIME_ZONES in app.py is the list offered at /settings.
+DEFAULT_TIMEZONE = "America/Vancouver"
+
 
 def format_address(street, city, province, postal_code) -> str | None:
     """Address as it prints: street, then "City, PROV  Postal".
@@ -66,6 +71,11 @@ class Company(db.Model):
     # Square-hosted invoice is that cash and e-transfer have no payment
     # page to send anyone to.
     payment_instructions = db.Column(db.Text)
+
+    # IANA zone name. Timestamps are stored as naive UTC everywhere (see the
+    # communications module's docstring); this is only how they're *rendered*,
+    # so changing it re-labels history rather than rewriting it.
+    timezone = db.Column(db.String(60), nullable=False, default=DEFAULT_TIMEZONE)
 
     users = db.relationship("User", back_populates="company")
     clients = db.relationship("Client", back_populates="company")
@@ -669,6 +679,9 @@ _ADDED_COLUMNS = [
     ("companies", "qst_number", "VARCHAR(40)"),
     ("companies", "neq", "VARCHAR(40)"),
     ("companies", "payment_instructions", "TEXT"),
+    # Literal in the DDL rather than DEFAULT_TIMEZONE interpolated: this is a
+    # record of what shipped, and it must not change if that constant does.
+    ("companies", "timezone", "VARCHAR(60) NOT NULL DEFAULT 'America/Vancouver'"),
     ("clients", "street", "VARCHAR(200)"),
     ("clients", "city", "VARCHAR(120)"),
     ("clients", "province", "VARCHAR(2)"),
@@ -835,10 +848,11 @@ _SAMPLE_CLIENTS = [
     {"id": 10, "first_name": "Nadia", "last_name": "Petrova", "email": "n.petrova@example.com", "phone": "604-555-0109", "street": None, "city": None, "province": None, "postal_code": None},
 ]
 
-# Dates lean toward the end of July (2026-07-26 "today" at the time this was
-# written) so the timeline's default window has plenty to show around today.
-# client_id 1 and 3 each get a second order below, so they show up as
-# "returning" clients in the seeded data.
+# Dates start August 1st and later (shifted a month forward from the
+# original July-clustered set, at the studio's request, so a fresh seed
+# always lands in the future relative to "today" instead of needing
+# updating). client_id 1 and 3 each get a second order below, so they show
+# up as "returning" clients in the seeded data.
 #
 # "lines" is (description, quantity, unit_price) — an order's value is the
 # sum of these, there's no separate price field. "payments" is optional per
@@ -849,37 +863,37 @@ _SAMPLE_CLIENTS = [
 # methods are mixed across cash / e-transfer / Square on purpose, since
 # reconciling those three against one invoice is the point.
 _SAMPLE_ORDERS = [
-    {"id": 1, "client_id": 1, "item": "Full-grain briefcase", "start": date(2026, 7, 1), "due": date(2026, 7, 15), "status": "delivered", "notes": "Horween Chromexcel, brass hardware", "order_type": "Custom Order",
+    {"id": 1, "client_id": 1, "item": "Full-grain briefcase", "start": date(2026, 8, 1), "due": date(2026, 8, 15), "status": "delivered", "notes": "Horween Chromexcel, brass hardware", "order_type": "Custom Order",
      "lines": [("Full-grain briefcase, Horween Chromexcel", 1, 760.00), ("Brass hardware upgrade", 1, 90.00)],
-     "payments": [(425.00, date(2026, 7, 1), "square", "sq:9F2K-4471"), (425.00, date(2026, 7, 15), "cash", None)]},
-    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": date(2026, 7, 8), "due": date(2026, 7, 29), "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim",
+     "payments": [(425.00, date(2026, 8, 1), "square", "sq:9F2K-4471"), (425.00, date(2026, 8, 15), "cash", None)]},
+    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": date(2026, 8, 8), "due": date(2026, 8, 29), "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim",
      "lines": [("Weekender duffel, veg-tan trim", 1, 560.00), ("Waxed canvas panels", 1, 60.00)],
-     "payments": [(310.00, date(2026, 7, 8), "etransfer", "e-tfr CA8821")]},
-    {"id": 3, "client_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 7, 15), "due": date(2026, 7, 24), "status": "ready", "notes": "Hand-stitched, gold foil initials",
+     "payments": [(310.00, date(2026, 8, 8), "etransfer", "e-tfr CA8821")]},
+    {"id": 3, "client_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 8, 15), "due": date(2026, 8, 24), "status": "ready", "notes": "Hand-stitched, gold foil initials",
      "lines": [("Bifold wallet, hand-stitched", 1, 110.00), ("Gold foil monogram", 1, 30.00)],
-     "payments": [(70.00, date(2026, 7, 15), "cash", None)]},
-    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": date(2026, 7, 18), "due": date(2026, 7, 30), "status": "rush", "notes": "Client travels on the 31st", "order_type": "Custom Order",
+     "payments": [(70.00, date(2026, 8, 15), "cash", None)]},
+    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": date(2026, 8, 18), "due": date(2026, 8, 30), "status": "rush", "notes": "Client travels on the 31st", "order_type": "Custom Order",
      "lines": [("Messenger bag", 1, 430.00), ("Rush surcharge", 1, 50.00)],
-     "payments": [(240.00, date(2026, 7, 18), "square", "sq:7T1B-9930")]},
-    {"id": 5, "client_id": 5, "item": "Belt, 38mm", "start": date(2026, 7, 20), "due": date(2026, 7, 27), "status": "in_progress", "notes": "English bridle leather",
+     "payments": [(240.00, date(2026, 8, 18), "square", "sq:7T1B-9930")]},
+    {"id": 5, "client_id": 5, "item": "Belt, 38mm", "start": date(2026, 8, 20), "due": date(2026, 8, 27), "status": "in_progress", "notes": "English bridle leather",
      "lines": [("Belt, 38mm English bridle", 1, 95.00)]},
-    {"id": 6, "client_id": 6, "item": "Camera strap", "start": date(2026, 7, 19), "due": date(2026, 7, 25), "status": "ready", "notes": "Padded, nickel rivets",
+    {"id": 6, "client_id": 6, "item": "Camera strap", "start": date(2026, 8, 19), "due": date(2026, 8, 25), "status": "ready", "notes": "Padded, nickel rivets",
      "lines": [("Camera strap, padded", 1, 95.00), ("Nickel rivets", 1, 15.00)],
-     "payments": [(55.00, date(2026, 7, 19), "etransfer", "e-tfr CA9014")]},
-    {"id": 7, "client_id": 7, "item": "Tote bag", "start": date(2026, 7, 17), "due": date(2026, 8, 1), "status": "in_progress", "notes": "Natural veg-tan, will patina", "order_type": "White Label",
+     "payments": [(55.00, date(2026, 8, 19), "etransfer", "e-tfr CA9014")]},
+    {"id": 7, "client_id": 7, "item": "Tote bag", "start": date(2026, 8, 17), "due": date(2026, 9, 1), "status": "in_progress", "notes": "Natural veg-tan, will patina", "order_type": "White Label",
      "lines": [("Tote bag, natural veg-tan", 1, 310.00)]},
-    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": date(2026, 7, 22), "due": date(2026, 7, 28), "status": "in_progress", "notes": "Gift for anniversary",
+    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": date(2026, 8, 22), "due": date(2026, 8, 28), "status": "in_progress", "notes": "Gift for anniversary",
      "lines": [("Passport holder", 2, 65.00)],
-     "payments": [(65.00, date(2026, 7, 22), "cash", None)]},
-    {"id": 9, "client_id": 8, "item": "Watch strap", "start": date(2026, 7, 24), "due": date(2026, 7, 29), "status": "rush", "notes": "Custom buckle from client's own", "order_type": "Custom Order",
+     "payments": [(65.00, date(2026, 8, 22), "cash", None)]},
+    {"id": 9, "client_id": 8, "item": "Watch strap", "start": date(2026, 8, 24), "due": date(2026, 8, 29), "status": "rush", "notes": "Custom buckle from client's own", "order_type": "Custom Order",
      "lines": [("Watch strap, client's own buckle", 1, 85.00)]},
-    {"id": 10, "client_id": 9, "item": "Laptop sleeve", "start": date(2026, 7, 23), "due": date(2026, 7, 31), "status": "in_progress", "notes": "13-inch, felt lining",
+    {"id": 10, "client_id": 9, "item": "Laptop sleeve", "start": date(2026, 8, 23), "due": date(2026, 8, 31), "status": "in_progress", "notes": "13-inch, felt lining",
      "lines": [("Laptop sleeve, 13-inch", 1, 145.00), ("Felt lining", 1, 20.00)]},
-    {"id": 11, "client_id": 10, "item": "Card holder", "start": date(2026, 7, 26), "due": date(2026, 8, 2), "status": "in_progress", "notes": "Minimalist, 3-slot",
+    {"id": 11, "client_id": 10, "item": "Card holder", "start": date(2026, 8, 26), "due": date(2026, 9, 2), "status": "in_progress", "notes": "Minimalist, 3-slot",
      "lines": [("Card holder, 3-slot", 1, 75.00)]},
-    {"id": 12, "client_id": 3, "item": "Travel journal cover", "start": date(2026, 7, 21), "due": date(2026, 7, 27), "status": "ready", "notes": "Refillable, brass corners", "order_type": "Consulting/Sampling",
+    {"id": 12, "client_id": 3, "item": "Travel journal cover", "start": date(2026, 8, 21), "due": date(2026, 8, 27), "status": "ready", "notes": "Refillable, brass corners", "order_type": "Consulting/Sampling",
      "lines": [("Travel journal cover, refillable", 1, 105.00), ("Brass corners", 1, 15.00)],
-     "payments": [(60.00, date(2026, 7, 21), "etransfer", "e-tfr CA9127")]},
+     "payments": [(60.00, date(2026, 8, 21), "etransfer", "e-tfr CA9127")]},
 ]
 
 # Only some orders are invoiced — matching reality, where an invoice gets
@@ -887,10 +901,10 @@ _SAMPLE_ORDERS = [
 # order 1 is fully paid (so it renders as "Paid" without the status saying
 # so), 2 and 4 are sent-and-partly-paid, 12 is still a draft.
 _SAMPLE_INVOICES = [
-    {"order_id": 1, "number": "BM-2026-0001", "issued_date": date(2026, 7, 1), "due_date": date(2026, 7, 15), "status": "sent", "notes": None},
-    {"order_id": 2, "number": "BM-2026-0002", "issued_date": date(2026, 7, 8), "due_date": date(2026, 7, 29), "status": "sent", "notes": "50% deposit taken on issue."},
-    {"order_id": 4, "number": "BM-2026-0003", "issued_date": date(2026, 7, 18), "due_date": date(2026, 7, 30), "status": "sent", "notes": "Rush order — balance due at pickup."},
-    {"order_id": 12, "number": "BM-2026-0004", "issued_date": date(2026, 7, 21), "due_date": None, "status": "draft", "notes": None},
+    {"order_id": 1, "number": "BM-2026-0001", "issued_date": date(2026, 8, 1), "due_date": date(2026, 8, 15), "status": "sent", "notes": None},
+    {"order_id": 2, "number": "BM-2026-0002", "issued_date": date(2026, 8, 8), "due_date": date(2026, 8, 29), "status": "sent", "notes": "50% deposit taken on issue."},
+    {"order_id": 4, "number": "BM-2026-0003", "issued_date": date(2026, 8, 18), "due_date": date(2026, 8, 30), "status": "sent", "notes": "Rush order — balance due at pickup."},
+    {"order_id": 12, "number": "BM-2026-0004", "issued_date": date(2026, 8, 21), "due_date": None, "status": "draft", "notes": None},
 ]
 
 _SAMPLE_DOCUMENTS = [

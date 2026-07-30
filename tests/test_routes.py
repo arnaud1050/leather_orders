@@ -120,6 +120,9 @@ def test_leads_page_lists_unmatched_threads_only(logged_in, thread, lead_thread)
     body = logged_in.get("/mail/leads").get_data(as_text=True)
     assert "Messenger bag enquiry" in body
     assert "Briefcase timeline" not in body
+    # No per-row "Unmatched" pill: every thread on this page is unmatched by
+    # definition, which is what the page itself says.
+    assert "Unmatched" not in body
 
 
 def test_client_emails_tab_lists_that_clients_threads(logged_in, client_record, thread):
@@ -138,6 +141,48 @@ def test_thread_page_renders_the_conversation(logged_in, thread):
     body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
     assert "Any update on the briefcase?" in body
     assert "Marie Alarie" in body
+
+
+def test_thread_page_header_names_the_counterparty_not_our_mailbox(logged_in, thread):
+    """The header used to print the account the thread synced through, which
+    reads as though it were the client's address."""
+    body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
+    header = body.split("Messages")[0]
+    assert "marie@example.com" in header
+    assert "studio@example.com" not in header
+
+
+def test_thread_page_labels_our_own_messages_you(logged_in, thread):
+    message = thread.messages[0]
+    message.direction = "outgoing"
+    message.sender_name, message.sender = "Studio", "studio@example.com"
+    message.recipients = "marie@example.com"
+    db.session.commit()
+
+    body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
+    assert "You" in body
+    # Neither our own address nor the client's belongs on the message: both
+    # ends of the conversation are named on the page already.
+    assert "studio@example.com" not in body.split("Reply")[0]
+    assert "To: " not in body
+
+
+def test_thread_page_lists_only_third_party_recipients(logged_in, thread):
+    thread.messages[0].cc = "notary@example.com"
+    db.session.commit()
+
+    body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
+    assert "Also sent to: notary@example.com" in body
+
+
+def test_thread_page_hides_quoted_history(logged_in, thread):
+    message = thread.messages[0]
+    message.body_text = "Thanks!\n\n> Would Thursday suit you?"
+    db.session.commit()
+
+    body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
+    assert "Thanks!" in body
+    assert "Would Thursday suit you?" not in body
 
 
 def test_thread_page_offers_conversion_for_a_lead_only(logged_in, thread, lead_thread):

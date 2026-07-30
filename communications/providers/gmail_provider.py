@@ -250,6 +250,20 @@ class GmailProvider(_GoogleBase, EmailProvider):
 
         return self._parse_message(raw)
 
+    def trash_thread(self, thread_id: str) -> None:
+        """Move the thread to Gmail's Trash — recoverable there for 30 days.
+
+        `threads().trash()` is what `gmail.modify` permits;
+        `threads().delete()` would need the unrestricted
+        https://mail.google.com/ scope, which this module deliberately never
+        requests. A trashed thread also stops coming back on sync, because
+        every query carries `-in:trash` (see _EXCLUDED_QUERY).
+        """
+        try:
+            self._gmail().users().threads().trash(userId="me", id=thread_id).execute()
+        except Exception as exc:  # noqa: BLE001
+            raise self._wrap(exc, "moving a conversation to Trash") from exc
+
     def rfc822_message_id(self, provider_message_id: str) -> str | None:
         """The `Message-ID:` header for a stored message.
 

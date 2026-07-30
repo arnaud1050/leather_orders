@@ -10,12 +10,15 @@
   {% if thread %}<input type="hidden" name="thread_id" value="{{ thread.id }}">{% endif %}
   {% if client %}<input type="hidden" name="client_id" value="{{ client.id }}">{% endif %}
 
-  <p class="detail-note">Sending as <span class="is-mono">{{ send_account.email_address }}</span></p>
+  <p class="detail-note">Sending as {{ send_account.email_address }}</p>
 
-  <label>To<input type="text" name="to" value="{{ to_value or '' }}" placeholder="client@example.com" required></label>
-  <label>Cc<input type="text" name="cc" placeholder="Optional, comma separated"></label>
-  <label>Subject<input type="text" name="subject" value="{{ subject_value or '' }}"></label>
-  <label>Message<textarea name="body_text" rows="8" required></textarea></label>
+  {# The form runs full width (see .compose-form) so the message box matches
+     the messages above it. The header fields don't benefit from that width,
+     so .compose-form__field caps them back. #}
+  <label class="compose-form__field">To<input type="text" name="to" value="{{ to_value or '' }}" placeholder="client@example.com" required></label>
+  <label class="compose-form__field">Cc<input type="text" name="cc" placeholder="Optional, comma separated"></label>
+  <label class="compose-form__field">Subject<input type="text" name="subject" value="{{ subject_value or '' }}"></label>
+  <label>Message<textarea name="body_text" rows="10" required></textarea></label>
   <div>
     <button type="submit" class="btn-primary">{{ 'Send reply' if thread else 'Send' }}</button>
   </div>

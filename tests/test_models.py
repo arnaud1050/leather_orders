@@ -216,16 +216,126 @@ def test_recipient_list_when_empty(thread):
     assert thread.messages[0].recipient_list == []
 
 
+def test_cc_list_splits_and_trims(thread):
+    thread.messages[0].cc = "a@example.com,  b@example.com , "
+    assert thread.messages[0].cc_list == ["a@example.com", "b@example.com"]
+
+
 @pytest.mark.parametrize("name,address,expected", [
-    ("Marie Alarie", "marie@example.com", "Marie Alarie <marie@example.com>"),
+    ("Marie Alarie", "marie@example.com", "Marie Alarie"),
     (None, "marie@example.com", "marie@example.com"),
     ("Marie Alarie", None, "Marie Alarie"),
     (None, None, "(unknown sender)"),
 ])
-def test_sender_display(thread, name, address, expected):
+def test_sender_label_of_incoming_mail_is_the_person(thread, name, address, expected):
     message = thread.messages[0]
     message.sender_name, message.sender = name, address
-    assert message.sender_display == expected
+    assert message.sender_label == expected
+
+
+def test_sender_label_of_our_own_mail_is_you(thread):
+    """Never the synced mailbox's address — that's the studio, not the client."""
+    message = thread.messages[0]
+    message.direction = "outgoing"
+    message.sender_name, message.sender = "Studio", "studio@example.com"
+    assert message.sender_label == "You"
+
+
+def test_other_recipients_excludes_both_ends_of_the_conversation(thread):
+    message = thread.messages[0]
+    message.recipients = "studio@example.com, marie@example.com"
+    message.cc = None
+    assert message.other_recipients == []
+
+
+def test_other_recipients_lists_third_parties_from_to_and_cc(thread):
+    message = thread.messages[0]
+    message.recipients = "studio@example.com, assistant@example.com"
+    message.cc = "Notary <notary@example.com>, marie@example.com"
+    assert message.other_recipients == ["assistant@example.com", "Notary <notary@example.com>"]
+
+
+def test_other_recipients_matches_addresses_case_and_name_insensitively(thread):
+    message = thread.messages[0]
+    message.recipients = "Studio <STUDIO@example.com>, Marie <Marie@Example.com>"
+    message.cc = None
+    assert message.other_recipients == []
+
+
+def test_other_recipients_deduplicates(thread):
+    message = thread.messages[0]
+    message.recipients = "assistant@example.com"
+    message.cc = "assistant@example.com"
+    assert message.other_recipients == ["assistant@example.com"]
+
+
+def test_other_recipients_on_a_lead_excludes_the_sender(lead_thread):
+    """No Client row exists yet, but the sender is still one end of it."""
+    message = lead_thread.messages[0]
+    message.recipients = "studio@example.com, stranger@example.com"
+    assert message.other_recipients == []
+
+
+def test_body_display_drops_a_quoted_reply(thread):
+    message = thread.messages[0]
+    message.body_text = (
+        "Thanks, that works.\n"
+        "\n"
+        "On Tue, Jul 28, 2026 at 9:14 AM Studio <studio@example.com> wrote:\n"
+        "> Would Thursday suit you?\n"
+        "> — the studio\n"
+    )
+    assert message.body_display == "Thanks, that works."
+
+
+def test_body_display_drops_a_wrapped_attribution(thread):
+    """Gmail hard-wraps the attribution, so "wrote:" lands on the next line."""
+    message = thread.messages[0]
+    message.body_text = (
+        "Sounds good.\n"
+        "\n"
+        "On Tue, Jul 28, 2026 at 10:31 PM Arnaud Rouillot <arnaud.rouillot@gmail.com>\n"
+        "wrote:\n"
+        "> Would Thursday suit you?\n"
+    )
+    assert message.body_display == "Sounds good."
+
+
+def test_body_display_drops_a_quote_with_no_attribution(thread):
+    message = thread.messages[0]
+    message.body_text = "Yes please.\n\n> Would Thursday suit you?"
+    assert message.body_display == "Yes please."
+
+
+@pytest.mark.parametrize("marker", [
+    "Le 28 juillet 2026 09:14, Studio <studio@example.com> a écrit :",
+    "-----Original Message-----",
+    "________________________________",
+])
+def test_body_display_recognises_other_quote_markers(thread, marker):
+    message = thread.messages[0]
+    message.body_text = f"Parfait, merci.\n\n{marker}\nWould Thursday suit you?"
+    assert message.body_display == "Parfait, merci."
+
+
+def test_body_display_keeps_an_all_quoted_body(thread):
+    """A forward can be nothing but quoted text — trimming it to empty would
+    make the message look like it has no content at all."""
+    message = thread.messages[0]
+    message.body_text = "> Forwarded enquiry\n> Do you make messenger bags?"
+    assert message.body_display == message.body_text
+
+
+def test_body_display_leaves_an_unquoted_body_alone(thread):
+    message = thread.messages[0]
+    message.body_text = "Any update on the briefcase?\nNo rush."
+    assert message.body_display == message.body_text
+
+
+def test_preview_ignores_quoted_text(thread):
+    message = thread.messages[0]
+    message.body_text = "Sounds good.\n\n> Would Thursday suit you?"
+    assert message.preview == "Sounds good."
 
 
 def test_preview_collapses_whitespace_and_truncates(thread):

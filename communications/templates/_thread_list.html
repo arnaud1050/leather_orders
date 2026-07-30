@@ -4,18 +4,63 @@
 {% if threads %}
 <ul class="thread-list">
   {% for thread in threads %}
-  <li class="thread-list__item">
-    <a class="thread-list__subject" href="{{ url_for('communications.thread_page', thread_id=thread.id, return_to=return_to) }}">
-      {{ thread.display_subject }}
-    </a>
+  {# `flag_new` opts a page into new/seen decoration; `new_since` is the
+     caller's last-looked timestamp (null meaning "never looked", so
+     everything is new). Compared against created_at — when we downloaded the
+     thread — not the message date, since a first sync is all old mail but
+     every thread in it is new to the person reading.
+
+     An explicit flag rather than testing whether new_since is defined: the
+     dismissed view passes a null timestamp *and* wants no flagging, which
+     "is defined" can't distinguish from "never looked". #}
+  {% set is_new = flag_new|default(false)
+        and (new_since is none or thread.created_at > new_since) %}
+  <li class="thread-list__item {% if is_new %}thread-list__item--new{% endif %}">
+    <span class="thread-list__heading">
+      <a class="thread-list__subject" href="{{ url_for('communications.thread_page', thread_id=thread.id, return_to=return_to) }}">
+        {{ thread.display_subject }}
+      </a>
+      {% if is_new %}<span class="pill pill--new">New</span>{% endif %}
+    </span>
     <span class="thread-list__meta">
       {{ thread.counterparty or '—' }}
       · {{ thread.message_count }} message{{ '' if thread.message_count == 1 else 's' }}
-      {% if thread.last_message_date %}· {{ thread.last_message_date.strftime('%b %d, %Y') }}{% endif %}
-      {% if thread.is_lead %}<span class="pill pill--lead">Unmatched</span>{% endif %}
+      {% if thread.last_message_date %}· {{ thread.last_message_date|local_datetime('%b %d, %Y') }}{% endif %}
     </span>
     {% if thread.latest_message %}
     <span class="thread-list__preview">{{ thread.latest_message.preview }}</span>
+    {% endif %}
+
+    {# Triage actions, only where the caller asked for them (the lead inbox).
+       Absent on a client's Emails tab, where hiding a client's own
+       correspondence isn't a thing anyone wants. #}
+    {% if show_actions|default(false) %}
+    <span class="thread-list__actions">
+      {% if thread.is_dismissed %}
+        {% if thread.was_trashed %}
+        <span class="thread-list__meta">In Gmail's Trash — recover it there to bring it back</span>
+        {% else %}
+        <form method="post" action="{{ url_for('communications.restore_thread', thread_id=thread.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          <button type="submit" class="btn-secondary">Restore</button>
+        </form>
+        {% endif %}
+      {% else %}
+      <form method="post" action="{{ url_for('communications.dismiss_thread', thread_id=thread.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <button type="submit" class="btn-secondary">Hide</button>
+      </form>
+      {# Confirmed, unlike Hide: this one changes the studio's real mailbox. #}
+      <form method="post" action="{{ url_for('communications.trash_thread', thread_id=thread.id) }}"
+            onsubmit="return confirm('Move this conversation to Gmail\'s Trash? It stays recoverable in Gmail for 30 days.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <button type="submit" class="btn-secondary">Move to Trash</button>
+      </form>
+      {% endif %}
+    </span>
     {% endif %}
   </li>
   {% endfor %}

@@ -152,6 +152,17 @@ class EmailProvider(ABC):
     def fetch_attachment(self, message_id: str, attachment_id: str) -> bytes:
         """Raw bytes of one attachment."""
 
+    @abstractmethod
+    def trash_thread(self, thread_id: str) -> None:
+        """Move a whole thread to the provider's Trash.
+
+        **Trash, not delete.** Implementations must use a recoverable
+        operation: the module deliberately holds no scope that can destroy
+        mail permanently (see config.GMAIL_SCOPES), and a triage button in
+        an order-planning app has no business being the thing that loses a
+        studio's correspondence for good.
+        """
+
 
 class CalendarProvider(ABC):
     """What every calendar backend must be able to do."""

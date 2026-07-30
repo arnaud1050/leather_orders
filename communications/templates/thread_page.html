@@ -14,7 +14,11 @@
         {% else %}
         Not linked to a client
         {% endif %}
-        · {{ thread.account.email_address }}
+        {# The counterparty, not thread.account.email_address — the mailbox
+           this synced through is our own address, which read here as though
+           it were the client's. The reply form still names it, under
+           "Sending as". #}
+        {% if thread.counterparty %}· {{ thread.counterparty }}{% endif %}
       </p>
     </div>
   </header>
@@ -27,7 +31,7 @@
   <section class="detail-orders">
     <h2>Create a client</h2>
     <p class="detail-note">
-      Nobody on file matches <span class="is-mono">{{ thread.counterparty or 'this sender' }}</span>.
+      Nobody on file matches {{ thread.counterparty or 'this sender' }}.
       Creating a client links this conversation to them, and any other
       unmatched conversation from the same address.
     </p>
@@ -51,20 +55,27 @@
     {% for message in thread.messages %}
     <article class="message message--{{ message.direction }}">
       <header class="message__header">
-        <span class="message__sender">{{ message.sender_display }}</span>
+        <span class="message__sender">{{ message.sender_label }}</span>
         <span class="message__meta">
           {{ 'received' if message.is_incoming else 'sent' }}
-          {% if message.received_date %}{{ message.received_date.strftime('%b %d, %Y at %H:%M') }} UTC{% endif %}
+          {# In the company's timezone (see /settings/preferences), and without
+             naming it — one setting for the whole app doesn't need repeating on
+             every line. #}
+          {% if message.received_date %}{{ message.received_date|local_datetime }}{% endif %}
         </span>
       </header>
-      {% if message.recipient_list %}
-      <p class="message__meta">To: {{ message.recipient_list|join(', ') }}</p>
+      {# Only third parties. The studio's mailbox and the client are both
+         named on this page already, so listing them here said nothing. #}
+      {% if message.other_recipients %}
+      <p class="message__meta">Also sent to: {{ message.other_recipients|join(', ') }}</p>
       {% endif %}
       {#  body_text only, never body_html: the HTML comes from an arbitrary
           sender, and piping it through |safe onto our own origin is stored
           XSS. Escaped text with preserved line breaks is what a message
           actually needs to be readable. #}
-      <div class="message__body">{{ message.body_text or '(no plain-text body)' }}</div>
+      {# body_display, not body_text: the quoted history a client's reply
+         carries is already on this page as its own message. #}
+      <div class="message__body">{{ message.body_display or '(no plain-text body)' }}</div>
       {% if message.attachments %}
       <ul class="message__attachments">
         {% for attachment in message.attachments %}

@@ -31,7 +31,12 @@ os.environ["SECRET_KEY"] = "test-secret-key"
 # SECRET_KEY-derived dev fallback. Fixed rather than generated so a failure
 # is reproducible.
 os.environ["COMMS_ENCRYPTION_KEY"] = "8ZQq1kzXKQ0Y9m4pJvVQ0j7cQ0K9zX2mQ8dHn1tYb3E="
-os.environ.pop("RUN_SCHEDULER", None)
+# Set explicitly rather than popped. app.py calls load_dotenv() during import,
+# and while that never *overrides* an existing variable (which is what keeps
+# the values above authoritative), it does fill in ones we left unset — so a
+# developer's .env containing RUN_SCHEDULER=1 would otherwise start a real
+# scheduler inside the test suite.
+os.environ["RUN_SCHEDULER"] = "0"
 os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GOOGLE_REDIRECT_URI"] = "http://localhost:5000/integrations/google/callback"

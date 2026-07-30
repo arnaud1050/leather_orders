@@ -14,12 +14,15 @@ Every route is @login_required and derives its tenant from
 enforces CSRF on every unsafe request (see security.validate_csrf).
 """
 
+from datetime import timezone
+from zoneinfo import ZoneInfo
+
 from flask import (
     Blueprint, abort, current_app, redirect, render_template, request, session, url_for,
 )
 from flask_login import current_user, login_required
 
-from models import db
+from models import DEFAULT_TIMEZONE, db
 
 from communications import config, jobs
 from communications.models import (
@@ -287,13 +290,83 @@ def leads():
     Kept out of the client list on purpose — these are unidentified
     senders, and a "client" record per inbound email would make the roster
     meaningless. Converting one is a deliberate click (see convert_lead).
+
+    Opening this page clears the "new leads" badge. That's a write on a GET,
+    which is normally worth avoiding — but it's idempotent, destroys
+    nothing, and "mark as read on open" is the only place the marker could
+    honestly move. The cutoff is read *before* marking, so this render still
+    flags which threads were new; the next one won't.
     """
+    company_id = current_user.company_id
+    showing_dismissed = request.args.get("show") == "dismissed"
+
+    dismissed = email_service.dismissed_lead_threads(company_id)
+    if showing_dismissed:
+        # Looking at what you triaged away shouldn't clear the badge for
+        # leads still waiting in the actual inbox.
+        threads = dismissed
+        seen_at = None
+    else:
+        seen_at = email_service.leads_seen_at(company_id, current_user.id)
+        threads = email_service.lead_threads(company_id)
+        email_service.mark_leads_seen(company_id, current_user.id)
+
     return render_template(
         "leads.html",
-        threads=email_service.lead_threads(current_user.company_id),
+        threads=threads,
+        showing_dismissed=showing_dismissed,
+        dismissed_count=len(dismissed),
+        # Threads created after this are the ones flagged "New" in the list.
+        new_since=seen_at,
+        scheduler_enabled=jobs.scheduler_enabled(),
+        has_accounts=bool(account_service.accounts_for(company_id)),
         notice=_take_notice(),
         active_view="clients",
     )
+
+
+@bp.route("/mail/threads/<int:thread_id>/dismiss", methods=["POST"])
+@login_required
+def dismiss_thread(thread_id: int):
+    """Hide a lead. Reversible, and never touches the mailbox."""
+    return _thread_action(thread_id, email_service.dismiss_thread, "Conversation hidden.")
+
+
+@bp.route("/mail/threads/<int:thread_id>/restore", methods=["POST"])
+@login_required
+def restore_thread(thread_id: int):
+    return _thread_action(thread_id, email_service.restore_thread, "Conversation restored.")
+
+
+@bp.route("/mail/threads/<int:thread_id>/trash", methods=["POST"])
+@login_required
+def trash_thread(thread_id: int):
+    """Move a conversation to Gmail's Trash — recoverable there for 30 days.
+
+    Confirmed in the template before it gets here, since unlike Dismiss this
+    one reaches out and changes the studio's real mailbox.
+    """
+    return _thread_action(
+        thread_id, email_service.trash_thread,
+        "Conversation moved to Gmail's Trash — recoverable there for 30 days.",
+    )
+
+
+def _thread_action(thread_id: int, action, success_message: str):
+    """Shared plumbing for dismiss/restore/trash.
+
+    All three are: run a service call, report what happened, go back where
+    you were. Writing that out three times would just be three chances to
+    forget the error path.
+    """
+    return_to = request.form.get("return_to") or url_for("communications.leads")
+    try:
+        action(current_user.company_id, thread_id)
+    except (email_service.EmailServiceError, ProviderError) as exc:
+        _flash(str(exc), "error")
+        return redirect(return_to)
+    _flash(success_message, "success")
+    return redirect(return_to)
 
 
 @bp.route("/mail/threads/<int:thread_id>/create-client", methods=["POST"])
@@ -382,12 +455,81 @@ def download_attachment(attachment_id: int):
     )
 
 
+@bp.app_context_processor
+def _inject_new_lead_count():
+    """Make the "new leads" badge available to every template.
+
+    An `app_context_processor` (not a plain blueprint one) because the badge
+    lives in base.html's top nav, which every page in the app extends —
+    including pages this blueprint doesn't own.
+
+    Returns a **callable**, not a number, so the query only runs on templates
+    that actually render the badge. base.html does, so in practice it's one
+    COUNT per page load; making it lazy means adding a template that doesn't
+    show the badge costs nothing.
+
+    Deliberately forgiving: this runs on the login page (no user) and could
+    run before the module's tables exist on a partially-migrated database.
+    Neither is worth a 500 over a decoration, so both yield zero.
+    """
+    def new_lead_count() -> int:
+        try:
+            if not current_user.is_authenticated:
+                return 0
+            return email_service.new_lead_count(current_user.company_id, current_user.id)
+        except Exception:  # noqa: BLE001 — see docstring
+            current_app.logger.debug("Could not compute the new-lead badge", exc_info=True)
+            return 0
+
+    return {"new_lead_count": new_lead_count}
+
+
+def _local_datetime(value, fmt: str = "%b %d, %Y at %H:%M") -> str:
+    """A naive-UTC timestamp rendered in the company's chosen zone.
+
+    Every stored timestamp is naive UTC (see the models docstring), which is
+    the right thing to store and the wrong thing to show — "10:31" on a
+    Vancouver studio's screen has to mean 10:31 there. The zone is
+    `Company.timezone`, set at /settings/preferences.
+
+    The zone name is deliberately not printed alongside: there is one setting
+    for the whole company, so repeating it on every line says nothing.
+
+    Falls back to UTC when there's no user (the login page) or the stored zone
+    isn't one this Python has data for — a wrong-looking time beats a 500 on a
+    page that merely mentions a date.
+    """
+    if value is None:
+        return ""
+    try:
+        name = current_user.company.timezone if current_user.is_authenticated else None
+        zone = ZoneInfo(name or DEFAULT_TIMEZONE)
+    except Exception:  # noqa: BLE001 — see docstring
+        zone = timezone.utc
+    return value.replace(tzinfo=timezone.utc).astimezone(zone).strftime(fmt)
+
+
+def _local_time(value) -> str:
+    """A naive-UTC timestamp's time-of-day, in the company's zone, as e.g.
+    "12:00pm" — 12-hour, lowercase am/pm, no leading zero. Used where a
+    calendar event's start/end is shown next to its own date, so only the
+    time is needed (see `_local_datetime` for the zone-conversion rules).
+    """
+    if value is None:
+        return ""
+    return _local_datetime(value, "%I:%M%p").lstrip("0").lower()
+
+
 def register(app) -> None:
     """Attach the module to a Flask app.
 
     Also exposes csrf_token() to Jinja — module templates call it in every
     form, and a template global beats threading it through each
-    render_template call.
+    render_template call — plus the `local_datetime` filter its templates use
+    for every time they print. Both are registered here rather than in app.py
+    so the module carries what its own templates need.
     """
     app.jinja_env.globals.setdefault("csrf_token", csrf_token)
+    app.jinja_env.filters.setdefault("local_datetime", _local_datetime)
+    app.jinja_env.filters.setdefault("local_time", _local_time)
     app.register_blueprint(bp)

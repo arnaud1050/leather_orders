@@ -30,7 +30,7 @@
 
   {% if section == 'info' %}
 
-  <form method="post" action="{{ url_for('edit_client', client_id=client.id) }}" class="detail-form">
+  <form method="post" action="{{ url_for('edit_client', client_id=client.id) }}" class="detail-form settings-form">
     <input type="hidden" name="return_to" value="{{ return_to }}">
     <label>First name<input type="text" name="first_name" value="{{ client.first_name }}" required></label>
     <label>Last name<input type="text" name="last_name" value="{{ client.last_name }}" required></label>
@@ -39,16 +39,16 @@
     <label>Street address<input type="text" name="street" value="{{ client.street or '' }}" placeholder="Printed on this client's invoices"></label>
     <div class="field-row">
       <label>City<input type="text" name="city" value="{{ client.city or '' }}"></label>
-      <label>Province
-        <select name="province">
-          <option value="">—</option>
-          {% for code, label in provinces.items() %}
-          <option value="{{ code }}" {% if code == client.province %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
       <label>Postal code<input type="text" name="postal_code" value="{{ client.postal_code or '' }}" maxlength="10"></label>
     </div>
+    <label>Province
+      <select name="province">
+        <option value="">—</option>
+        {% for code, label in provinces.items() %}
+        <option value="{{ code }}" {% if code == client.province %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
     {% if not client.province %}
     <p class="detail-note detail-form__note">
       Without a province, orders for this client are billed with no sales tax —

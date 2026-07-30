@@ -28,49 +28,49 @@
     {% endif %}
 
     {% if accounts %}
-    <ul class="settings-source-list">
+    <ul class="settings-source-list settings-source-list--wide">
       {% for account in accounts %}
-      <li class="settings-source-list__item {% if not account.sync_enabled %}settings-source-list__item--hidden{% endif %}">
-        <span class="settings-source-list__label">
-          {{ account.email_address }}
+      <li class="settings-source-list__item integration-account {% if not account.sync_enabled %}settings-source-list__item--hidden{% endif %}">
+        <div class="integration-account__row">
+          <span class="integration-account__email">{{ account.email_address }}</span>
           <span class="pill pill--{{ account.status_label }}">{{ account.status_label|capitalize }}</span>
           {% if account.is_default %}<span class="checkbox-group__hidden-tag">(default)</span>{% endif %}
-          <span class="integration-meta">
-            {{ available_providers.get(account.provider, account.provider) }}
-            {% if account.last_sync_at %}
-              · last synced {{ account.last_sync_at.strftime('%b %d, %H:%M') }} UTC
-            {% else %}
-              · never synced
+          <div class="settings-source-list__actions">
+            <form method="post" action="{{ url_for('communications.update_account_flags', account_id=account.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="sync_enabled" value="{{ '0' if account.sync_enabled else '1' }}">
+              <button type="submit" class="btn-secondary">{{ 'Pause sync' if account.sync_enabled else 'Resume sync' }}</button>
+            </form>
+            {% if not account.is_default %}
+            <form method="post" action="{{ url_for('communications.update_account_flags', account_id=account.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="is_default" value="1">
+              <button type="submit" class="btn-secondary">Make default</button>
+            </form>
             {% endif %}
-          </span>
-          {% if account.last_sync_error %}
-          <span class="integration-meta integration-meta--error">{{ account.last_sync_error }}</span>
-          {% endif %}
-          <span class="integration-scopes">
-            {% for scope, description in scope_summary(account) %}
-            <span class="integration-scope" title="{{ scope }}">{{ description }}</span>
-            {% endfor %}
-          </span>
-        </span>
-        <div class="settings-source-list__actions">
-          <form method="post" action="{{ url_for('communications.update_account_flags', account_id=account.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="sync_enabled" value="{{ '0' if account.sync_enabled else '1' }}">
-            <button type="submit" class="btn-secondary">{{ 'Pause sync' if account.sync_enabled else 'Resume sync' }}</button>
-          </form>
-          {% if not account.is_default %}
-          <form method="post" action="{{ url_for('communications.update_account_flags', account_id=account.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="is_default" value="1">
-            <button type="submit" class="btn-secondary">Make default</button>
-          </form>
-          {% endif %}
-          <form method="post" action="{{ url_for('communications.disconnect_account', account_id=account.id) }}"
-                onsubmit="return confirm('Disconnect {{ account.email_address }}? Access is revoked at Google and every synced message for this mailbox is deleted from the app.');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-secondary">Disconnect</button>
-          </form>
+            <form method="post" action="{{ url_for('communications.disconnect_account', account_id=account.id) }}"
+                  onsubmit="return confirm('Disconnect {{ account.email_address }}? Access is revoked at Google and every synced message for this mailbox is deleted from the app.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-secondary">Disconnect</button>
+            </form>
+          </div>
         </div>
+        <span class="integration-meta">
+          {{ available_providers.get(account.provider, account.provider) }}
+          {% if account.last_sync_at %}
+            · last synced {{ account.last_sync_at|local_datetime('%b %d, %H:%M') }}
+          {% else %}
+            · never synced
+          {% endif %}
+        </span>
+        {% if account.last_sync_error %}
+        <span class="integration-meta integration-meta--error">{{ account.last_sync_error }}</span>
+        {% endif %}
+        <span class="integration-scopes">
+          {% for scope, description in scope_summary(account) %}
+          <span class="integration-scope" title="{{ scope }}">{{ description }}</span>
+          {% endfor %}
+        </span>
       </li>
       {% endfor %}
     </ul>
@@ -95,7 +95,7 @@
       to read" only affects a mailbox's <em>first</em> sync — after that each
       run picks up where the last one finished.
     </p>
-    <form method="post" action="{{ url_for('communications.update_sync_settings') }}" class="detail-form settings-form">
+    <form method="post" action="{{ url_for('communications.update_sync_settings') }}" class="detail-form settings-form settings-form--sync">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="checkbox-group">
         <label class="checkbox-group__item">
@@ -122,7 +122,7 @@
         <a href="{{ url_for('communications.leads') }}">Leads</a>, where it
         can be turned into a client.
       </p>
-      <div class="field-row">
+      <div class="field-row field-row--sync">
         <label>How often, in minutes
           <input type="number" name="sync_frequency" min="5" max="1440" value="{{ sync_settings.sync_frequency }}">
         </label>
@@ -138,8 +138,8 @@
     {% if not scheduler_enabled %}
     <p class="detail-note">
       Automatic syncing is not running in this process
-      (<span class="is-mono">RUN_SCHEDULER</span> isn't set to
-      <span class="is-mono">1</span>). Use "Sync now" below, or set it on one
+      (RUN_SCHEDULER isn't set to
+      1). Use "Sync now" below, or set it on one
       process — with more than one it would sync each mailbox twice over.
     </p>
     {% endif %}
@@ -164,23 +164,23 @@
     </p>
     {% if using_derived_key %}
     <p class="warning-note">
-      Tokens are being encrypted with a key derived from <span class="is-mono">SECRET_KEY</span>,
-      the development fallback. Set <span class="is-mono">COMMS_ENCRYPTION_KEY</span> before
-      connecting a real mailbox — otherwise changing <span class="is-mono">SECRET_KEY</span>
+      Tokens are being encrypted with a key derived from SECRET_KEY,
+      the development fallback. Set COMMS_ENCRYPTION_KEY before
+      connecting a real mailbox — otherwise changing SECRET_KEY
       makes every stored token unreadable and each account has to be reconnected.
     </p>
     {% endif %}
 
     <h3 class="detail-subheading">Recent activity</h3>
     {% if audit_entries %}
-    <table class="invoice-table">
+    <table class="invoice-table invoice-table--wrap">
       <thead>
         <tr><th>When</th><th>Event</th><th>Detail</th><th>User</th></tr>
       </thead>
       <tbody>
         {% for entry in audit_entries %}
         <tr>
-          <td class="is-mono">{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ entry.created_at|local_datetime('%Y-%m-%d %H:%M') }}</td>
           <td>{{ audit_labels.get(entry.event, entry.event) }}</td>
           <td>{{ entry.detail or '—' }}</td>
           <td>{{ entry.user.username if entry.user else 'system' }}</td>

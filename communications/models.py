@@ -26,7 +26,9 @@ provider boundary (see providers/gmail_provider.py) so nothing downstream
 has to reason about which zone a row is in. Display converts back.
 """
 
+import re
 from datetime import datetime, timezone
+from email.utils import parseaddr
 
 from models import db
 
@@ -42,6 +44,10 @@ def utcnow() -> datetime:
 # Order.status is: it's used directly as a CSS class suffix.
 DIRECTION_INCOMING = "incoming"
 DIRECTION_OUTGOING = "outgoing"
+
+# Why a thread left the lead inbox. See EmailThread.dismissed_reason.
+DISMISSED_HIDDEN = "hidden"
+DISMISSED_TRASHED = "trashed"
 
 
 class EmailAccount(db.Model):
@@ -230,6 +236,16 @@ class EmailThread(db.Model):
     # table that by then has real volume in it.
     summary = db.Column(db.Text)
 
+    # Triaged out of the lead inbox. The row is *kept* — deleting it would
+    # only mean the next sync downloads the thread again and it reappears,
+    # which is a dismiss button that looks broken.
+    dismissed_at = db.Column(db.DateTime)
+    # "hidden" (local only, reversible) or "trashed" (also moved to the
+    # provider's Trash). Recorded because the two aren't equally undoable:
+    # hidden can be restored from here, trashed has to be recovered in
+    # Gmail, and the UI must not offer a button that silently does nothing.
+    dismissed_reason = db.Column(db.String(20))
+
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -245,6 +261,23 @@ class EmailThread(db.Model):
     def is_lead(self) -> bool:
         """No client on file for anyone in this conversation."""
         return self.client_id is None
+
+    @property
+    def is_dismissed(self) -> bool:
+        return self.dismissed_at is not None
+
+    @property
+    def was_trashed(self) -> bool:
+        """Dismissed by moving it to the provider's Trash, not just hidden."""
+        return self.dismissed_reason == DISMISSED_TRASHED
+
+    def dismiss(self, reason: str = "hidden") -> None:
+        self.dismissed_at = utcnow()
+        self.dismissed_reason = reason
+
+    def restore(self) -> None:
+        self.dismissed_at = None
+        self.dismissed_reason = None
 
     @property
     def message_count(self) -> int:
@@ -273,6 +306,43 @@ class EmailThread(db.Model):
             if message.recipients:
                 return message.recipient_list[0] if message.recipient_list else None
         return None
+
+
+def _address_only(value: str | None) -> str:
+    """The bare address out of a possibly `Name <addr>` string, lowercased.
+
+    For comparison only — never for display, which keeps whatever the header
+    actually said.
+    """
+    return parseaddr(value or "")[1].strip().lower()
+
+
+# The line a mail client writes above the history it quotes. Matching it (as
+# well as the ">" lines themselves) is what lets the attribution disappear
+# along with the quote it introduces, instead of being left dangling. English
+# and French, since the studio's clients write in both.
+_QUOTE_ATTRIBUTION = re.compile(
+    r"^(on\b.*\bwrote\s*:"
+    r"|le\b.*\ba\s+écrit\s*:"
+    r"|-{2,}\s*(original message|forwarded message|message d'origine).*"
+    r"|_{5,})$",
+    re.IGNORECASE,
+)
+
+# Gmail hard-wraps that attribution, so "wrote:" routinely lands on the next
+# line ("On Tue, ... Arnaud Rouillot <a@b>\nwrote:"). Each candidate line is
+# therefore also tested joined with the couple that follow it, or the wrapped
+# form matches nothing and the whole quote survives.
+_QUOTE_ATTRIBUTION_MAX_LINES = 3
+
+
+def _starts_an_attribution(lines: list[str], index: int) -> bool:
+    """Whether the quote's attribution begins at `lines[index]`, wrapped or not."""
+    for span in range(1, _QUOTE_ATTRIBUTION_MAX_LINES + 1):
+        joined = " ".join(part.strip() for part in lines[index:index + span]).strip()
+        if _QUOTE_ATTRIBUTION.match(joined):
+            return True
+    return False
 
 
 class EmailMessage(db.Model):
@@ -327,16 +397,82 @@ class EmailMessage(db.Model):
         return [part.strip() for part in (self.recipients or "").split(",") if part.strip()]
 
     @property
-    def sender_display(self) -> str:
-        """"Name <address>" collapsed to whichever half exists."""
-        if self.sender_name and self.sender:
-            return f"{self.sender_name} <{self.sender}>"
+    def cc_list(self) -> list[str]:
+        return [part.strip() for part in (self.cc or "").split(",") if part.strip()]
+
+    @property
+    def sender_label(self) -> str:
+        """Who to print above the message.
+
+        "You" for anything we sent: the mailbox it went out from is the
+        studio's own address, and printing it there read as though it were the
+        client's. Incoming mail shows the person's name alone — their address
+        is already in the thread header — falling back to the address when the
+        header carried no name.
+        """
+        if not self.is_incoming:
+            return "You"
         return self.sender_name or self.sender or "(unknown sender)"
 
     @property
+    def other_recipients(self) -> list[str]:
+        """To/Cc addresses beyond the two ends of the conversation.
+
+        A message between the studio's mailbox and one client has nothing to
+        say in a To: line — both ends are named on the page already. A third
+        party does, so those are the only ones listed ("Also sent to"). The
+        thread's counterparty counts as implied even on a lead with no client
+        row yet, for the same reason.
+        """
+        implied = {
+            _address_only(self.thread.account.email_address),
+            _address_only(self.thread.counterparty),
+        }
+        if self.thread.client:
+            implied.add(_address_only(self.thread.client.email))
+        implied.discard("")
+
+        seen: set[str] = set()
+        others: list[str] = []
+        for raw in self.recipient_list + self.cc_list:
+            address = _address_only(raw)
+            if not address or address in implied or address in seen:
+                continue
+            seen.add(address)
+            others.append(raw)
+        return others
+
+    @property
+    def body_display(self) -> str:
+        """`body_text` with the quoted history trimmed off.
+
+        Every mail client quotes the whole prior conversation into a reply,
+        and this app already renders those messages in their own right just
+        above — so showing the quote too means reading the thread once per
+        message. Trimming stops at the first quote marker (a ">" line, or the
+        attribution that introduces one) and drops everything after it, since
+        the quote is always at the end.
+
+        Falls back to the untrimmed body when trimming leaves nothing: a
+        forward whose entire content is quoted still has to be readable.
+        """
+        text = self.body_text or ""
+        lines = text.splitlines()
+        kept: list[str] = []
+        for index, line in enumerate(lines):
+            if line.strip().startswith(">") or _starts_an_attribution(lines, index):
+                break
+            kept.append(line)
+        return "\n".join(kept).strip() or text
+
+    @property
     def preview(self) -> str:
-        """First line-ish of the body, for list rows."""
-        text = " ".join((self.body_text or "").split())
+        """First line-ish of the body, for list rows.
+
+        Built from body_display, so a one-word reply previews as that word
+        rather than as the first 140 characters of what it quoted.
+        """
+        text = " ".join(self.body_display.split())
         return text[:140] + ("…" if len(text) > 140 else "")
 
 
@@ -428,6 +564,41 @@ class CalendarEvent(db.Model):
         return self.status == "cancelled"
 
 
+class LeadReadState(db.Model):
+    """When a given user last looked at the lead inbox.
+
+    Backs the "new leads" badge. One timestamp per (company, user) rather
+    than a per-thread `seen` flag: the question the badge answers is "has
+    anything arrived since I last looked", which one marker answers in a
+    single comparison instead of a write per thread per visit.
+
+    **Per user, not per company** — "unseen by me" is personal, and a second
+    user clearing the badge for everyone would make it useless. It lives in
+    this module's own table rather than as a column on `users` so the module
+    stays liftable (and so it needs no entry in `_ADDED_COLUMNS`; see
+    "Migrations" in CLAUDE.md — new tables are created by `create_all`).
+
+    Compared against `EmailThread.created_at`, which is when *we* downloaded
+    the thread, not when the mail was sent. That distinction matters on a
+    first sync: a 90-day backfill is all old mail, but every thread in it is
+    new to the person looking at it.
+    """
+
+    __tablename__ = "lead_read_states"
+    __table_args__ = (
+        db.UniqueConstraint("company_id", "user_id", name="uq_lead_read_state_company_user"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    # Null means "never looked", so everything counts as new.
+    seen_at = db.Column(db.DateTime)
+
+    company = db.relationship("Company")
+    user = db.relationship("User")
+
+
 class AuditLog(db.Model):
     """Security-relevant events, per §16 of the requirements.
 
@@ -462,6 +633,7 @@ AUDIT_EMAIL_SENT = "email_sent"
 AUDIT_SYNC_RUN = "sync_run"
 AUDIT_SYNC_FAILED = "sync_failed"
 AUDIT_CLIENT_CREATED_FROM_EMAIL = "client_created_from_email"
+AUDIT_THREAD_TRASHED = "thread_trashed"
 
 AUDIT_EVENT_LABELS = {
     AUDIT_INTEGRATION_CONNECTED: "Integration connected",
@@ -470,4 +642,5 @@ AUDIT_EVENT_LABELS = {
     AUDIT_SYNC_RUN: "Sync run",
     AUDIT_SYNC_FAILED: "Sync failed",
     AUDIT_CLIENT_CREATED_FROM_EMAIL: "Client created from email",
+    AUDIT_THREAD_TRASHED: "Conversation moved to Trash",
 }
