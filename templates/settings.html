@@ -25,16 +25,16 @@
       <label>Street address<input type="text" name="street" value="{{ company.street or '' }}" placeholder="543 Cambie Street, Studio 3"></label>
       <div class="field-row">
         <label>City<input type="text" name="city" value="{{ company.city or '' }}"></label>
-        <label>Province
-          <select name="province">
-            <option value="">—</option>
-            {% for code, label in provinces.items() %}
-            <option value="{{ code }}" {% if code == company.province %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
         <label>Postal code<input type="text" name="postal_code" value="{{ company.postal_code or '' }}" placeholder="V6H 3P7" maxlength="10"></label>
       </div>
+      <label>Province
+        <select name="province">
+          <option value="">—</option>
+          {% for code, label in provinces.items() %}
+          <option value="{{ code }}" {% if code == company.province %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label>GST/HST number<input type="text" name="gst_number" value="{{ company.gst_number or '' }}" placeholder="123456789 RT0001"></label>
       <label>PST / RST number<input type="text" name="pst_number" value="{{ company.pst_number or '' }}" placeholder="BC, Saskatchewan or Manitoba only"></label>
       <label>QST number<input type="text" name="qst_number" value="{{ company.qst_number or '' }}" placeholder="1234567890 TQ0001"></label>

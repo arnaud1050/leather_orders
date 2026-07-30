@@ -516,9 +516,11 @@ def test_calendar_view_shows_a_synced_event(logged_in, account):
     assert "chip--event" in body
 
 
-def test_calendar_view_is_unchanged_without_an_integration(logged_in, order):
-    """A company that hasn't connected anything must see exactly the grid it
-    saw before this module existed."""
+def test_calendar_view_never_shows_orders(logged_in, order):
+    """The calendar renders only synced calendar events, never orders —
+    those live on the timeline. True whether or not a mailbox is connected,
+    and even when an order is due in the month being viewed."""
     body = logged_in.get("/month/2026/7").get_data(as_text=True)
     assert "chip--event" not in body
-    assert body.count("chip chip--") >= 1  # order chips still render
+    assert "chip chip--" not in body
+    assert order.item not in body

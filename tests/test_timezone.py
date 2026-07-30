@@ -13,6 +13,10 @@ import pytest
 
 from models import Company, DEFAULT_TIMEZONE, db
 
+from communications.sync import calendar_sync
+
+from tests import fakes
+
 # 05:31 UTC on Jul 28 is 22:31 the previous evening in Vancouver (PDT, UTC-7)
 # and 01:31 the same morning in Toronto (EDT, UTC-4) — a date rollover in one
 # direction and not the other, which is exactly the case a naive strftime
@@ -43,6 +47,20 @@ def test_changing_the_setting_changes_what_is_shown(logged_in, company, thread):
 
     body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
     assert "Jul 28, 2026 at 01:31" in body
+
+
+def test_calendar_event_time_renders_in_the_company_zone(logged_in, account, company):
+    """A synced calendar event's start/end (see calendar.html) go through the
+    same naive-UTC-to-company-zone conversion as message times, formatted
+    12-hour with lowercase am/pm — 19:00-20:00 UTC is noon-1pm in Vancouver."""
+    with fakes.fake_providers(events=[
+        fakes.event(title="Fitting — Marie", start=datetime(2026, 7, 15, 19, 0)),
+    ]):
+        calendar_sync.sync_calendar(account)
+
+    body = logged_in.get("/month/2026/7").get_data(as_text=True)
+    assert "12:00pm - 1:00pm" in body
+    assert "19:00" not in body
 
 
 def test_thread_list_dates_are_converted_too(logged_in, lead_thread):
