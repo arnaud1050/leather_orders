@@ -2054,6 +2054,16 @@ dialog.modal::backdrop {
   user-select: none;
 }
 
+/* The same badge carrying "!" instead of a count — an integration has stopped
+   syncing. Deliberately the same red circle rather than a new shape or hue:
+   it means the same thing to the reader ("this nav item wants you"), and the
+   difference is only what it's counting. A single character doesn't need the
+   horizontal padding a two-digit count does, so it drops to a true circle. */
+.nav-badge--alert {
+  padding: 0;
+  width: 17px;
+}
+
 /* A status note sharing a .legend-row with the button it explains. The row is
    already a centred flex line, so the note only has to drop the vertical
    margins it carries when it's a standalone block. */

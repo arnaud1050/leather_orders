@@ -610,32 +610,55 @@ def _client_id(raw):
 
 
 @bp.app_context_processor
-def _inject_new_lead_count():
-    """Make the "new leads" badge available to every template.
+def _inject_nav_badges():
+    """Make the two nav badges available to every template.
 
-    An `app_context_processor` (not a plain blueprint one) because the badge
-    lives in base.html's top nav, which every page in the app extends —
+    `new_lead_count` — enquiries that arrived since this user last looked.
+    `integration_alert_count` — integrations whose last sync failed.
+
+    An `app_context_processor` (not a plain blueprint one) because both badges
+    live in base.html's top nav, which every page in the app extends —
     including pages this blueprint doesn't own.
 
-    Returns a **callable**, not a number, so the query only runs on templates
-    that actually render the badge. base.html does, so in practice it's one
-    COUNT per page load; making it lazy means adding a template that doesn't
-    show the badge costs nothing.
+    Each returns a **callable**, not a number, so the query only runs on
+    templates that actually render that badge. base.html renders both, so in
+    practice it's two COUNTs per page load; making them lazy means adding a
+    template that shows neither costs nothing.
 
     Deliberately forgiving: this runs on the login page (no user) and could
     run before the module's tables exist on a partially-migrated database.
     Neither is worth a 500 over a decoration, so both yield zero.
     """
-    def new_lead_count() -> int:
+    def _count(what: str, query):
         try:
             if not current_user.is_authenticated:
                 return 0
-            return email_service.new_lead_count(current_user.company_id, current_user.id)
+            return query()
         except Exception:  # noqa: BLE001 — see docstring
-            current_app.logger.debug("Could not compute the new-lead badge", exc_info=True)
+            current_app.logger.debug("Could not compute the %s badge", what, exc_info=True)
             return 0
 
-    return {"new_lead_count": new_lead_count}
+    def new_lead_count() -> int:
+        return _count("new-lead", lambda: email_service.new_lead_count(
+            current_user.company_id, current_user.id,
+        ))
+
+    def integration_alert_count() -> int:
+        """How many connected integrations are currently failing.
+
+        Named for integrations rather than mailboxes: the badge's promise to
+        the user is "something you connected has stopped working", and a
+        second provider added later should count here without the nav
+        changing. Today the only integrations are Google accounts.
+        """
+        return _count("integration-alert", lambda: len(
+            account_service.failing_accounts(current_user.company_id),
+        ))
+
+    return {
+        "new_lead_count": new_lead_count,
+        "integration_alert_count": integration_alert_count,
+    }
 
 
 def _local_datetime(value, fmt: str = "%b %d, %Y at %H:%M") -> str:

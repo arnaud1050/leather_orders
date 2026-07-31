@@ -61,6 +61,30 @@ def sync_enabled_accounts(company_id: int | None = None) -> list[EmailAccount]:
     return query.all()
 
 
+def failing_accounts(company_id: int) -> list[EmailAccount]:
+    """Connected accounts whose last sync failed.
+
+    Backs the alert badge on Settings → Integrations. It reads
+    `last_sync_error` rather than a separate "healthy" flag for the same
+    reason `Invoice.display_status` derives paid-ness: one source of truth
+    can't disagree with itself. The column is already set by every sync path
+    and cleared by a successful one (see email_sync / jobs), so nothing new
+    has to remember to keep a health flag up to date.
+
+    Includes paused accounts on purpose: pausing sync doesn't repair whatever
+    went wrong, and the error is still the thing waiting to be dealt with.
+    """
+    return (
+        EmailAccount.query.filter(
+            EmailAccount.company_id == company_id,
+            EmailAccount.last_sync_error.isnot(None),
+            EmailAccount.last_sync_error != "",
+        )
+        .order_by(EmailAccount.email_address)
+        .all()
+    )
+
+
 def connect_google_account(company_id: int, tokens: dict, userinfo: dict) -> EmailAccount:
     """Create or update the EmailAccount for a completed Google grant.
 

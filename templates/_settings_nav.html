@@ -8,5 +8,11 @@
   <a href="{{ url_for('settings_orders') }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
   <a href="{{ url_for('settings_clients') }}" class="settings-nav__link {{ 'is-active' if section == 'clients' else '' }}">Clients</a>
   <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
-  <a href="{{ url_for('communications.integrations') }}" class="settings-nav__link {{ 'is-active' if section == 'integrations' else '' }}">Integrations</a>
+  {# Carries the same alert badge as the top nav's Settings link, so the trail
+     from "something's wrong" to the page that says what continues here. #}
+  <a href="{{ url_for('communications.integrations') }}" class="settings-nav__link {{ 'is-active' if section == 'integrations' else '' }}">
+    Integrations
+    {% set failing_integrations = integration_alert_count() %}
+    {% if failing_integrations %}<span class="nav-badge nav-badge--alert" title="{{ failing_integrations }} integration{{ 's' if failing_integrations != 1 }} stopped syncing">!</span>{% endif %}
+  </a>
 </nav>
