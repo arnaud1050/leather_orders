@@ -35,7 +35,7 @@ from flask_login import (  # noqa: E402
 )
 
 from models import (  # noqa: E402
-    Client, Company, Document, Order, OrderLine, OrderType, Payment,
+    Client, Company, Order, OrderLine, OrderType, Payment,
     SourceOption, User, db, run_migrations, seed_if_empty,
 )
 # Self-contained module: its own models, services, blueprint and templates
@@ -55,6 +55,14 @@ import communications.jobs as communications_jobs  # noqa: E402
 import communications.migrations as communications_migrations  # noqa: E402
 import communications.routes as communications_routes  # noqa: E402
 from communications.services import calendar_service  # noqa: E402
+# Self-contained module: its own table, storage, migrations, blueprint and
+# templates (see documents/__init__.py). Real files attached to an order —
+# resolve_order is handed in below rather than this module importing
+# get_order_or_404 directly, to avoid a circular import with this file.
+import documents.migrations as documents_migrations  # noqa: E402
+import documents.routes as documents_routes  # noqa: E402
+from documents import config as documents_config  # noqa: E402
+from documents import services as documents_service  # noqa: E402
 
 app = Flask(__name__)
 
@@ -83,6 +91,10 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 # Only over TLS in production. Off by default because local dev is plain
 # http and a Secure cookie there means nobody can log in at all.
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE") == "1"
+# Blunt outer guard on a multi-file document upload request, ahead of the
+# more precise per-file/per-company checks in documents/validation.py — so
+# an oversized request is rejected before Flask fully buffers it.
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 
 # Behind a TLS-terminating reverse proxy (the demo deployment's nginx), the
 # request arrives at gunicorn as plain http, so request.url reads
@@ -125,6 +137,11 @@ with app.app_context():
     # legacy address this module then takes over).
     billing_migrations.set_subtotal_resolver(billing_adapter.subtotal_of)
     billing_migrations.run()
+    # Same arrangement again: its own table (order_documents) plus a
+    # one-time drop of the legacy fake `documents` table (see
+    # documents/migrations.py) — run before seeding so a fresh company
+    # never sees the old placeholder rows this replaces.
+    documents_migrations.run_migrations()
     seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
 
 # Background mailbox/calendar sync. A no-op unless RUN_SCHEDULER=1 — with
@@ -223,6 +240,9 @@ def get_order_or_404(order_id: int) -> Order:
     if order is None:
         abort(404)
     return order
+
+
+documents_routes.register(app, resolve_order=get_order_or_404)
 
 
 def _parse_amount(raw: str | None) -> float | None:
@@ -450,7 +470,6 @@ def timeline_window(year: int, month: int, day: int):
             "status": order.status,
             "order_type": order.order_type,
             "notes": order.notes,
-            "documents": order.documents,
             "col_start": col_start,
             "span": span,
             "truncated_start": order.start < window_start,
@@ -783,6 +802,7 @@ def order_page(order_id: int):
         {t.id: t for t in active_types + ([order.order_type] if order.order_type else [])}.values(),
         key=lambda t: t.sort_order,
     )
+    storage_used_bytes = documents_service.usage_for_company(current_user.company_id)
     return render_template(
         "order_page.html",
         section="details",
@@ -792,6 +812,14 @@ def order_page(order_id: int):
         return_to=return_to,
         back_label=back_label(return_to),
         active_view=None,
+        # For the documents/_explorer.html partial included below.
+        documents=documents_service.list_for_order(order.id),
+        documents_notice=documents_routes.take_notice(),
+        storage_used_bytes=storage_used_bytes,
+        storage_limit_bytes=documents_config.MAX_TOTAL_BYTES,
+        storage_percent=min(100, round(storage_used_bytes / documents_config.MAX_TOTAL_BYTES * 100, 1)),
+        inline_previewable_content_types=documents_config.INLINE_PREVIEWABLE_CONTENT_TYPES,
+        allowed_extensions=documents_config.ALLOWED_EXTENSIONS,
     )
 
 

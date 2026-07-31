@@ -4,7 +4,8 @@ WORKDIR /app
 
 # su-exec: lets the entrypoint start as root (to fix bind-mount ownership)
 # and then drop to appuser before running the app.
-RUN apk add --no-cache su-exec
+# poppler-utils: pdftoppm, for PDF/.ai document thumbnails (see documents/thumbnails.py).
+RUN apk add --no-cache su-exec poppler-utils
 
 # Install dependencies first so this layer is cached unless requirements.txt changes
 COPY requirements.txt .

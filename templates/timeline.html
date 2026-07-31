@@ -138,11 +138,6 @@
           {% endfor %}
         </select>
       </label>
-      <div class="modal__documents">
-        {% for doc in row.documents %}
-        <span class="modal__doc">{{ doc.label }}: {{ doc.filename }}</span>
-        {% endfor %}
-      </div>
       <div class="modal__actions">
         <a class="modal__link" href="{{ url_for('order_page', order_id=row.id) }}?return_to={{ request.path }}">Open full order page &rarr;</a>
         <div class="modal__buttons">

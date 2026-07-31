@@ -17,5 +17,12 @@ google-auth-oauthlib>=1.2   # OAuth 2.0 web flow
 google-api-python-client>=2.120
 APScheduler>=3.10           # background sync, only when RUN_SCHEDULER=1
 
+# Documents module (see documents/). Both are used for thumbnailing and,
+# for images, content validation too. PDF/.ai thumbnailing additionally
+# needs the poppler-utils system package (see Dockerfile) — pdf2image just
+# wraps its pdftoppm binary, and degrades to no-thumbnail if it's missing.
+Pillow>=10.0
+pdf2image>=1.17
+
 # Tests only — not imported by the app. `python -m pytest`.
 pytest>=8.0

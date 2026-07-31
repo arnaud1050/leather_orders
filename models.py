@@ -198,7 +198,6 @@ class Order(db.Model):
 
     client = db.relationship("Client", back_populates="orders")
     order_type = db.relationship("OrderType", back_populates="orders")
-    documents = db.relationship("Document", back_populates="order")
     lines = db.relationship(
         "OrderLine", back_populates="order", cascade="all, delete-orphan",
         order_by="OrderLine.sort_order",
@@ -341,17 +340,6 @@ class Payment(db.Model):
     order = db.relationship("Order", back_populates="payments")
 
 
-class Document(db.Model):
-    __tablename__ = "documents"
-
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False)
-    label = db.Column(db.String(80), nullable=False)
-    filename = db.Column(db.String(200), nullable=False)
-
-    order = db.relationship("Order", back_populates="documents")
-
-
 # ---------------------------------------------------------------------------
 # Migrations. db.create_all() adds missing *tables* but never missing
 # columns, and this project deliberately has no Alembic setup — so the
@@ -482,9 +470,9 @@ def _migrate_order_price_to_lines() -> None:
 
 # ---------------------------------------------------------------------------
 # Seed data — same sample clients/orders the in-memory prototype used to
-# hardcode, now inserted into SQLite on first run. Placeholder documents
-# ("Mockup" + "Invoice") are attached to every order, matching the old
-# _SAMPLE_DOCUMENTS behavior.
+# hardcode, now inserted into SQLite on first run. Real order documents are
+# a separate module (see documents/) and aren't seeded here — a fresh
+# company just starts with none, same as it would in real use.
 # ---------------------------------------------------------------------------
 
 # Provinces are spread across QC / BC / ON on purpose: tax is charged at
@@ -561,11 +549,6 @@ _SAMPLE_INVOICES = [
     {"subject_id": 2, "number": "BM-2026-0002", "issued_date": date(2026, 8, 8), "due_date": date(2026, 8, 29), "status": "sent", "notes": "50% deposit taken on issue."},
     {"subject_id": 4, "number": "BM-2026-0003", "issued_date": date(2026, 8, 18), "due_date": date(2026, 8, 30), "status": "sent", "notes": "Rush order — balance due at pickup."},
     {"subject_id": 12, "number": "BM-2026-0004", "issued_date": date(2026, 8, 21), "due_date": None, "status": "draft", "notes": None},
-]
-
-_SAMPLE_DOCUMENTS = [
-    {"label": "Mockup", "filename": "mockup_v1.pdf"},
-    {"label": "Invoice", "filename": "invoice_draft.pdf"},
 ]
 
 # Default "how did you hear about us" options, matching the checkboxes on
@@ -668,8 +651,6 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
                 order_id=order.id, description=description,
                 quantity=quantity, unit_price=unit_price, sort_order=i,
             ))
-        for doc in _SAMPLE_DOCUMENTS:
-            db.session.add(Document(order_id=order.id, label=doc["label"], filename=doc["filename"]))
         for amount, paid_date, method, reference in o.get("payments", []):
             db.session.add(Payment(
                 order_id=order.id, amount=amount, paid_date=paid_date,
