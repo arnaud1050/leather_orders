@@ -1,0 +1,101 @@
+{# Included from templates/settings.html's "orders" section, right after
+   the Order types block. Context expected: document_types (list, in
+   sort_order, active + hidden — see documents.services.list_document_types),
+   documents_notice. #}
+
+<h2>Document types</h2>
+<p class="detail-note">
+  Optional categories for a document (e.g. Mockups, Renderings) — once at
+  least one exists, an order's Documents area splits into a section per
+  type, in the order set here, each with its own upload button. With none
+  defined, documents stay in one flat list, as they do today. Drag a row by
+  its handle to reorder. A type can't be deleted once a document has been
+  filed under it — hide it instead to remove it from new uploads while
+  keeping that document's section.
+</p>
+
+{% if documents_notice %}
+<p class="warning-note">{{ documents_notice }}</p>
+{% endif %}
+
+<ul class="settings-source-list" id="document-type-list">
+  {% for type in document_types %}
+  <li class="settings-source-list__item {% if not type.is_active %}settings-source-list__item--hidden{% endif %}" draggable="true" data-type-id="{{ type.id }}">
+    <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
+      <svg viewBox="0 0 10 16" fill="currentColor">
+        <circle cx="2" cy="2" r="1.3"/>
+        <circle cx="8" cy="2" r="1.3"/>
+        <circle cx="2" cy="8" r="1.3"/>
+        <circle cx="8" cy="8" r="1.3"/>
+        <circle cx="2" cy="14" r="1.3"/>
+        <circle cx="8" cy="14" r="1.3"/>
+      </svg>
+    </span>
+    <span class="settings-source-list__label">
+      {{ type.label }}
+      {% if not type.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+    </span>
+    <div class="settings-source-list__actions">
+      <form method="post" action="{{ url_for('documents.toggle_type', document_type_id=type.id) }}">
+        <button type="submit" class="btn-secondary">{{ 'Unhide' if not type.is_active else 'Hide' }}</button>
+      </form>
+      {% if type.can_delete %}
+      <form method="post" action="{{ url_for('documents.delete_type', document_type_id=type.id) }}">
+        <button type="submit" class="btn-secondary">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+
+<form method="post" action="{{ url_for('documents.add_type') }}" class="detail-form settings-source-add">
+  <label>Add a new type<input type="text" name="label" placeholder="e.g. Mockups" required></label>
+  <div>
+    <button type="submit" class="btn-primary">Add</button>
+  </div>
+</form>
+
+<script>
+  (function () {
+    var list = document.getElementById('document-type-list');
+    if (!list) return;
+    var dragged = null;
+
+    list.addEventListener('dragstart', function (e) {
+      var item = e.target.closest('.settings-source-list__item');
+      if (!item) return;
+      dragged = item;
+      item.classList.add('settings-source-list__item--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox won't start a drag at all without setData.
+      e.dataTransfer.setData('text/plain', item.dataset.typeId);
+    });
+
+    list.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      var target = e.target.closest('.settings-source-list__item');
+      if (!target || target === dragged) return;
+      var rect = target.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < rect.height / 2;
+      list.insertBefore(dragged, before ? target : target.nextSibling);
+    });
+
+    list.addEventListener('drop', function (e) {
+      e.preventDefault();
+    });
+
+    list.addEventListener('dragend', function () {
+      if (dragged) dragged.classList.remove('settings-source-list__item--dragging');
+      dragged = null;
+      var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
+        .map(function (item) { return parseInt(item.dataset.typeId, 10); });
+      fetch("{{ url_for('documents.reorder_types') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: order }),
+      });
+    });
+  })();
+</script>

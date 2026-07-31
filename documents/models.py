@@ -21,6 +21,29 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+class DocumentType(db.Model):
+    """A company-configurable document category (e.g. "Mockups",
+    "Renderings"). Same hide-don't-delete shape as the root OrderType/
+    SourceOption models: once a document references one, deleting it would
+    orphan that document's label, so hiding (is_active=False) is the only
+    way to retire one from new uploads while what's already tagged with it
+    keeps its section on the order page. Module-owned rather than living in
+    root models.py alongside OrderType/SourceOption, since categorizing
+    documents is this module's own concern.
+    """
+    __tablename__ = "document_types"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    @property
+    def can_delete(self):
+        return Document.query.filter_by(document_type_id=self.id).first() is None
+
+
 class Document(db.Model):
     __tablename__ = "order_documents"
 
@@ -31,6 +54,10 @@ class Document(db.Model):
     # eventually gets skipped.
     company_id = db.Column(db.Integer, nullable=False)
     order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False)
+    # Optional — a company with no DocumentTypes defined never shows the
+    # sectioned layout at all (see services.has_document_types), so this
+    # stays nullable rather than needing a fallback category.
+    document_type_id = db.Column(db.Integer, db.ForeignKey("document_types.id"))
 
     # Display only — never used to build a path. What's actually on disk is
     # named opaquely (see storage.py).
@@ -43,3 +70,4 @@ class Document(db.Model):
     uploaded_at = db.Column(db.DateTime, nullable=False, default=_utcnow)
 
     order = db.relationship("Order")
+    document_type = db.relationship("DocumentType")

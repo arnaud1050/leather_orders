@@ -72,7 +72,9 @@ def upload(order_id: int):
         for f in request.files.getlist("files")
         if f and f.filename
     ]
-    result = services.upload(current_user.company_id, order.id, files)
+    raw_type_id = request.form.get("document_type_id", "")
+    document_type_id = int(raw_type_id) if raw_type_id.isdigit() else None
+    result = services.upload(current_user.company_id, order.id, files, document_type_id)
     if result.errors:
         _flash(" ".join(result.errors))
     return _redirect_back(order.id)
@@ -116,3 +118,49 @@ def delete(order_id: int, document_id: int):
     document = _get_document_or_404(order.id, document_id)
     services.delete(document)
     return _redirect_back(order.id)
+
+
+# ---------------------------------------------------------------------------
+# Document types — settings-level (company-wide, not order-scoped), so
+# these don't need the resolve_order hook, just current_user.company_id
+# directly. Same shape as add_order_type()/toggle_order_type()/
+# delete_order_type() in app.py, which manage the analogous root-owned
+# OrderType.
+# ---------------------------------------------------------------------------
+
+@bp.route("/settings/document-types", methods=["POST"])
+@login_required
+def add_type():
+    label = request.form.get("label", "")
+    document_type = services.add_document_type(current_user.company_id, label)
+    # A blank label is caught by the form's own `required` attribute, so
+    # reaching here with a non-blank label that still failed means it was
+    # a duplicate — the only other reason add_document_type() returns None.
+    if document_type is None and label.strip():
+        _flash(f'A document type called "{label.strip()}" already exists.')
+    return redirect(url_for("settings_orders"))
+
+
+@bp.route("/settings/document-types/<int:document_type_id>/toggle", methods=["POST"])
+@login_required
+def toggle_type(document_type_id: int):
+    services.toggle_document_type(current_user.company_id, document_type_id)
+    return redirect(url_for("settings_orders"))
+
+
+@bp.route("/settings/document-types/<int:document_type_id>/delete", methods=["POST"])
+@login_required
+def delete_type(document_type_id: int):
+    services.delete_document_type(current_user.company_id, document_type_id)
+    return redirect(url_for("settings_orders"))
+
+
+@bp.route("/settings/document-types/reorder", methods=["POST"])
+@login_required
+def reorder_types():
+    """Fired by the drag-and-drop handler in _settings_types.html — a JSON
+    body, not a form post, since there's no page navigation involved."""
+    payload = request.get_json(silent=True) or {}
+    ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
+    services.reorder_document_types(current_user.company_id, ordered_ids)
+    return "", 204

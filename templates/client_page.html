@@ -35,7 +35,7 @@
     <label>First name<input type="text" name="first_name" value="{{ client.first_name }}" required></label>
     <label>Last name<input type="text" name="last_name" value="{{ client.last_name }}" required></label>
     <label>Email<input type="email" name="email" value="{{ client.email }}"></label>
-    <label>Phone<input type="tel" name="phone" value="{{ client.phone }}"></label>
+    <label>Phone<input type="tel" name="phone" value="{{ client.phone|phone }}"></label>
     <label>Street address<input type="text" name="street" value="{{ client.street or '' }}" placeholder="Printed on this client's invoices"></label>
     <div class="field-row">
       <label>City<input type="text" name="city" value="{{ client.city or '' }}"></label>

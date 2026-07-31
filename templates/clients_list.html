@@ -61,7 +61,7 @@
             {% endif %}
           </td>
           <td>{{ client.email or '—' }}</td>
-          <td>{{ client.phone or '—' }}</td>
+          <td>{{ client.phone|phone or '—' }}</td>
           <td class="is-numeric">{{ client.orders|length }}</td>
           <td class="is-numeric">${{ '%.2f'|format(client.lifetime_value) }}</td>
         </tr>

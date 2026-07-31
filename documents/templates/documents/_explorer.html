@@ -1,63 +1,90 @@
 {# Included from templates/order_page.html inside <section class="detail-documents">.
-   Context expected: order, documents (list), storage_used_bytes, storage_limit_bytes,
-   storage_percent, documents_notice, return_to. #}
+   Context expected: order, storage_used_bytes, storage_limit_bytes,
+   storage_percent, documents_notice, allowed_extensions,
+   inline_previewable_content_types, has_document_types, and either
+   `documents` (flat mode) or `sections` (sectioned mode, a list of
+   documents.services.DocumentSection). #}
+
+{% macro document_card(doc, order) %}
+<div class="doc-explorer__item">
+  <div class="doc-explorer__thumb">
+    {% if doc.thumbnail_filename %}
+    <img src="{{ url_for('documents.view', order_id=order.id, document_id=doc.id) }}" alt="">
+    {% else %}
+    <span class="doc-explorer__ext">{{ doc.original_filename.rsplit('.', 1)[-1]|upper if '.' in doc.original_filename else 'FILE' }}</span>
+    {% endif %}
+  </div>
+  <span class="doc-explorer__filename" title="{{ doc.original_filename }}">{{ doc.original_filename }}</span>
+  <span class="doc-explorer__size">{{ doc.size_bytes|filesizeformat }}</span>
+  <div class="doc-explorer__actions">
+    <a class="icon-btn" href="{{ url_for('documents.download', order_id=order.id, document_id=doc.id) }}" title="Download" aria-label="Download {{ doc.original_filename }}">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 3v9M6.5 8.5 10 12l3.5-3.5"/>
+        <path d="M4 14.5v1.2c0 .72.58 1.3 1.3 1.3h9.4c.72 0 1.3-.58 1.3-1.3v-1.2"/>
+      </svg>
+    </a>
+    {% if doc.content_type in inline_previewable_content_types %}
+    <a class="icon-btn" href="{{ url_for('documents.view', order_id=order.id, document_id=doc.id) }}" target="_blank" rel="noopener" title="Open" aria-label="Open {{ doc.original_filename }}">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2.5 10S5 4.5 10 4.5 17.5 10 17.5 10 15 15.5 10 15.5 2.5 10 2.5 10Z"/>
+        <circle cx="10" cy="10" r="2.3"/>
+      </svg>
+    </a>
+    {% endif %}
+    <form method="post" action="{{ url_for('documents.delete', order_id=order.id, document_id=doc.id) }}" class="doc-explorer__delete-form">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ doc.original_filename }}">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 6h11M8 6V4.5h4V6M6 6l.6 9.2c.04.7.62 1.3 1.32 1.3h4.16c.7 0 1.28-.6 1.32-1.3L14 6"/>
+        </svg>
+      </button>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro add_tile(order, key, type_id=none) %}
+<form method="post" action="{{ url_for('documents.upload', order_id=order.id) }}" enctype="multipart/form-data" class="doc-explorer__item doc-explorer__add">
+  <input type="hidden" name="return_to" value="{{ request.path }}">
+  {% if type_id %}<input type="hidden" name="document_type_id" value="{{ type_id }}">{% endif %}
+  {# The native input is visually hidden, not display:none — it stays in
+     the tab order and keyboard/screen-reader accessible, it just isn't
+     the thing rendered. The label's `for` opens the file picker without
+     JS; the auto-submit script below is what actually fires in practice
+     once a file's chosen, so there's no separate "Upload" button. #}
+  <label class="doc-explorer__add-trigger" for="doc-upload-input-{{ key }}">
+    <span class="doc-explorer__add-icon" aria-hidden="true">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M10 4v12M4 10h12"/>
+      </svg>
+    </span>
+    <span class="doc-explorer__add-label">Add file</span>
+  </label>
+  <input type="file" name="files" multiple accept="{{ allowed_extensions|join(',') }}" id="doc-upload-input-{{ key }}" class="doc-explorer__upload-input doc-upload-input">
+</form>
+{% endmacro %}
+
+{% macro section_grid(documents, order, can_upload, key, type_id=none) %}
+<div class="doc-explorer">
+  {% if can_upload %}{{ add_tile(order, key, type_id) }}{% endif %}
+  {% for doc in documents %}{{ document_card(doc, order) }}{% endfor %}
+</div>
+{% endmacro %}
 
 {% if documents_notice %}
 <p class="warning-note">{{ documents_notice }}</p>
 {% endif %}
 
-{% if documents %}
-<div class="doc-explorer">
-  {% for doc in documents %}
-  <div class="doc-explorer__item">
-    <div class="doc-explorer__thumb">
-      {% if doc.thumbnail_filename %}
-      <img src="{{ url_for('documents.view', order_id=order.id, document_id=doc.id) }}" alt="">
-      {% else %}
-      <span class="doc-explorer__ext">{{ doc.original_filename.rsplit('.', 1)[-1]|upper if '.' in doc.original_filename else 'FILE' }}</span>
-      {% endif %}
-    </div>
-    <span class="doc-explorer__filename" title="{{ doc.original_filename }}">{{ doc.original_filename }}</span>
-    <span class="doc-explorer__size">{{ doc.size_bytes|filesizeformat }}</span>
-    <div class="doc-explorer__actions">
-      <a class="icon-btn" href="{{ url_for('documents.download', order_id=order.id, document_id=doc.id) }}" title="Download" aria-label="Download {{ doc.original_filename }}">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 3v9M6.5 8.5 10 12l3.5-3.5"/>
-          <path d="M4 14.5v1.2c0 .72.58 1.3 1.3 1.3h9.4c.72 0 1.3-.58 1.3-1.3v-1.2"/>
-        </svg>
-      </a>
-      {% if doc.content_type in inline_previewable_content_types %}
-      <a class="icon-btn" href="{{ url_for('documents.view', order_id=order.id, document_id=doc.id) }}" target="_blank" rel="noopener" title="Open" aria-label="Open {{ doc.original_filename }}">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2.5 10S5 4.5 10 4.5 17.5 10 17.5 10 15 15.5 10 15.5 2.5 10 2.5 10Z"/>
-          <circle cx="10" cy="10" r="2.3"/>
-        </svg>
-      </a>
-      {% endif %}
-      <form method="post" action="{{ url_for('documents.delete', order_id=order.id, document_id=doc.id) }}" class="doc-explorer__delete-form">
-        <input type="hidden" name="return_to" value="{{ request.path }}">
-        <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ doc.original_filename }}">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4.5 6h11M8 6V4.5h4V6M6 6l.6 9.2c.04.7.62 1.3 1.32 1.3h4.16c.7 0 1.28-.6 1.32-1.3L14 6"/>
-          </svg>
-        </button>
-      </form>
-    </div>
+{% if has_document_types %}
+  {% for section in sections %}
+  <div class="doc-explorer__section">
+    <h3>{{ section.label }}</h3>
+    {{ section_grid(section.documents, order, section.can_upload, section.document_type.id if section.document_type else 'other', section.document_type.id if section.document_type else none) }}
   </div>
   {% endfor %}
-</div>
 {% else %}
-<p class="detail-note">No documents uploaded yet.</p>
+  {{ section_grid(documents, order, true, 'flat') }}
 {% endif %}
-
-<form method="post" action="{{ url_for('documents.upload', order_id=order.id) }}" enctype="multipart/form-data" class="doc-explorer__upload">
-  <input type="hidden" name="return_to" value="{{ request.path }}">
-  <label class="doc-explorer__upload-label">
-    Upload files
-    <input type="file" name="files" multiple accept="{{ allowed_extensions|join(',') }}">
-  </label>
-  <button type="submit" class="btn-primary">Upload</button>
-</form>
 
 <div class="doc-explorer__quota">
   <div class="quota-bar">
@@ -65,3 +92,18 @@
   </div>
   <span class="doc-explorer__quota-label">{{ storage_used_bytes|filesizeformat }} of {{ storage_limit_bytes|filesizeformat }} used</span>
 </div>
+
+<script>
+  // Submit as soon as files are chosen, instead of requiring a separate
+  // click on Upload — fires once per selection, whether one file or many
+  // (the "multiple" attribute means the change event covers the whole
+  // batch). Delegated to every .doc-upload-input on the page since
+  // sectioned mode renders one upload form per section.
+  document.querySelectorAll('.doc-upload-input').forEach(function (input) {
+    input.addEventListener('change', function () {
+      if (this.files.length > 0) {
+        this.closest('form').submit();
+      }
+    });
+  });
+</script>

@@ -1088,6 +1088,19 @@ dialog.modal::backdrop {
   font-size: 0.74rem;
 }
 
+/* One sub-section per document type, once any are configured — each with
+   its own heading and its own .doc-explorer grid below. */
+.doc-explorer__section {
+  margin-bottom: 20px;
+}
+
+.doc-explorer__section h3 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 0 0 8px;
+}
+
 /* Document explorer — order page "Documents" section. A card grid rather
    than the .doc-list row shape used elsewhere on this page: thumbnails
    need room the row layout doesn't have. */
@@ -1105,6 +1118,51 @@ dialog.modal::backdrop {
   padding: 10px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
+}
+
+/* The "Add file" tile — a <form> styled and sized like a document card so
+   it sits in the grid as a peer of the documents themselves, dashed to
+   read as an add affordance rather than existing content (same dashed
+   convention as .detail-form fieldset elsewhere on this page). */
+.doc-explorer__add {
+  border-style: dashed;
+  padding: 0;
+}
+
+.doc-explorer__add-trigger {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+
+.doc-explorer__add-trigger:hover {
+  color: var(--ink);
+}
+
+.doc-explorer__add-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.doc-explorer__add-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.doc-explorer__add-label {
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 .doc-explorer__thumb {
@@ -1189,28 +1247,18 @@ dialog.modal::backdrop {
   border-color: var(--status-rush);
 }
 
-.doc-explorer__upload {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  margin: 0 0 16px;
-}
-
-.doc-explorer__upload-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.doc-explorer__upload-label input[type="file"] {
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  color: var(--ink);
+/* Visually hidden, not display:none — stays keyboard/screen-reader
+   reachable, it just isn't the thing rendered. Standard "sr-only" shape. */
+.doc-explorer__upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .doc-explorer__quota {
@@ -1793,6 +1841,22 @@ dialog.modal::backdrop {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* Drag handle — document types only, currently the sole draggable list in
+   the app. Grab cursor signals draggability the way the label text alone
+   wouldn't. */
+.settings-source-list__grip {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 10px;
+  color: var(--ink-soft);
+  cursor: grab;
+}
+
+.settings-source-list__item--dragging {
+  opacity: 0.4;
 }
 
 /* Connected-mailbox list on the Integrations page — each account carries

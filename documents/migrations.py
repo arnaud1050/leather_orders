@@ -3,9 +3,8 @@ Schema changes for this module.
 
 Same contract as `communications/migrations.py`: `db.create_all()` adds
 missing *tables* but never missing *columns*, so a column added after this
-module's table first shipped would need an entry in `ADDED_COLUMNS` here
-(none yet). Called from app.py, the composition root, right after the
-other module migrations.
+module's table first shipped needs an entry in `ADDED_COLUMNS` here. Called
+from app.py, the composition root, right after the other module migrations.
 
 Also does the one-time cleanup this module exists to do: the legacy
 `documents` table (fake "Mockup"/"Invoice" placeholder rows, no real files
@@ -23,7 +22,11 @@ from models import db
 
 logger = logging.getLogger(__name__)
 
-ADDED_COLUMNS: list[tuple[str, str, str]] = []
+# document_types is a brand-new table, no entry needed — db.create_all()
+# covers it. order_documents already shipped, so its new column does.
+ADDED_COLUMNS: list[tuple[str, str, str]] = [
+    ("order_documents", "document_type_id", "INTEGER"),
+]
 
 
 def run_migrations() -> None:

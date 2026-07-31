@@ -107,7 +107,7 @@
       <label class="modal__field">First name<input type="text" name="first_name" value="{{ client.first_name }}" required></label>
       <label class="modal__field">Last name<input type="text" name="last_name" value="{{ client.last_name }}" required></label>
       <label class="modal__field">Email<input type="email" name="email" value="{{ client.email }}"></label>
-      <label class="modal__field">Phone<input type="tel" name="phone" value="{{ client.phone }}"></label>
+      <label class="modal__field">Phone<input type="tel" name="phone" value="{{ client.phone|phone }}"></label>
       <div class="modal__actions">
         <a class="modal__link" href="{{ url_for('client_page', client_id=client.id) }}?return_to={{ request.path }}">View full profile &rarr;</a>
         <div class="modal__buttons">

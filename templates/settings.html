@@ -10,6 +10,10 @@
 
   {% include "_settings_nav.html" %}
 
+  {% if notice %}
+  <p class="warning-note">{{ notice }}</p>
+  {% endif %}
+
   {% if section == 'general' %}
 
   <section class="detail-orders">
@@ -73,6 +77,10 @@
         <button type="submit" class="btn-primary">Add</button>
       </div>
     </form>
+  </section>
+
+  <section class="detail-orders">
+    {% include "documents/_settings_types.html" %}
   </section>
 
   {% elif section == 'clients' %}

@@ -5,6 +5,7 @@ and the legacy fake-documents cleanup migration.
 """
 
 import io
+import json
 import zipfile
 from datetime import date
 
@@ -14,7 +15,7 @@ from PIL import Image
 from models import Client, Order, db
 
 from documents import config, services, thumbnails
-from documents.models import Document
+from documents.models import Document, DocumentType
 from documents.storage import path_for
 from documents.validation import ValidationError, validate_upload
 
@@ -281,7 +282,278 @@ def test_delete_of_another_tenants_document_404s(logged_in, other_company):
     assert db.session.get(Document, doc.id) is not None  # untouched
 
 
-# --- migration: legacy fake `documents` table is dropped -----------------
+# --- document types: add / hide-don't-delete / reorder -------------------
+
+def test_add_document_type_assigns_next_sort_order(company):
+    a = services.add_document_type(company.id, "Mockups")
+    b = services.add_document_type(company.id, "Renderings")
+    assert a.sort_order == 0
+    assert b.sort_order == 1
+
+
+def test_add_document_type_rejects_a_blank_label(company):
+    assert services.add_document_type(company.id, "   ") is None
+
+
+def test_add_document_type_rejects_an_exact_duplicate(company):
+    services.add_document_type(company.id, "Mockups")
+    assert services.add_document_type(company.id, "Mockups") is None
+    assert DocumentType.query.filter_by(company_id=company.id).count() == 1
+
+
+def test_add_document_type_rejects_a_case_insensitive_duplicate(company):
+    services.add_document_type(company.id, "Mockups")
+    assert services.add_document_type(company.id, "  mockups  ") is None
+    assert DocumentType.query.filter_by(company_id=company.id).count() == 1
+
+
+def test_add_document_type_rejects_a_duplicate_of_a_hidden_type(company):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.toggle_document_type(company.id, document_type.id)  # hide
+    assert services.add_document_type(company.id, "Mockups") is None
+
+
+def test_add_document_type_allows_the_same_label_in_another_company(company, other_company):
+    services.add_document_type(company.id, "Mockups")
+    assert services.add_document_type(other_company.id, "Mockups") is not None
+
+
+def test_toggle_document_type_flips_is_active(company):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.toggle_document_type(company.id, document_type.id)
+    assert db.session.get(DocumentType, document_type.id).is_active is False
+    services.toggle_document_type(company.id, document_type.id)
+    assert db.session.get(DocumentType, document_type.id).is_active is True
+
+
+def test_toggle_document_type_is_scoped_to_the_tenant(company, other_company):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.toggle_document_type(other_company.id, document_type.id)
+    assert db.session.get(DocumentType, document_type.id).is_active is True  # untouched
+
+
+def test_delete_document_type_removes_it_when_unused(company):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.delete_document_type(company.id, document_type.id)
+    assert db.session.get(DocumentType, document_type.id) is None
+
+
+def test_delete_document_type_is_blocked_once_referenced(company, order):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.upload(
+        company.id, order.id, [("a.png", _png_bytes())],
+        document_type_id=document_type.id,
+    )
+    services.delete_document_type(company.id, document_type.id)
+    assert db.session.get(DocumentType, document_type.id) is not None
+    assert db.session.get(DocumentType, document_type.id).can_delete is False
+
+
+def test_reorder_document_types_sets_sort_order_from_position(company):
+    a = services.add_document_type(company.id, "A")
+    b = services.add_document_type(company.id, "B")
+    c = services.add_document_type(company.id, "C")
+
+    services.reorder_document_types(company.id, [c.id, a.id, b.id])
+
+    assert [t.label for t in services.list_document_types(company.id)] == ["C", "A", "B"]
+
+
+def test_reorder_ignores_ids_from_another_tenant(company, other_company):
+    mine = services.add_document_type(company.id, "Mine")
+    theirs = services.add_document_type(other_company.id, "Theirs")
+
+    services.reorder_document_types(company.id, [theirs.id, mine.id])
+
+    assert db.session.get(DocumentType, theirs.id).sort_order == 0  # untouched
+
+
+# --- sections_for_order: the merge/order logic behind the order page -----
+
+def test_no_types_configured_means_no_sectioning(company, order):
+    assert services.has_document_types(company.id) is False
+
+
+def test_sections_follow_sort_order_and_are_uploadable(company, order):
+    mockups = services.add_document_type(company.id, "Mockups")
+    renderings = services.add_document_type(company.id, "Renderings")
+    services.upload(company.id, order.id, [("m.png", _png_bytes())], document_type_id=mockups.id)
+    services.upload(company.id, order.id, [("r.png", _png_bytes())], document_type_id=renderings.id)
+
+    sections = services.sections_for_order(order.id, company.id)
+
+    # "Other" is always appended last, on top of the two configured types.
+    assert [s.label for s in sections] == ["Mockups", "Renderings", "Other"]
+    assert all(s.can_upload for s in sections)
+    assert [d.original_filename for d in sections[0].documents] == ["m.png"]
+
+
+def test_an_empty_active_type_still_gets_a_section(company, order):
+    services.add_document_type(company.id, "Mockups")
+    sections = services.sections_for_order(order.id, company.id)
+    assert [s.label for s in sections] == ["Mockups", "Other"]
+    assert sections[0].documents == []
+    assert sections[0].can_upload is True
+
+
+def test_hidden_type_keeps_its_section_if_referenced_but_not_uploadable(company, order):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.upload(
+        company.id, order.id, [("m.png", _png_bytes())],
+        document_type_id=document_type.id,
+    )
+    services.toggle_document_type(company.id, document_type.id)  # hide
+
+    sections = services.sections_for_order(order.id, company.id)
+
+    assert [s.label for s in sections] == ["Mockups", "Other"]
+    assert sections[0].can_upload is False
+
+
+def test_hidden_unreferenced_type_has_no_section(company, order):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.toggle_document_type(company.id, document_type.id)  # hidden, never used
+    sections = services.sections_for_order(order.id, company.id)
+    # Only the permanent "Other" bucket remains — the hidden, unused type
+    # doesn't get a section of its own.
+    assert [s.label for s in sections] == ["Other"]
+
+
+def test_other_bucket_is_always_present_and_uploadable_once_types_exist(company, order):
+    services.add_document_type(company.id, "Mockups")
+
+    sections = services.sections_for_order(order.id, company.id)
+    other = [s for s in sections if s.label == "Other"]
+    assert len(other) == 1
+    assert other[0].can_upload is True
+    assert other[0].document_type is None
+    assert other[0].documents == []
+
+    services.upload(company.id, order.id, [("legacy.png", _png_bytes())])  # no type
+
+    sections = services.sections_for_order(order.id, company.id)
+    other = next(s for s in sections if s.label == "Other")
+    assert [d.original_filename for d in other.documents] == ["legacy.png"]
+
+
+def test_uploading_into_other_keeps_the_document_untyped(company, order):
+    services.add_document_type(company.id, "Mockups")
+    result = services.upload(company.id, order.id, [("a.png", _png_bytes())], document_type_id=None)
+    assert result.saved[0].document_type_id is None
+
+
+def test_other_bucket_is_always_last(company, order):
+    document_type = services.add_document_type(company.id, "Mockups")
+    services.upload(company.id, order.id, [("legacy.png", _png_bytes())])
+    services.upload(
+        company.id, order.id, [("m.png", _png_bytes())],
+        document_type_id=document_type.id,
+    )
+
+    sections = services.sections_for_order(order.id, company.id)
+
+    assert sections[-1].label == "Other"
+
+
+# --- upload() with a document_type_id -------------------------------------
+
+def test_upload_stores_the_given_document_type(company, order):
+    document_type = services.add_document_type(company.id, "Mockups")
+    result = services.upload(
+        company.id, order.id, [("a.png", _png_bytes())],
+        document_type_id=document_type.id,
+    )
+    assert result.saved[0].document_type_id == document_type.id
+
+
+def test_upload_with_a_foreign_document_type_id_falls_back_to_none(company, order, other_company):
+    theirs = services.add_document_type(other_company.id, "Theirs")
+    result = services.upload(
+        company.id, order.id, [("a.png", _png_bytes())], document_type_id=theirs.id,
+    )
+    assert result.saved[0].document_type_id is None
+
+
+def test_upload_with_a_bogus_document_type_id_falls_back_to_none(company, order):
+    result = services.upload(
+        company.id, order.id, [("a.png", _png_bytes())], document_type_id=999999,
+    )
+    assert result.saved[0].document_type_id is None
+
+
+# --- routes: settings-level document type management ----------------------
+
+def test_add_type_route_creates_a_type(logged_in, company):
+    response = logged_in.post(
+        "/settings/document-types", data={"label": "Mockups"}, follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert DocumentType.query.filter_by(company_id=company.id, label="Mockups").first() is not None
+
+
+def test_add_type_route_rejects_a_duplicate_and_flashes_a_message(logged_in, company):
+    logged_in.post("/settings/document-types", data={"label": "Mockups"})
+
+    response = logged_in.post(
+        "/settings/document-types", data={"label": "Mockups"}, follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"already exists" in response.data
+    assert DocumentType.query.filter_by(company_id=company.id, label="Mockups").count() == 1
+
+
+def test_reorder_route_persists_the_new_order(logged_in, company):
+    a = services.add_document_type(company.id, "A")
+    b = services.add_document_type(company.id, "B")
+
+    response = logged_in.post(
+        "/settings/document-types/reorder",
+        data=json.dumps({"order": [b.id, a.id]}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 204
+    assert [t.label for t in services.list_document_types(company.id)] == ["B", "A"]
+
+
+@pytest.mark.parametrize("path", [
+    "/settings/document-types",
+    "/settings/document-types/1/toggle",
+    "/settings/document-types/1/delete",
+])
+def test_document_type_management_routes_require_login(app, path):
+    response = app.test_client().post(path, data={})
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_reorder_route_requires_login(app, company):
+    document_type = services.add_document_type(company.id, "A")
+    response = app.test_client().post(
+        "/settings/document-types/reorder",
+        data=json.dumps({"order": [document_type.id]}),
+        content_type="application/json",
+    )
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_upload_route_accepts_a_document_type_id(logged_in, company, order):
+    document_type = services.add_document_type(company.id, "Mockups")
+    data = {
+        "files": (io.BytesIO(_png_bytes()), "a.png"),
+        "document_type_id": str(document_type.id),
+    }
+    logged_in.post(
+        f"/orders/{order.id}/documents/upload", data=data,
+        content_type="multipart/form-data",
+    )
+    doc = Document.query.filter_by(order_id=order.id).first()
+    assert doc.document_type_id == document_type.id
+
+
+# --- migrations ------------------------------------------------------------
 
 def test_legacy_documents_table_is_dropped(app):
     import sqlalchemy as sa
@@ -299,3 +571,31 @@ def test_legacy_documents_table_is_dropped(app):
 
         inspector = sa.inspect(db.engine)
         assert "documents" not in inspector.get_table_names()
+
+
+def test_migration_adds_document_type_id_to_existing_installs(app):
+    import sqlalchemy as sa
+
+    from documents import migrations as documents_migrations
+
+    with app.app_context():
+        # SQLite refuses to DROP COLUMN a column involved in a foreign key
+        # (even one it owns, like this one referencing document_types), so
+        # the pre-migration shape is rebuilt from scratch instead — same
+        # approach as the legacy `documents` table test above.
+        db.session.execute(sa.text("DROP TABLE order_documents"))
+        db.session.execute(sa.text(
+            "CREATE TABLE order_documents ("
+            "id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL, "
+            "order_id INTEGER NOT NULL, original_filename VARCHAR(255) NOT NULL, "
+            "stored_filename VARCHAR(64) NOT NULL, thumbnail_filename VARCHAR(64), "
+            "content_type VARCHAR(100) NOT NULL, size_bytes INTEGER NOT NULL, "
+            "uploaded_at DATETIME NOT NULL)"
+        ))
+        db.session.commit()
+
+        documents_migrations.run_migrations()
+
+        inspector = sa.inspect(db.engine)
+        columns = {c["name"] for c in inspector.get_columns("order_documents")}
+        assert "document_type_id" in columns

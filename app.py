@@ -10,6 +10,7 @@ tenant later is additive.
 """
 
 import os
+import re
 
 # Load .env before ANY other project import. Not stylistic: communications/
 # config.py reads os.environ at *module* level, so loading after that import
@@ -29,7 +30,7 @@ else:
 from datetime import date, timedelta  # noqa: E402 — must follow load_dotenv
 from calendar import Calendar, month_name  # noqa: E402
 
-from flask import Flask, render_template, request, redirect, url_for, abort  # noqa: E402
+from flask import Flask, render_template, request, redirect, url_for, abort, session  # noqa: E402
 from flask_login import (  # noqa: E402
     LoginManager, current_user, login_required, login_user, logout_user,
 )
@@ -257,6 +258,33 @@ def _parse_amount(raw: str | None) -> float | None:
         return float(raw)
     except ValueError:
         return None
+
+
+def format_phone(raw: str | None) -> str:
+    """Normalize a phone number to 416-555-0133 style on the way in.
+
+    Formatting on save (not just on display) means every form that shows a
+    phone number afterwards — client page, clients list, timeline modal —
+    reads the same way with no per-template logic. A North American 10-digit
+    number (however it was typed: dots, spaces, no separators, a leading "1")
+    becomes XXX-XXX-XXXX; anything else (extensions, international numbers)
+    is left exactly as entered rather than mangled by a guess.
+    """
+    if not raw:
+        return ""
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"{digits[0:3]}-{digits[3:6]}-{digits[6:10]}"
+    return raw.strip()
+
+
+# Registered so templates can normalize phone numbers saved before this
+# formatting existed, not just ones entered after — `format_phone` is applied
+# on save too (see new_client/edit_client/new_order), but a filter covers
+# whatever's already sitting in the database unformatted.
+app.jinja_env.filters["phone"] = format_phone
 
 
 def back_label(return_to: str) -> str:
@@ -598,7 +626,7 @@ def new_client():
             first_name=first_name,
             last_name=last_name,
             email=request.form.get("email", "").strip(),
-            phone=request.form.get("phone", "").strip(),
+            phone=format_phone(request.form.get("phone", "")),
         )
         db.session.add(client)
         db.session.commit()
@@ -673,7 +701,7 @@ def edit_client(client_id: int):
     client.first_name = request.form.get("first_name", "").strip() or client.first_name
     client.last_name = request.form.get("last_name", "").strip() or client.last_name
     client.email = request.form.get("email", "").strip()
-    client.phone = request.form.get("phone", "").strip()
+    client.phone = format_phone(request.form.get("phone", ""))
     # Address fields are only on the full client page, not the timeline's
     # quick-edit modal — absent from the form means "not shown", not
     # "cleared". The province gate matters more than it looks: it decides
@@ -725,7 +753,7 @@ def new_order():
                 first_name=first_name,
                 last_name=last_name,
                 email=request.form.get("new_email", "").strip(),
-                phone=request.form.get("new_phone", "").strip(),
+                phone=format_phone(request.form.get("new_phone", "")),
             )
             db.session.add(client)
             db.session.flush()  # assigns client.id
@@ -803,6 +831,7 @@ def order_page(order_id: int):
         key=lambda t: t.sort_order,
     )
     storage_used_bytes = documents_service.usage_for_company(current_user.company_id)
+    has_document_types = documents_service.has_document_types(current_user.company_id)
     return render_template(
         "order_page.html",
         section="details",
@@ -812,8 +841,13 @@ def order_page(order_id: int):
         return_to=return_to,
         back_label=back_label(return_to),
         active_view=None,
-        # For the documents/_explorer.html partial included below.
-        documents=documents_service.list_for_order(order.id),
+        # For the documents/_explorer.html partial included below. Flat
+        # layout (documents) when no DocumentType exists for the company;
+        # sectioned (sections) once at least one does — see has_document_types.
+        has_document_types=has_document_types,
+        documents=None if has_document_types else documents_service.list_for_order(order.id),
+        sections=documents_service.sections_for_order(order.id, current_user.company_id)
+            if has_document_types else None,
         documents_notice=documents_routes.take_notice(),
         storage_used_bytes=storage_used_bytes,
         storage_limit_bytes=documents_config.MAX_TOTAL_BYTES,
@@ -969,6 +1003,32 @@ def get_order_type_or_404(order_type_id: int) -> OrderType:
     return order_type
 
 
+def _flash_settings_notice(message: str) -> None:
+    """One-shot message for the next settings page render.
+
+    Same session-key-scoped shape as documents' _flash/take_notice and
+    communications' _flash/_take_notice — this app has no app-wide flash
+    convention, so each part that needs one keeps its own key rather than
+    introducing Flask's flash() globally.
+    """
+    session["settings_notice"] = message
+
+
+def _take_settings_notice() -> str | None:
+    return session.pop("settings_notice", None)
+
+
+def _is_duplicate_label(model, company_id: int, label: str) -> bool:
+    """Case-insensitive match against every row this company has for
+    `model` (active and hidden both — a hidden row is still a real one
+    someone could unhide back into a naming collision)."""
+    normalized = label.strip().lower()
+    return any(
+        row.label.strip().lower() == normalized
+        for row in model.query.filter_by(company_id=company_id)
+    )
+
+
 @app.route("/settings")
 @login_required
 def settings():
@@ -1002,6 +1062,10 @@ def settings_orders():
         section="orders",
         company=db.session.get(Company, current_user.company_id),
         order_types=order_types,
+        # For the documents/_settings_types.html partial included below.
+        document_types=documents_service.list_document_types(current_user.company_id),
+        documents_notice=documents_routes.take_notice(),
+        notice=_take_settings_notice(),
         active_view="settings",
     )
 
@@ -1019,6 +1083,7 @@ def settings_clients():
         section="clients",
         company=db.session.get(Company, current_user.company_id),
         source_options=source_options,
+        notice=_take_settings_notice(),
         active_view="settings",
     )
 
@@ -1067,7 +1132,9 @@ def update_preferences():
 @login_required
 def add_order_type():
     label = request.form.get("label", "").strip()
-    if label:
+    if label and _is_duplicate_label(OrderType, current_user.company_id, label):
+        _flash_settings_notice(f'An order type called "{label}" already exists.')
+    elif label:
         max_sort_order = (
             OrderType.query.filter_by(company_id=current_user.company_id)
             .count()
@@ -1104,7 +1171,9 @@ def delete_order_type(order_type_id: int):
 @login_required
 def add_source_option():
     label = request.form.get("label", "").strip()
-    if label:
+    if label and _is_duplicate_label(SourceOption, current_user.company_id, label):
+        _flash_settings_notice(f'An option called "{label}" already exists.')
+    elif label:
         max_sort_order = (
             SourceOption.query.filter_by(company_id=current_user.company_id)
             .count()
