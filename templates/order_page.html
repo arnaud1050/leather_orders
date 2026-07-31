@@ -88,7 +88,7 @@
     </div>
     {% if order.tax_status != 'ok' %}
     <p class="warning-note">
-      {% if order.tax_status == 'no_client_province' %}
+      {% if order.tax_status == 'no_buyer_province' %}
         No sales tax is being charged — <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a>
         has no province on file, and the rate follows the client's province.
       {% elif order.tax_status == 'unknown_province' %}
@@ -125,16 +125,16 @@
     {% if order.invoice %}
     <ul class="doc-list">
       <li class="doc-list__item">
-        <a class="doc-list__label" href="{{ url_for('invoice_page', invoice_id=order.invoice.id) }}?return_to={{ request.path }}">{{ order.invoice.number }}</a>
+        <a class="doc-list__label" href="{{ url_for('billing.invoice_page', invoice_id=order.invoice.id) }}?return_to={{ request.path }}">{{ order.invoice.number }}</a>
         <span class="doc-list__filename">
           issued {{ order.invoice.issued_date.strftime('%b') }} {{ order.invoice.issued_date.day }}, {{ order.invoice.issued_date.year }}
         </span>
-        <span class="pill pill--{{ order.invoice.display_status }}">{{ invoice_status_labels[order.invoice.display_status] }}</span>
+        <span class="pill pill--{{ order.invoice_status }}">{{ invoice_status_labels[order.invoice_status] }}</span>
       </li>
     </ul>
     {% else %}
     <p class="detail-note">Not invoiced yet. Creating one assigns the next number in the company's sequence.</p>
-    <form method="post" action="{{ url_for('create_invoice', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <form method="post" action="{{ url_for('billing.create', subject_id=order.id) }}" class="detail-form detail-inline-add">
       <label>Payment due<input type="date" name="due_date" value="{{ order.due.isoformat() }}"></label>
       <div>
         <button type="submit" class="btn-primary">Create invoice</button>

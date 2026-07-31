@@ -21,7 +21,7 @@
       {% set pending_leads = new_lead_count() %}
       {% if pending_leads %}<span class="nav-badge" title="{{ pending_leads }} new lead{{ 's' if pending_leads != 1 }} in the inbox">{{ pending_leads }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('invoices') }}" class="view-switch__link {{ 'is-active' if active_view == 'invoices' else '' }}">Invoices</a>
+    <a href="{{ url_for('billing.invoice_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'invoices' else '' }}">Invoices</a>
     <a href="{{ url_for('analytics') }}" class="view-switch__link {{ 'is-active' if active_view == 'analytics' else '' }}">Analytics</a>
     <a href="{{ url_for('settings') }}" class="view-switch__link {{ 'is-active' if active_view == 'settings' else '' }}">Settings</a>
     <a href="{{ url_for('logout') }}" class="view-switch__logout">Log out</a>

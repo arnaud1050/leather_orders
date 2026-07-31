@@ -517,9 +517,10 @@ class EmailAttachment(db.Model):
 class CalendarEvent(db.Model):
     """A calendar event mirrored from the provider.
 
-    Read-mostly in Phase 1: sync pulls events in, and the month view shows
-    them next to order due dates. `client_id` is nullable and set the same
-    way threads are — by matching an attendee against Client.email.
+    Read-mostly in Phase 1: sync pulls events in, and they are the only thing
+    the month view renders (orders live on the timeline). `client_id` is
+    nullable and set the same way threads are — by matching an attendee
+    against Client.email.
     """
 
     __tablename__ = "calendar_events"

@@ -58,7 +58,7 @@
         <span class="message__sender">{{ message.sender_label }}</span>
         <span class="message__meta">
           {{ 'received' if message.is_incoming else 'sent' }}
-          {# In the company's timezone (see /settings/preferences), and without
+          {# In the company's timezone (see /settings/general), and without
              naming it — one setting for the whole app doesn't need repeating on
              every line. #}
           {% if message.received_date %}{{ message.received_date|local_datetime }}{% endif %}

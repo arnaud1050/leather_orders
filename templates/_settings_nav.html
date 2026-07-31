@@ -4,7 +4,9 @@
    not own a private copy of this nav, or the two drift the first time a
    category is added. Each page passes `section`. #}
 <nav class="settings-nav">
+  <a href="{{ url_for('settings_general') }}" class="settings-nav__link {{ 'is-active' if section == 'general' else '' }}">General</a>
+  <a href="{{ url_for('settings_orders') }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
+  <a href="{{ url_for('settings_clients') }}" class="settings-nav__link {{ 'is-active' if section == 'clients' else '' }}">Clients</a>
   <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
-  <a href="{{ url_for('settings_preferences') }}" class="settings-nav__link {{ 'is-active' if section == 'preferences' else '' }}">Order preferences</a>
   <a href="{{ url_for('communications.integrations') }}" class="settings-nav__link {{ 'is-active' if section == 'integrations' else '' }}">Integrations</a>
 </nav>

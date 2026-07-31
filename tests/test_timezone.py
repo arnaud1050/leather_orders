@@ -89,19 +89,19 @@ def test_the_zone_is_offered_and_the_current_one_preselected(logged_in, company)
     company.timezone = "America/Toronto"
     db.session.commit()
 
-    body = logged_in.get("/settings/preferences").get_data(as_text=True)
+    body = logged_in.get("/settings/general").get_data(as_text=True)
     assert 'value="America/Toronto" selected' in body
 
 
 def test_saving_a_zone(logged_in, company):
-    logged_in.post("/settings/preferences", data={"timezone": "America/Halifax"})
+    logged_in.post("/settings/general", data={"timezone": "America/Halifax"})
     assert db.session.get(Company, company.id).timezone == "America/Halifax"
 
 
 @pytest.mark.parametrize("value", ["Mars/Olympus_Mons", "", "america/halifax"])
 def test_a_zone_outside_the_offered_list_is_ignored(logged_in, company, value):
     """Storing an unresolvable name would silently push every time to UTC."""
-    logged_in.post("/settings/preferences", data={"timezone": value})
+    logged_in.post("/settings/general", data={"timezone": value})
     assert db.session.get(Company, company.id).timezone == DEFAULT_TIMEZONE
 
 

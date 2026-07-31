@@ -83,7 +83,7 @@
         — due {{ o.due.strftime('%b') }} {{ o.due.day }}, {{ o.due.year }}
         <span class="dot dot--{{ o.status }}"></span>
         {% if o.invoice %}
-        <a class="invoice-ref" href="{{ url_for('invoice_page', invoice_id=o.invoice.id) }}?return_to={{ return_to }}">{{ o.invoice.number }}</a>
+        <a class="invoice-ref" href="{{ url_for('billing.invoice_page', invoice_id=o.invoice.id) }}?return_to={{ return_to }}">{{ o.invoice.number }}</a>
         {% endif %}
       </li>
       {% endfor %}

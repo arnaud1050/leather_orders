@@ -32,6 +32,18 @@
     </div>
   </header>
 
+  {% if notice %}
+  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  {% endif %}
+
+  {# No event UI at all for a studio that hasn't connected a calendar — a
+     button whose only possible outcome is an error isn't worth showing. #}
+  {% if has_calendar %}
+  <div class="legend-row">
+    <button type="button" class="btn-primary legend__new-order" data-open-modal="event-modal-new">+ New event</button>
+  </div>
+  {% endif %}
+
   <table class="calendar">
     <thead>
       <tr>
@@ -53,15 +65,18 @@
               {% if cell.is_today %}<span class="day__rivet" title="Today"></span>{% endif %}
             </div>
             <div class="day__events">
-              {# Google Calendar events, read-only — this calendar shows only
-                 synced appointments; orders live on the timeline. #}
+              {# Google Calendar events — this calendar shows only synced
+                 appointments; orders live on the timeline. Each chip opens that
+                 event's edit dialog, one dialog per event however many days it
+                 spans (see events_in_view). #}
               {% for event in cell.events %}
-              <div class="chip chip--event" title="{{ event.description or '' }}">
+              <button type="button" class="chip chip--event" data-open-modal="event-modal-{{ event.id }}"
+                      title="{{ event.description or 'Edit this event' }}">
                 <span class="chip__title">{{ event.title or '(untitled event)' }}</span>
                 <span class="chip__time">
                   {% if not event.all_day and event.start_time %}{{ event.start_time|local_time }}{% if event.end_time %} - {{ event.end_time|local_time }}{% endif %}{% else %}All day{% endif %}
                 </span>
-              </div>
+              </button>
               {% endfor %}
             </div>
           </td>
@@ -72,5 +87,140 @@
     </tbody>
   </table>
 
+  {% if has_calendar %}
+  {# One create dialog, plus one edit dialog per event on screen — same
+     pre-rendered pattern as the timeline's modals. Times shown and submitted
+     are the company's local wall clock; the route converts (see _to_utc). #}
+  <dialog id="event-modal-new" class="modal">
+    <form method="post" action="{{ url_for('communications.create_calendar_event') }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <h2 class="modal__title">New event</h2>
+      <p class="modal__subtitle">Added to your Google Calendar.</p>
+
+      <label class="modal__field">Title<input type="text" name="title" required></label>
+      <label class="modal__field">Starts
+        <span class="modal__pair">
+          <input type="date" name="start_date" value="{{ default_date.isoformat() }}" required>
+          <input type="time" name="start_time" value="10:00" data-timed-field>
+        </span>
+      </label>
+      <label class="modal__field">Ends
+        <span class="modal__pair">
+          <input type="date" name="end_date" value="{{ default_date.isoformat() }}">
+          <input type="time" name="end_time" value="11:00" data-timed-field>
+        </span>
+      </label>
+      <label class="checkbox-group__item"><input type="checkbox" name="all_day" data-all-day> All day</label>
+
+      <label class="modal__field">Location<input type="text" name="location"></label>
+      <label class="modal__field">Notes<textarea name="description" rows="3"></textarea></label>
+      <label class="modal__field">Client
+        <select name="client_id">
+          <option value="">No client</option>
+          {% for client in clients %}
+          <option value="{{ client.id }}">{{ client.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="modal__field">Invite
+        <input type="text" name="attendees" placeholder="Optional, comma separated">
+      </label>
+
+      <div class="modal__actions">
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn-primary">Add event</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  {% for event in events_in_view %}
+  <dialog id="event-modal-{{ event.id }}" class="modal">
+    <form method="post" action="{{ url_for('communications.update_calendar_event', event_id=event.id) }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <h2 class="modal__title">{{ event.title or '(untitled event)' }}</h2>
+
+      <label class="modal__field">Title<input type="text" name="title" value="{{ event.title or '' }}" required></label>
+      <label class="modal__field">Starts
+        <span class="modal__pair">
+          <input type="date" name="start_date" value="{{ event.start_time|local_datetime('%Y-%m-%d') }}" required>
+          <input type="time" name="start_time" value="{{ event.start_time|local_datetime('%H:%M') }}" data-timed-field>
+        </span>
+      </label>
+      <label class="modal__field">Ends
+        <span class="modal__pair">
+          <input type="date" name="end_date" value="{{ (event.end_time or event.start_time)|local_datetime('%Y-%m-%d') }}">
+          <input type="time" name="end_time" value="{{ (event.end_time or event.start_time)|local_datetime('%H:%M') }}" data-timed-field>
+        </span>
+      </label>
+      <label class="checkbox-group__item">
+        <input type="checkbox" name="all_day" data-all-day {% if event.all_day %}checked{% endif %}> All day
+      </label>
+
+      <label class="modal__field">Location<input type="text" name="location" value="{{ event.location or '' }}"></label>
+      <label class="modal__field">Notes<textarea name="description" rows="3">{{ event.description or '' }}</textarea></label>
+      <label class="modal__field">Client
+        <select name="client_id">
+          <option value="">No client</option>
+          {% for client in clients %}
+          <option value="{{ client.id }}" {% if event.client_id == client.id %}selected{% endif %}>{{ client.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {# No guest field here on purpose. Attendees aren't mirrored locally (sync
+         only reads them to match a client), and Google's patch replaces the
+         whole list — so a form built without them would uninvite everyone.
+         Invite when creating, or manage guests in Google Calendar. #}
+
+      <div class="modal__actions">
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  {% endfor %}
+  {% endif %}
+
 </div>
+
+{% if has_calendar %}
+<script>
+  document.querySelectorAll('[data-open-modal]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var modal = document.getElementById(el.dataset.openModal);
+      if (modal) modal.showModal();
+    });
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      el.closest('dialog').close();
+    });
+  });
+
+  // Backdrop click closes, same as the timeline's modals.
+  document.querySelectorAll('dialog.modal').forEach(function (dialog) {
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+
+  // An all-day event has no times to enter. Disabled rather than hidden so the
+  // fields don't submit values the server would have to know to ignore.
+  document.querySelectorAll('[data-all-day]').forEach(function (checkbox) {
+    var apply = function () {
+      checkbox.closest('form').querySelectorAll('[data-timed-field]').forEach(function (field) {
+        field.disabled = checkbox.checked;
+      });
+    };
+    checkbox.addEventListener('change', apply);
+    apply();
+  });
+</script>
+{% endif %}
 {% endblock %}

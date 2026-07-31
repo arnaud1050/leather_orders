@@ -14,7 +14,7 @@ Every route is @login_required and derives its tenant from
 enforces CSRF on every unsafe request (see security.validate_csrf).
 """
 
-from datetime import timezone
+from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 
 from flask import (
@@ -22,7 +22,7 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
-from models import DEFAULT_TIMEZONE, db
+from models import Client, DEFAULT_TIMEZONE, db
 
 from communications import config, jobs
 from communications.models import (
@@ -32,7 +32,9 @@ from communications.oauth import google_oauth
 from communications.providers.base import ProviderError
 from communications.providers.registry import PROVIDER_LABELS
 from communications.security import csrf_token, validate_csrf
-from communications.services import account_service, audit, email_service
+from communications.services import (
+    account_service, audit, calendar_service, email_service,
+)
 
 bp = Blueprint(
     "communications", __name__,
@@ -65,10 +67,19 @@ def _take_notice():
     return session.pop("comms_notice", None)
 
 
+def take_notice():
+    """Public form of `_take_notice`, for a host-app page that renders a
+    result from this module — app.py's calendar view, whose event forms post
+    into this blueprint. Part of the module's API surface, like the services:
+    the alternative was app.py reaching for the session key by name.
+    """
+    return _take_notice()
+
+
 # ---------------------------------------------------------------------------
-# Integrations settings page. Sits under /settings as a third category
-# alongside Invoicing and Order preferences, following the same
-# .settings-nav pattern (see CLAUDE.md, "Settings").
+# Integrations settings page. Sits under /settings as one of several
+# categories alongside General, Invoicing, Orders and Clients, following
+# the same .settings-nav pattern (see CLAUDE.md, "Settings").
 # ---------------------------------------------------------------------------
 
 @bp.route("/settings/integrations")
@@ -86,7 +97,7 @@ def integrations():
         configuration_problem=config.configuration_problem(),
         using_derived_key=_using_derived_key(),
         scheduler_enabled=jobs.scheduler_enabled(),
-        audit_entries=audit.recent(company_id, limit=15),
+        audit_entries=audit.recent(company_id, limit=10),
         audit_labels=AUDIT_EVENT_LABELS,
         notice=_take_notice(),
         active_view="settings",
@@ -455,6 +466,149 @@ def download_attachment(attachment_id: int):
     )
 
 
+# ---------------------------------------------------------------------------
+# Calendar events. The month view itself is app.py's (orders used to share
+# that grid), but writing an event is this module's job — it goes out to a
+# provider, so it belongs behind the service and inside this blueprint's CSRF.
+#
+# Both routes take a wall-clock date/time from the form and convert it with
+# _to_utc: the studio types 2pm meaning 2pm where it is, and everything below
+# this layer speaks naive UTC.
+# ---------------------------------------------------------------------------
+
+@bp.route("/calendar/events/new", methods=["POST"])
+@login_required
+def create_calendar_event():
+    return_to = request.form.get("return_to") or url_for("calendar_view")
+    try:
+        start, end, all_day = _event_window(request.form)
+    except ValueError as exc:
+        _flash(str(exc), "error")
+        return redirect(return_to)
+
+    try:
+        calendar_service.create_event(
+            current_user.company_id,
+            title=request.form.get("title", "").strip() or "(untitled event)",
+            start=start, end=end, all_day=all_day,
+            description=request.form.get("description", "").strip() or None,
+            location=request.form.get("location", "").strip() or None,
+            attendees=_attendees(request.form.get("attendees")),
+            client_id=_client_id(request.form.get("client_id")),
+        )
+    except (calendar_service.CalendarServiceError, ProviderError) as exc:
+        _flash(str(exc), "error")
+        return redirect(return_to)
+    _flash("Event added to your Google Calendar.", "success")
+    return redirect(return_to)
+
+
+@bp.route("/calendar/events/<int:event_id>", methods=["POST"])
+@login_required
+def update_calendar_event(event_id: int):
+    """Edit a mirrored event.
+
+    Attendees are deliberately not editable here: Google's PATCH replaces the
+    whole attendee list, so sending one built from a form that never loaded the
+    existing guests would silently uninvite them.
+    """
+    return_to = request.form.get("return_to") or url_for("calendar_view")
+    try:
+        start, end, all_day = _event_window(request.form)
+    except ValueError as exc:
+        _flash(str(exc), "error")
+        return redirect(return_to)
+
+    try:
+        calendar_service.update_event(
+            current_user.company_id, event_id,
+            title=request.form.get("title", "").strip() or "(untitled event)",
+            start=start, end=end, all_day=all_day,
+            description=request.form.get("description", "").strip() or None,
+            location=request.form.get("location", "").strip() or None,
+            client_id=_client_id(request.form.get("client_id")),
+        )
+    except (calendar_service.CalendarServiceError, ProviderError) as exc:
+        _flash(str(exc), "error")
+        return redirect(return_to)
+    _flash("Event updated.", "success")
+    return redirect(return_to)
+
+
+def _event_window(form) -> tuple[datetime, datetime, bool]:
+    """(start, end, all_day) in naive UTC, from the four date/time fields.
+
+    Raises ValueError with something worth showing the user. Validating here
+    rather than trusting the browser's date/time inputs, which are trivially
+    bypassed and blank on older ones.
+    """
+    all_day = bool(form.get("all_day"))
+    start_date = _parse_date(form.get("start_date"))
+    if start_date is None:
+        raise ValueError("An event needs a start date.")
+    end_date = _parse_date(form.get("end_date")) or start_date
+
+    if all_day:
+        # Midnight local, and the end is the last day the event covers — the
+        # provider converts to Google's exclusive end date.
+        start = datetime.combine(start_date, time.min)
+        end = datetime.combine(end_date, time.min)
+    else:
+        start_time = _parse_time(form.get("start_time"))
+        end_time = _parse_time(form.get("end_time"))
+        if start_time is None or end_time is None:
+            raise ValueError("A timed event needs both a start and an end time.")
+        start = datetime.combine(start_date, start_time)
+        end = datetime.combine(end_date, end_time)
+
+    if end < start:
+        raise ValueError("The event ends before it starts.")
+    return _to_utc(start), _to_utc(end), all_day
+
+
+def _parse_date(value):
+    try:
+        return datetime.strptime((value or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _parse_time(value):
+    raw = (value or "").strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):  # some browsers include seconds
+        try:
+            return datetime.strptime(raw, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def _attendees(raw):
+    """Comma-separated invitees, or None. Whatever is typed goes to Google as
+    entered — it validates addresses far better than a regex here would."""
+    addresses = [part.strip() for part in (raw or "").split(",") if part.strip()]
+    return addresses or None
+
+
+def _client_id(raw):
+    """The optional client link, checked against the current tenant.
+
+    Blank means "no client", which is a real value — clearing the link has to
+    be possible. An id belonging to another company is treated the same as
+    blank rather than trusted: it arrives in a form field anyone can edit.
+    """
+    try:
+        client_id = int(raw) if (raw or "").strip() else None
+    except ValueError:
+        return None
+    if client_id is None:
+        return None
+    exists = Client.query.filter_by(
+        id=client_id, company_id=current_user.company_id,
+    ).first()
+    return client_id if exists else None
+
+
 @bp.app_context_processor
 def _inject_new_lead_count():
     """Make the "new leads" badge available to every template.
@@ -490,7 +644,7 @@ def _local_datetime(value, fmt: str = "%b %d, %Y at %H:%M") -> str:
     Every stored timestamp is naive UTC (see the models docstring), which is
     the right thing to store and the wrong thing to show — "10:31" on a
     Vancouver studio's screen has to mean 10:31 there. The zone is
-    `Company.timezone`, set at /settings/preferences.
+    `Company.timezone`, set at /settings/general.
 
     The zone name is deliberately not printed alongside: there is one setting
     for the whole company, so repeating it on every line says nothing.
@@ -501,12 +655,32 @@ def _local_datetime(value, fmt: str = "%b %d, %Y at %H:%M") -> str:
     """
     if value is None:
         return ""
+    return value.replace(tzinfo=timezone.utc).astimezone(_company_zone()).strftime(fmt)
+
+
+def _company_zone():
+    """The logged-in user's company zone, or UTC if it can't be resolved.
+
+    Falls back rather than raising: this runs on the login page (no user) and
+    could meet a stored zone this Python has no data for. A wrong-looking time
+    beats a 500 on a page that merely mentions a date. The one place that must
+    *not* be forgiving is writing a time to a provider — see `_to_utc`.
+    """
     try:
         name = current_user.company.timezone if current_user.is_authenticated else None
-        zone = ZoneInfo(name or DEFAULT_TIMEZONE)
+        return ZoneInfo(name or DEFAULT_TIMEZONE)
     except Exception:  # noqa: BLE001 — see docstring
-        zone = timezone.utc
-    return value.replace(tzinfo=timezone.utc).astimezone(zone).strftime(fmt)
+        return timezone.utc
+
+
+def _to_utc(value: datetime) -> datetime:
+    """A wall-clock time the user typed, as naive UTC for storage and the wire.
+
+    The inverse of `_local_datetime`: a form says "2pm" and means 2pm where the
+    studio is. Getting this wrong doesn't look wrong — it silently books the
+    appointment a few hours out.
+    """
+    return value.replace(tzinfo=_company_zone()).astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _local_time(value) -> str:

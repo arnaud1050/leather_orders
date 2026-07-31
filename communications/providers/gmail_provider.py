@@ -334,7 +334,7 @@ class GoogleCalendarProvider(_GoogleBase, CalendarProvider):
         if fields.get("start"):
             body["start"] = _event_time(fields["start"], all_day)
         if fields.get("end"):
-            body["end"] = _event_time(fields["end"], all_day)
+            body["end"] = _event_time(fields["end"], all_day, is_end=True)
 
         try:
             updated = self._calendar().events().patch(
@@ -450,6 +450,10 @@ def _parse_google_datetime(node: dict) -> tuple[datetime | None, bool]:
 def _parse_event(item: dict) -> FetchedEvent:
     start, all_day = _parse_google_datetime(item.get("start", {}))
     end, _ = _parse_google_datetime(item.get("end", {}))
+    # Google's all-day end is exclusive (see _event_time). Stored inclusive, or
+    # a one-day event renders on two days of the month grid.
+    if all_day and end:
+        end -= timedelta(days=1)
     return FetchedEvent(
         provider_event_id=item["id"],
         title=item.get("summary"),
@@ -467,9 +471,17 @@ def _parse_event(item: dict) -> FetchedEvent:
     )
 
 
-def _event_time(value: datetime, all_day: bool) -> dict:
+def _event_time(value: datetime, all_day: bool, is_end: bool = False) -> dict:
+    """A start/end node for the wire.
+
+    Google's all-day `end.date` is **exclusive** — a one-day event ends the
+    following morning. Converting here (and back in _parse_event) keeps that
+    quirk inside the vendor boundary: everything above this file stores and
+    shows the last day the event actually covers.
+    """
     if all_day:
-        return {"date": value.date().isoformat()}
+        day = value.date() + timedelta(days=1) if is_end else value.date()
+        return {"date": day.isoformat()}
     return {"dateTime": _to_rfc3339(value), "timeZone": "UTC"}
 
 
@@ -477,7 +489,7 @@ def _event_body(title, start, end, description, location, attendees, all_day) ->
     body = {
         "summary": title,
         "start": _event_time(start, all_day),
-        "end": _event_time(end, all_day),
+        "end": _event_time(end, all_day, is_end=True),
     }
     if description:
         body["description"] = description

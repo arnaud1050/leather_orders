@@ -1,0 +1,89 @@
+{# Every invoice for the tenant, plus what hasn't been invoiced yet.
+
+   `documents` pairs each Invoice row with its resolved InvoiceDocument —
+   the row for the link, the document for every figure. `uninvoiced` is
+   whatever the host chose to hand over; the module doesn't know what a
+   subject is, so those rows arrive pre-shaped (see register()). #}
+{% extends "base.html" %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Invoices</h1>
+    <p class="detail-subtitle">One numbered record per order, however it gets paid</p>
+  </header>
+
+  <div class="client-stats">
+    <div class="client-stats__item">
+      <span class="client-stats__value">${{ '%.2f'|format(outstanding) }}</span>
+      <span class="client-stats__label">Outstanding</span>
+    </div>
+    <div class="client-stats__item">
+      <span class="client-stats__value">{{ documents|length }}</span>
+      <span class="client-stats__label">Invoice{{ 's' if documents|length != 1 else '' }} issued</span>
+    </div>
+  </div>
+
+  {% if documents %}
+  <div class="table-scroll">
+    <table class="invoice-table invoice-table--no-mono">
+      <thead>
+        <tr>
+          <th>Number</th>
+          <th>Client</th>
+          <th>Order</th>
+          <th>Issued</th>
+          <th class="is-numeric">Total</th>
+          <th class="is-numeric">Paid</th>
+          <th class="is-numeric">Balance</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for invoice, doc in documents %}
+        <tr>
+          <td><a href="{{ url_for('billing.invoice_page', invoice_id=invoice.id) }}?return_to={{ request.path }}">{{ doc.number }}</a></td>
+          <td>
+            {% if doc.payer.url %}<a href="{{ doc.payer.url }}?return_to={{ request.path }}">{{ doc.payer.name }}</a>
+            {%- else %}{{ doc.payer.name }}{% endif %}
+          </td>
+          <td>
+            {% if doc.subject_url %}<a href="{{ doc.subject_url }}?return_to={{ request.path }}">{{ doc.subject_description }}</a>
+            {%- else %}{{ doc.subject_description }}{% endif %}
+          </td>
+          <td>{{ doc.issued_date.strftime('%Y-%m-%d') }}</td>
+          <td class="is-numeric">${{ '%.2f'|format(doc.total) }}</td>
+          <td class="is-numeric">${{ '%.2f'|format(doc.amount_paid) }}</td>
+          <td class="is-numeric">${{ '%.2f'|format(doc.balance_due) }}</td>
+          <td><span class="pill pill--{{ doc.display_status }}">{{ status_labels[doc.display_status] }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="detail-note">No invoices yet. Open an order and create one to start the sequence.</p>
+  {% endif %}
+
+  <section class="detail-orders detail-uninvoiced">
+    <h2>Not invoiced yet</h2>
+    {% if uninvoiced %}
+    <ul class="detail-order-list">
+      {% for row in uninvoiced %}
+      <li>
+        <a href="{{ row.url }}?return_to={{ request.path }}">{{ row.label }}</a>
+        — <a class="detail-order-list__client" href="{{ row.payer_url }}?return_to={{ request.path }}">{{ row.payer }}</a>
+        — ${{ '%.2f'|format(row.total) }}
+        — due {{ row.due.strftime('%b') }} {{ row.due.day }}, {{ row.due.year }}
+        <span class="dot dot--{{ row.status }}"></span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="detail-note">Every order has an invoice.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

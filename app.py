@@ -35,9 +35,18 @@ from flask_login import (  # noqa: E402
 )
 
 from models import (  # noqa: E402
-    Client, Company, Document, Invoice, Order, OrderLine, OrderType, Payment,
-    SourceOption, User, db, next_invoice_number, run_migrations, seed_if_empty,
+    Client, Company, Document, Order, OrderLine, OrderType, Payment,
+    SourceOption, User, db, run_migrations, seed_if_empty,
 )
+# Self-contained module: its own models, services, blueprint and templates
+# (see billing/__init__.py). billing_adapter.py is the only file that knows
+# an "order" is what this app bills for.
+import billing.migrations as billing_migrations  # noqa: E402
+import billing.routes as billing_routes  # noqa: E402
+import billing_adapter  # noqa: E402
+from billing import config as billing_config  # noqa: E402
+from billing.services import invoicing  # noqa: E402
+from billing.tax import PROVINCES  # noqa: E402
 # Self-contained module: its own models, services, templates and blueprint
 # (see communications/__init__.py). Importing it here registers its tables
 # with db.create_all() below; register() attaches its routes. Nothing in
@@ -111,12 +120,23 @@ with app.app_context():
     # composition root — a call either way between models.py and the module
     # would be circular.
     communications_migrations.run_migrations()
+    # Same arrangement for billing: its own tables, its own column
+    # migrations, run after the app's (which may still be splitting a
+    # legacy address this module then takes over).
+    billing_migrations.set_subtotal_resolver(billing_adapter.subtotal_of)
+    billing_migrations.run()
     seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
 
 # Background mailbox/calendar sync. A no-op unless RUN_SCHEDULER=1 — with
 # two gunicorn workers an unguarded scheduler would start twice and race
 # itself, so exactly one process should set it. See communications/jobs.py.
 communications_jobs.start_scheduler(app)
+
+# Owned by the billing module now — aliased so the rest of this file and
+# its templates keep reading one name.
+PAYMENT_METHOD_LABELS = billing_config.PAYMENT_METHOD_LABELS
+INVOICE_STATUS_LABELS = billing_config.STATUS_LABELS
+SETTABLE_INVOICE_STATUSES = billing_config.SETTABLE_STATUSES
 
 STATUS_LABELS = {
     "in_progress": "In progress",
@@ -125,36 +145,8 @@ STATUS_LABELS = {
     "rush": "Rush",
 }
 
-# How the money arrived. Square is listed alongside the two manual methods
-# rather than treated specially — the invoice is the app's record either
-# way (see Payment's docstring in models.py).
-PAYMENT_METHOD_LABELS = {
-    "cash": "Cash",
-    "etransfer": "E-transfer",
-    "square": "Square",
-    "other": "Other",
-}
 
-# Canada Post two-letter codes, in the order Canada Post lists them. The
-# code is what's stored and what prints ("Montréal, QC  H1V 1M6"); the
-# full name is only for the dropdown.
-PROVINCES = {
-    "AB": "Alberta",
-    "BC": "British Columbia",
-    "MB": "Manitoba",
-    "NB": "New Brunswick",
-    "NL": "Newfoundland and Labrador",
-    "NT": "Northwest Territories",
-    "NS": "Nova Scotia",
-    "NU": "Nunavut",
-    "ON": "Ontario",
-    "PE": "Prince Edward Island",
-    "QC": "Quebec",
-    "SK": "Saskatchewan",
-    "YT": "Yukon",
-}
-
-# Zones offered at /settings/preferences. A curated list, not
+# Zones offered at /settings/general. A curated list, not
 # zoneinfo.available_timezones() — that's ~600 entries in no useful order, and
 # every one of them is a way to mislabel a studio's own mail. Canada first
 # (west to east), then the couple of places its clients and suppliers are.
@@ -175,15 +167,51 @@ TIME_ZONES = [
     ("UTC", "UTC"),
 ]
 
-# "paid" is derived from the order's payments rather than set by hand, so
-# it isn't offered as something staff can pick — see Invoice.display_status.
-INVOICE_STATUS_LABELS = {
-    "draft": "Draft",
-    "sent": "Sent",
-    "paid": "Paid",
-    "void": "Void",
-}
-SETTABLE_INVOICE_STATUSES = ("draft", "sent", "void")
+
+
+# --- What the billing module needs from this app --------------------------
+#
+# Four small hooks, all host knowledge the module deliberately doesn't
+# have: how to price a subject, what hasn't been invoiced, what the seller
+# is called, and how to word a back link. billing_adapter.py does the
+# actual translation; these just hand it over.
+
+def _uninvoiced_rows(company_id: int):
+    """Orders with no invoice yet — the to-do list the invoice page exists
+    for, shaped the way the module's template expects."""
+    invoiced = invoicing.invoiced_subject_ids(company_id)
+    orders = (
+        Order.query.join(Client)
+        .filter(Client.company_id == company_id)
+        .order_by(Order.due)
+        .all()
+    )
+    return [
+        {
+            "url": url_for("order_page", order_id=order.id),
+            "label": order.item,
+            "payer": order.client.name,
+            "payer_url": url_for("client_page", client_id=order.client.id),
+            "total": order.total,
+            "due": order.due,
+            "status": order.status,
+        }
+        for order in orders if order.id not in invoiced
+    ]
+
+
+def _seller_name(company_id: int) -> str:
+    company = db.session.get(Company, company_id)
+    return company.name if company else ""
+
+
+billing_routes.register(
+    app,
+    resolve_billable=billing_adapter.resolver,
+    uninvoiced=_uninvoiced_rows,
+    display_name=_seller_name,
+    back_label=lambda path: back_label(path),
+)
 
 
 def get_order_or_404(order_id: int) -> Order:
@@ -232,15 +260,6 @@ def back_label(return_to: str) -> str:
     if return_to.startswith("/orders/"):
         return "Back to order"
     return "Back"
-
-
-def get_invoice_or_404(invoice_id: int) -> Invoice:
-    invoice = Invoice.query.filter_by(
-        id=invoice_id, company_id=current_user.company_id
-    ).first()
-    if invoice is None:
-        abort(404)
-    return invoice
 
 
 def get_client_or_404(client_id: int) -> Client:
@@ -330,7 +349,11 @@ def month_view(year: int, month: int):
     prev_month, prev_year = (12, year - 1) if month == 1 else (month - 1, year)
     next_month, next_year = (1, year + 1) if month == 12 else (month + 1, year)
 
-    month_total = sum(len(v) for v in events.values())
+    # Each event once, however many days it spans — one edit dialog per event,
+    # not one per cell it appears in. Same reasoning as the timeline's
+    # deduplicated clients_in_view.
+    events_in_view = list({event.id: event for day in events.values() for event in day}.values())
+    month_total = len(events_in_view)
 
     return render_template(
         "calendar.html",
@@ -342,6 +365,18 @@ def month_view(year: int, month: int):
         next_month=next_month, next_year=next_year,
         month_total=month_total,
         today_year=today.year, today_month=today.month,
+        # Adding an event needs somewhere to add it to. False means the studio
+        # hasn't connected a calendar, so the template shows no event UI at all
+        # rather than a button that can only fail.
+        has_calendar=calendar_service.has_calendar(current_user.company_id),
+        events_in_view=events_in_view,
+        clients=Client.query.filter_by(company_id=current_user.company_id)
+            .order_by(Client.first_name, Client.last_name).all(),
+        default_date=today.replace(year=year, month=month, day=1)
+            if (year, month) != (today.year, today.month) else today,
+        # The event forms post into the communications blueprint, which reports
+        # back through the module's own one-shot notice.
+        notice=communications_routes.take_notice(),
         active_view="calendar",
     )
 
@@ -881,107 +916,6 @@ def delete_payment(order_id: int, payment_id: int):
 
 
 # ---------------------------------------------------------------------------
-# Invoices. The app owns the invoice record and its number for every sale,
-# regardless of how the money eventually arrives (cash, e-transfer, or
-# Square) — that shared sequence is what makes the three reconcilable
-# against each other. Payments stay attached to the order rather than the
-# invoice, since an order can be part-paid before it's ever invoiced.
-# ---------------------------------------------------------------------------
-
-@app.route("/invoices")
-@login_required
-def invoices():
-    all_invoices = (
-        Invoice.query.filter_by(company_id=current_user.company_id)
-        .order_by(Invoice.issued_date.desc(), Invoice.number.desc())
-        .all()
-    )
-    outstanding = sum(inv.order.balance_due for inv in all_invoices if inv.is_outstanding)
-
-    # Orders with no invoice yet — the actual to-do list this page exists
-    # for, shown under the invoices themselves.
-    uninvoiced = (
-        Order.query.join(Client)
-        .filter(Client.company_id == current_user.company_id, Order.invoice == None)  # noqa: E711
-        .order_by(Order.due)
-        .all()
-    )
-
-    return render_template(
-        "invoices.html",
-        invoices=all_invoices,
-        uninvoiced=uninvoiced,
-        outstanding=outstanding,
-        invoice_status_labels=INVOICE_STATUS_LABELS,
-        active_view="invoices",
-    )
-
-
-@app.route("/invoices/<int:invoice_id>")
-@login_required
-def invoice_page(invoice_id: int):
-    invoice = get_invoice_or_404(invoice_id)
-    return_to = request.args.get("return_to") or url_for("invoices")
-    return render_template(
-        "invoice_page.html",
-        invoice=invoice,
-        order=invoice.order,
-        issuer=invoice.issuer,
-        return_to=return_to,
-        back_label=back_label(return_to),
-        invoice_status_labels=INVOICE_STATUS_LABELS,
-        payment_method_labels=PAYMENT_METHOD_LABELS,
-        settable_statuses=SETTABLE_INVOICE_STATUSES,
-        active_view=None,
-    )
-
-
-@app.route("/orders/<int:order_id>/invoice", methods=["POST"])
-@login_required
-def create_invoice(order_id: int):
-    order = get_order_or_404(order_id)
-    if order.invoice is not None:
-        # Already invoiced — treat a double submit as a no-op rather than
-        # burning a second number on the same order.
-        return redirect(url_for("invoice_page", invoice_id=order.invoice.id))
-
-    company = db.session.get(Company, current_user.company_id)
-    due_date_str = request.form.get("due_date")
-    invoice = Invoice(
-        company_id=company.id,
-        order_id=order.id,
-        number=next_invoice_number(company),
-        issued_date=date.today(),
-        due_date=date.fromisoformat(due_date_str) if due_date_str else order.due,
-        status="draft",
-    )
-    db.session.add(invoice)
-    db.session.commit()
-    return redirect(url_for("invoice_page", invoice_id=invoice.id))
-
-
-@app.route("/invoices/<int:invoice_id>/status", methods=["POST"])
-@login_required
-def set_invoice_status(invoice_id: int):
-    invoice = get_invoice_or_404(invoice_id)
-    was_draft = invoice.status == "draft"
-    status = request.form.get("status")
-    if status in SETTABLE_INVOICE_STATUSES:
-        invoice.status = status
-    # Only on the way out of draft: an invoice that's already issued must
-    # keep the company details it was issued with, so re-saving a "sent"
-    # invoice mustn't re-copy today's settings over them.
-    if was_draft and invoice.status != "draft":
-        invoice.freeze()
-    invoice.notes = request.form.get("notes", invoice.notes or "").strip() or None
-    due_date_str = request.form.get("due_date")
-    invoice.due_date = date.fromisoformat(due_date_str) if due_date_str else None
-    db.session.commit()
-    return_to = request.form.get("return_to") or url_for("invoice_page", invoice_id=invoice.id)
-    return redirect(return_to)
-
-
-# ---------------------------------------------------------------------------
 # Settings — currently just the per-company "how did you hear about us"
 # options shown as checkboxes on the client page. Options are never
 # hard-deleted once a client references one (see SourceOption.can_delete in
@@ -1012,31 +946,24 @@ def get_order_type_or_404(order_type_id: int) -> OrderType:
 def settings():
     # No content of its own — just lands on the first category. Bookmarks
     # and the nav's "Settings" link both go through here.
-    return redirect(url_for("settings_invoicing"))
+    return redirect(url_for("settings_general"))
 
 
-@app.route("/settings/invoicing")
+@app.route("/settings/general")
 @login_required
-def settings_invoicing():
-    company = db.session.get(Company, current_user.company_id)
+def settings_general():
     return render_template(
         "settings.html",
-        section="invoicing",
-        company=company,
-        provinces=PROVINCES,
-        next_number=next_invoice_number(company),
+        section="general",
+        company=db.session.get(Company, current_user.company_id),
+        time_zones=TIME_ZONES,
         active_view="settings",
     )
 
 
-@app.route("/settings/preferences")
+@app.route("/settings/orders")
 @login_required
-def settings_preferences():
-    source_options = (
-        SourceOption.query.filter_by(company_id=current_user.company_id)
-        .order_by(SourceOption.sort_order)
-        .all()
-    )
+def settings_orders():
     order_types = (
         OrderType.query.filter_by(company_id=current_user.company_id)
         .order_by(OrderType.sort_order)
@@ -1044,54 +971,49 @@ def settings_preferences():
     )
     return render_template(
         "settings.html",
-        section="preferences",
+        section="orders",
         company=db.session.get(Company, current_user.company_id),
-        time_zones=TIME_ZONES,
-        source_options=source_options,
         order_types=order_types,
         active_view="settings",
     )
 
 
-@app.route("/settings/company", methods=["POST"])
+@app.route("/settings/clients")
 @login_required
-def update_company_details():
-    """Name, address and registration numbers — what an invoice has to say
-    about who issued it. Editing these doesn't touch invoices already
-    issued; those carry their own frozen copy (see Invoice.issuer)."""
-    company = db.session.get(Company, current_user.company_id)
-    name = request.form.get("name", "").strip()
-    if name:
-        company.name = name
-    company.street = request.form.get("street", "").strip() or None
-    company.city = request.form.get("city", "").strip() or None
-    province = request.form.get("province", "").strip().upper()
-    company.province = province if province in PROVINCES else None
-    company.postal_code = request.form.get("postal_code", "").strip().upper() or None
-    company.gst_number = request.form.get("gst_number", "").strip() or None
-    company.pst_number = request.form.get("pst_number", "").strip() or None
-    company.qst_number = request.form.get("qst_number", "").strip() or None
-    company.neq = request.form.get("neq", "").strip() or None
-    db.session.commit()
-    return redirect(url_for("settings_invoicing"))
+def settings_clients():
+    source_options = (
+        SourceOption.query.filter_by(company_id=current_user.company_id)
+        .order_by(SourceOption.sort_order)
+        .all()
+    )
+    return render_template(
+        "settings.html",
+        section="clients",
+        company=db.session.get(Company, current_user.company_id),
+        source_options=source_options,
+        active_view="settings",
+    )
 
 
-@app.route("/settings/invoicing", methods=["POST"])
+@app.route("/settings/invoicing")
 @login_required
-def update_invoicing_settings():
+def settings_invoicing():
     company = db.session.get(Company, current_user.company_id)
-    prefix = request.form.get("invoice_prefix", "").strip().upper()
-    # Changing the prefix starts a fresh sequence rather than renumbering
-    # anything already issued — invoice numbers that have gone out to a
-    # client are not ours to rewrite.
-    if prefix:
-        company.invoice_prefix = prefix[:10]
-    company.payment_instructions = request.form.get("payment_instructions", "").strip() or None
-    db.session.commit()
-    return redirect(url_for("settings_invoicing"))
+    # The letterhead belongs to the billing module; this page just edits it.
+    profile = invoicing.profile_for(company.id, company.name)
+    db.session.commit()  # profile_for creates one on first visit
+    return render_template(
+        "settings.html",
+        section="invoicing",
+        company=company,
+        profile=profile,
+        provinces=PROVINCES,
+        next_number=invoicing.next_number(company.id, company.name),
+        active_view="settings",
+    )
 
 
-@app.route("/settings/preferences", methods=["POST"])
+@app.route("/settings/general", methods=["POST"])
 @login_required
 def update_preferences():
     """The company's display timezone.
@@ -1107,7 +1029,47 @@ def update_preferences():
     if chosen in dict(TIME_ZONES):
         company.timezone = chosen
         db.session.commit()
-    return redirect(url_for("settings_preferences"))
+    return redirect(url_for("settings_general"))
+
+
+# Order types (Custom Order / White Label / Consulting-Sampling, or whatever
+# a given studio calls its own categories) — same hide-don't-delete shape and
+# add/toggle/delete routes as SourceOption below, just a different table.
+@app.route("/settings/order-types", methods=["POST"])
+@login_required
+def add_order_type():
+    label = request.form.get("label", "").strip()
+    if label:
+        max_sort_order = (
+            OrderType.query.filter_by(company_id=current_user.company_id)
+            .count()
+        )
+        db.session.add(OrderType(
+            company_id=current_user.company_id,
+            label=label,
+            sort_order=max_sort_order,
+        ))
+        db.session.commit()
+    return redirect(url_for("settings_orders"))
+
+
+@app.route("/settings/order-types/<int:order_type_id>/toggle", methods=["POST"])
+@login_required
+def toggle_order_type(order_type_id: int):
+    order_type = get_order_type_or_404(order_type_id)
+    order_type.is_active = not order_type.is_active
+    db.session.commit()
+    return redirect(url_for("settings_orders"))
+
+
+@app.route("/settings/order-types/<int:order_type_id>/delete", methods=["POST"])
+@login_required
+def delete_order_type(order_type_id: int):
+    order_type = get_order_type_or_404(order_type_id)
+    if order_type.can_delete:
+        db.session.delete(order_type)
+        db.session.commit()
+    return redirect(url_for("settings_orders"))
 
 
 @app.route("/settings/sources", methods=["POST"])
@@ -1125,7 +1087,7 @@ def add_source_option():
             sort_order=max_sort_order,
         ))
         db.session.commit()
-    return redirect(url_for("settings_preferences"))
+    return redirect(url_for("settings_clients"))
 
 
 @app.route("/settings/sources/<int:source_option_id>/toggle", methods=["POST"])
@@ -1134,7 +1096,7 @@ def toggle_source_option(source_option_id: int):
     option = get_source_option_or_404(source_option_id)
     option.is_active = not option.is_active
     db.session.commit()
-    return redirect(url_for("settings_preferences"))
+    return redirect(url_for("settings_clients"))
 
 
 @app.route("/settings/sources/<int:source_option_id>/delete", methods=["POST"])
@@ -1144,47 +1106,53 @@ def delete_source_option(source_option_id: int):
     if option.can_delete:
         db.session.delete(option)
         db.session.commit()
-    return redirect(url_for("settings_preferences"))
+    return redirect(url_for("settings_clients"))
 
 
-# Order types (Custom Order / White Label / Consulting-Sampling, or whatever
-# a given studio calls its own categories) — same hide-don't-delete shape and
-# add/toggle/delete routes as SourceOption above, just a different table.
-@app.route("/settings/order-types", methods=["POST"])
+@app.route("/settings/company", methods=["POST"])
 @login_required
-def add_order_type():
-    label = request.form.get("label", "").strip()
-    if label:
-        max_sort_order = (
-            OrderType.query.filter_by(company_id=current_user.company_id)
-            .count()
-        )
-        db.session.add(OrderType(
-            company_id=current_user.company_id,
-            label=label,
-            sort_order=max_sort_order,
-        ))
-        db.session.commit()
-    return redirect(url_for("settings_preferences"))
-
-
-@app.route("/settings/order-types/<int:order_type_id>/toggle", methods=["POST"])
-@login_required
-def toggle_order_type(order_type_id: int):
-    order_type = get_order_type_or_404(order_type_id)
-    order_type.is_active = not order_type.is_active
+def update_company_details():
+    """Name, address and registration numbers — what an invoice has to say
+    about who issued it. Only the name is the app's; the rest is the
+    billing module's letterhead. Editing any of it leaves invoices already
+    issued alone, since those carry their own frozen copy."""
+    company = db.session.get(Company, current_user.company_id)
+    name = request.form.get("name", "").strip()
+    if name:
+        company.name = name
+    province = request.form.get("province", "").strip().upper()
+    invoicing.update_profile(
+        company.id, company.name,
+        street=request.form.get("street", "").strip() or None,
+        city=request.form.get("city", "").strip() or None,
+        province=province if province in PROVINCES else None,
+        postal_code=request.form.get("postal_code", "").strip().upper() or None,
+        gst_number=request.form.get("gst_number", "").strip() or None,
+        pst_number=request.form.get("pst_number", "").strip() or None,
+        qst_number=request.form.get("qst_number", "").strip() or None,
+        neq=request.form.get("neq", "").strip() or None,
+    )
     db.session.commit()
-    return redirect(url_for("settings_preferences"))
+    return redirect(url_for("settings_invoicing"))
 
 
-@app.route("/settings/order-types/<int:order_type_id>/delete", methods=["POST"])
+@app.route("/settings/invoicing", methods=["POST"])
 @login_required
-def delete_order_type(order_type_id: int):
-    order_type = get_order_type_or_404(order_type_id)
-    if order_type.can_delete:
-        db.session.delete(order_type)
-        db.session.commit()
-    return redirect(url_for("settings_preferences"))
+def update_invoicing_settings():
+    company = db.session.get(Company, current_user.company_id)
+    prefix = request.form.get("invoice_prefix", "").strip().upper()
+    # Changing the prefix starts a fresh sequence rather than renumbering
+    # anything already issued — invoice numbers that have gone out to a
+    # client are not ours to rewrite.
+    fields = {
+        "payment_instructions":
+            request.form.get("payment_instructions", "").strip() or None,
+    }
+    if prefix:
+        fields["invoice_prefix"] = prefix[:10]
+    invoicing.update_profile(company.id, company.name, **fields)
+    db.session.commit()
+    return redirect(url_for("settings_invoicing"))
 
 
 # ---------------------------------------------------------------------------
@@ -1244,8 +1212,18 @@ def analytics():
 
     # Outstanding counts invoiced work only — an order that hasn't been
     # billed yet isn't money anyone owes.
-    company_invoices = Invoice.query.filter_by(company_id=current_user.company_id).all()
-    outstanding = sum(inv.order.balance_due for inv in company_invoices if inv.is_outstanding)
+    company_id = current_user.company_id
+    documents = invoicing.documents_for(
+        company_id, billing_adapter.resolver(company_id, with_urls=False),
+        _seller_name(company_id),
+    )
+    outstanding = sum(
+        doc.balance_due for doc in documents
+        if doc.status != "void" and not doc.is_settled
+    )
+    # Tax actually collected, straight out of the frozen invoice rows —
+    # what a GST/QST remittance is.
+    tax_collected = invoicing.tax_collected(company_id)
 
     return render_template(
         "analytics.html",
@@ -1256,6 +1234,7 @@ def analytics():
         revenue_ytd=revenue_ytd,
         method_breakdown=method_breakdown,
         outstanding=outstanding,
+        tax_collected=sorted(tax_collected, key=lambda pair: pair[1], reverse=True),
         active_view="analytics",
     )
 

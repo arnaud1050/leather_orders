@@ -29,6 +29,11 @@ class CalendarServiceError(Exception):
     """Something the caller should show the user."""
 
 
+#: Distinguishes "don't touch this field" from "set it to nothing", which
+#: matters for a nullable link like client_id where None is a real value.
+_UNSET = object()
+
+
 def get_events(company_id: int, start: datetime, end: datetime) -> list[CalendarEvent]:
     """Mirrored events overlapping [start, end], cancelled ones excluded.
 
@@ -50,9 +55,9 @@ def get_events(company_id: int, start: datetime, end: datetime) -> list[Calendar
 def events_by_day(company_id: int, year: int, month: int) -> dict[int, list[CalendarEvent]]:
     """day-of-month -> events, for the calendar view.
 
-    Mirrors orders_by_day() in app.py so calendar.html can loop the two the
-    same way. A multi-day event appears on each of its days within the
-    month, which is what someone reading a month grid expects.
+    This is the only thing the month grid renders — orders live on the
+    timeline. A multi-day event appears on each of its days within the month,
+    which is what someone reading a month grid expects.
     """
     month_start = datetime.combine(date(year, month, 1), time.min)
     next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
@@ -111,7 +116,13 @@ def create_event(
 
 
 def update_event(company_id: int, event_id: int, **fields) -> CalendarEvent:
-    """Patch a mirrored event through to Google, then re-mirror it."""
+    """Patch a mirrored event through to Google, then re-mirror it.
+
+    `client_id` is applied locally and not forwarded: which client an
+    appointment belongs to is ours, not something Google stores. Popped rather
+    than left in `fields` so the provider isn't handed a key it would silently
+    ignore.
+    """
     event = CalendarEvent.query.filter_by(id=event_id, company_id=company_id).first()
     if event is None:
         raise CalendarServiceError("That event no longer exists.")
@@ -120,10 +131,14 @@ def update_event(company_id: int, event_id: int, **fields) -> CalendarEvent:
     if account is None:
         raise CalendarServiceError("The account this event came from is no longer connected.")
 
+    client_id = fields.pop("client_id", _UNSET)
+
     fetched = calendar_provider_for(account).update_event(event.provider_event_id, **fields)
     calendar_sync.store_event(
         account, fetched, {}, calendar_sync.CalendarSyncResult(account_id=account.id),
     )
+    if client_id is not _UNSET:
+        event.client_id = client_id
     event.updated_at = utcnow()
     db.session.commit()
     return event

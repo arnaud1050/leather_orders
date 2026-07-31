@@ -704,6 +704,24 @@ dialog.modal::backdrop {
   border-color: var(--ink);
 }
 
+/* A date and a time side by side in one field slot (an event's start/end).
+   Wraps rather than squeezing, same as .field-row on the settings forms. */
+.modal__pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.modal__pair input {
+  flex: 1 1 130px;
+  min-width: 0;
+}
+
+.modal__pair input:disabled {
+  color: var(--ink-soft);
+  background: var(--paper-deep);
+}
+
 /* Derived values shown inside a modal field slot (e.g. an order total,
    which is computed from line items and so isn't editable here). */
 .modal__readout {
@@ -1860,6 +1878,28 @@ dialog.modal::backdrop {
    isn't an order status (see "Design language" in CLAUDE.md). */
 .chip--event {
   border-left: 4px solid var(--status-pending);
+}
+
+/* An event chip is a <button> — it opens that event's edit dialog. Stripped
+   back to the chip it was: a real button here would put a control inside every
+   calendar cell, which is the opposite of what a month grid should look like.
+   Same click-to-edit pattern as the timeline's bars. */
+button.chip--event {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  /* Family only, never the `font` shorthand: that would also reset the
+     font-size .chip sets, and the button would render at body size — a chip
+     several times the height of every other chip on the grid. */
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.chip--event:hover .chip__title {
+  color: var(--status-pending);
 }
 
 /* Conversation list, on the client's Emails tab and the lead inbox. */

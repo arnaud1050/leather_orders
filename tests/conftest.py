@@ -47,6 +47,8 @@ import pytest  # noqa: E402
 import app as app_module  # noqa: E402
 from models import Client, Company, Order, OrderLine, User, db  # noqa: E402
 
+from billing.services import invoicing  # noqa: E402
+
 from communications.models import EmailAccount, EmailMessage, EmailThread, utcnow  # noqa: E402
 
 ALL_SCOPES = (
@@ -92,21 +94,30 @@ def app(_app):
         db.session.remove()
 
 
-@pytest.fixture
-def company(app):
-    row = Company(name="By Monsieur", invoice_prefix="BM", gst_number="123 RT0001")
+def _with_billing_profile(row, prefix, **letterhead):
+    """Company plus its billing profile.
+
+    The invoice letterhead (prefix, address, registration numbers) belongs
+    to the billing module, not to Company — so it's set through that
+    module's API rather than as constructor kwargs.
+    """
     db.session.add(row)
     db.session.flush()
+    invoicing.update_profile(row.id, row.name, invoice_prefix=prefix, **letterhead)
+    db.session.flush()
     return row
+
+
+@pytest.fixture
+def company(app):
+    return _with_billing_profile(
+        Company(name="By Monsieur"), "BM", gst_number="123 RT0001")
 
 
 @pytest.fixture
 def other_company(app):
     """A second tenant. Every isolation test needs one of these."""
-    row = Company(name="Other Studio", invoice_prefix="OS")
-    db.session.add(row)
-    db.session.flush()
-    return row
+    return _with_billing_profile(Company(name="Other Studio"), "OS")
 
 
 @pytest.fixture

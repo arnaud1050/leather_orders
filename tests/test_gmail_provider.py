@@ -212,6 +212,35 @@ def test_event_time_all_day_uses_bare_date():
     assert gp._event_time(datetime(2026, 7, 28, 10, 30), all_day=True) == {"date": "2026-07-28"}
 
 
+# Google's all-day end date is exclusive; ours is the last day the event
+# covers. The conversion belongs at this boundary and nowhere else — get it
+# wrong and a one-day event silently occupies two cells of the month grid.
+
+def test_all_day_end_goes_out_exclusive():
+    node = gp._event_time(datetime(2026, 7, 28), all_day=True, is_end=True)
+    assert node == {"date": "2026-07-29"}
+
+
+def test_all_day_end_comes_back_inclusive():
+    parsed = gp._parse_event({
+        "id": "e-1", "summary": "Market",
+        "start": {"date": "2026-07-28"}, "end": {"date": "2026-07-29"},
+    })
+    assert parsed.all_day is True
+    assert parsed.start_time == datetime(2026, 7, 28)
+    assert parsed.end_time == datetime(2026, 7, 28)
+
+
+def test_a_timed_events_end_is_untouched():
+    """Only all-day ends are exclusive — a timed event's end is the real end."""
+    parsed = gp._parse_event({
+        "id": "e-1",
+        "start": {"dateTime": "2026-07-28T10:00:00Z"},
+        "end": {"dateTime": "2026-07-28T11:00:00Z"},
+    })
+    assert parsed.end_time == datetime(2026, 7, 28, 11, 0)
+
+
 # --- message parsing / direction ------------------------------------------
 
 class _Account:

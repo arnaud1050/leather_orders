@@ -282,3 +282,219 @@ def test_calendar_sync_now_covers_every_enabled_account(company, account):
     with fakes.fake_providers(events=[fakes.event()]):
         results = calendar_service.sync_now(company.id)
     assert len(results) == 1 and results[0].ok
+
+
+def test_update_event_sets_the_client_link_locally(company, account, client_record):
+    """client_id is ours, not Google's — applied here, never forwarded."""
+    with fakes.fake_providers(events=[fakes.event()]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+
+    with fakes.fake_providers():
+        calendar_service.update_event(company.id, stored.id, client_id=client_record.id)
+
+    assert CalendarEvent.query.one().client_id == client_record.id
+    patch = next(call for call in fakes.CALENDAR_LOG if call[0] == "update_event")
+    assert "client_id" not in patch[2]
+
+
+def test_update_event_can_clear_the_client_link(company, account, client_record):
+    with fakes.fake_providers(events=[fakes.event()]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+    stored.client_id = client_record.id
+    db.session.flush()
+
+    with fakes.fake_providers():
+        calendar_service.update_event(company.id, stored.id, client_id=None)
+
+    assert CalendarEvent.query.one().client_id is None
+
+
+def test_update_event_leaves_the_client_link_alone_when_not_given(
+    company, account, client_record,
+):
+    """Not passing client_id must mean "don't touch", not "clear"."""
+    with fakes.fake_providers(events=[fakes.event()]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+    stored.client_id = client_record.id
+    db.session.flush()
+
+    with fakes.fake_providers():
+        calendar_service.update_event(company.id, stored.id, title="Renamed")
+
+    assert CalendarEvent.query.one().client_id == client_record.id
+
+
+# --- the month view's event UI --------------------------------------------
+#
+# The forms live in app.py's calendar template but post into this module's
+# blueprint, so these cover the seam between the two: the timezone conversion
+# on the way in, tenant scoping, and CSRF.
+
+def _event_form(csrf, **overrides):
+    form = {
+        "csrf_token": csrf,
+        "title": "Second fitting",
+        "start_date": "2026-08-05",
+        "start_time": "14:00",
+        "end_date": "2026-08-05",
+        "end_time": "15:00",
+        "return_to": "/calendar",
+    }
+    form.update(overrides)
+    return form
+
+
+def test_creating_an_event_from_the_month_view(logged_in, csrf, company, account):
+    with fakes.fake_providers():
+        response = logged_in.post(
+            "/calendar/events/new", data=_event_form(csrf), follow_redirects=True,
+        )
+
+    assert response.status_code == 200
+    stored = CalendarEvent.query.one()
+    assert stored.title == "Second fitting"
+    # 14:00 in Vancouver (PDT, UTC-7) is 21:00 UTC. Storing the wall clock
+    # unconverted would book the appointment seven hours out and look fine.
+    assert stored.start_time == datetime(2026, 8, 5, 21, 0)
+    assert stored.end_time == datetime(2026, 8, 5, 22, 0)
+
+
+def test_a_created_event_is_shown_back_in_the_company_zone(logged_in, csrf, account):
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(csrf))
+
+    body = logged_in.get("/month/2026/8").get_data(as_text=True)
+    assert "2:00pm - 3:00pm" in body
+
+
+def test_an_all_day_event_skips_the_times(logged_in, csrf, account):
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(
+            csrf, all_day="on", start_time="", end_time="",
+        ))
+
+    stored = CalendarEvent.query.one()
+    assert stored.all_day is True
+
+
+def test_an_end_before_the_start_is_refused(logged_in, csrf, account):
+    with fakes.fake_providers():
+        response = logged_in.post(
+            "/calendar/events/new",
+            data=_event_form(csrf, start_time="15:00", end_time="14:00"),
+            follow_redirects=True,
+        )
+
+    assert CalendarEvent.query.count() == 0
+    assert "ends before it starts" in response.get_data(as_text=True)
+
+
+def test_a_timed_event_with_no_times_is_refused(logged_in, csrf, account):
+    with fakes.fake_providers():
+        response = logged_in.post(
+            "/calendar/events/new", data=_event_form(csrf, start_time="", end_time=""),
+            follow_redirects=True,
+        )
+
+    assert CalendarEvent.query.count() == 0
+    assert "start and an end time" in response.get_data(as_text=True)
+
+
+def test_a_missing_start_date_is_refused(logged_in, csrf, account):
+    with fakes.fake_providers():
+        response = logged_in.post(
+            "/calendar/events/new", data=_event_form(csrf, start_date=""),
+            follow_redirects=True,
+        )
+
+    assert CalendarEvent.query.count() == 0
+    assert "needs a start date" in response.get_data(as_text=True)
+
+
+def test_creating_an_event_without_a_calendar_reports_it(logged_in, csrf, company):
+    """No connected account: the studio gets told, not a 500."""
+    with fakes.fake_providers():
+        response = logged_in.post(
+            "/calendar/events/new", data=_event_form(csrf), follow_redirects=True,
+        )
+
+    assert CalendarEvent.query.count() == 0
+    assert "No Google account is connected" in response.get_data(as_text=True)
+
+
+def test_editing_an_event_from_the_month_view(logged_in, csrf, account):
+    with fakes.fake_providers(events=[fakes.event()]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+
+    with fakes.fake_providers():
+        logged_in.post(
+            f"/calendar/events/{stored.id}", data=_event_form(csrf, title="Renamed"),
+        )
+
+    assert CalendarEvent.query.one().title == "Renamed"
+
+
+def test_editing_another_tenants_event_is_refused(logged_in, csrf, other_company, app):
+    """The event id arrives in a URL anyone can edit."""
+    from communications.models import EmailAccount
+
+    theirs = EmailAccount(
+        company_id=other_company.id, provider="gmail",
+        email_address="theirs@example.com", granted_scopes="",
+    )
+    db.session.add(theirs)
+    db.session.flush()
+    event = CalendarEvent(
+        company_id=other_company.id, email_account_id=theirs.id,
+        provider_event_id="e-theirs", title="Theirs",
+        start_time=datetime(2026, 8, 5, 17, 0), end_time=datetime(2026, 8, 5, 18, 0),
+    )
+    db.session.add(event)
+    db.session.flush()
+
+    with fakes.fake_providers():
+        response = logged_in.post(
+            f"/calendar/events/{event.id}", data=_event_form(csrf, title="Mine now"),
+            follow_redirects=True,
+        )
+
+    assert db.session.get(CalendarEvent, event.id).title == "Theirs"
+    assert "no longer exists" in response.get_data(as_text=True)
+
+
+def test_an_event_cannot_be_linked_to_another_tenants_client(
+    logged_in, csrf, account, other_company,
+):
+    theirs = Client(
+        company_id=other_company.id, first_name="Not", last_name="Ours",
+        email="not-ours@example.com",
+    )
+    db.session.add(theirs)
+    db.session.flush()
+
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(csrf, client_id=theirs.id))
+
+    assert CalendarEvent.query.one().client_id is None
+
+
+def test_event_routes_require_a_csrf_token(logged_in, account):
+    with fakes.fake_providers():
+        response = logged_in.post("/calendar/events/new", data=_event_form("wrong-token"))
+
+    assert response.status_code == 400
+    assert CalendarEvent.query.count() == 0
+
+
+def test_the_month_view_hides_event_ui_without_a_calendar(logged_in, company):
+    body = logged_in.get("/calendar").get_data(as_text=True)
+    assert "+ New event" not in body
+
+
+def test_the_month_view_offers_event_ui_with_a_calendar(logged_in, account):
+    body = logged_in.get("/calendar").get_data(as_text=True)
+    assert "+ New event" in body

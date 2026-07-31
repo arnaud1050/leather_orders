@@ -8,7 +8,6 @@ the start means adding a second tenant later is additive, not a rewrite.
 """
 
 import re
-from dataclasses import dataclass
 from datetime import date
 
 import sqlalchemy as sa
@@ -16,6 +15,12 @@ from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.ext.hybrid import hybrid_property
 from werkzeug.security import check_password_hash, generate_password_hash
+
+# billing.documents imports nothing but billing.tax, which imports nothing
+# at all — so this is safe here even though billing.models imports `db`
+# back out of this file. Anything deeper in billing (services, models) is
+# imported lazily inside methods below, for exactly that reason.
+from billing.documents import format_address
 
 db = SQLAlchemy()
 
@@ -25,52 +30,20 @@ db = SQLAlchemy()
 DEFAULT_TIMEZONE = "America/Vancouver"
 
 
-def format_address(street, city, province, postal_code) -> str | None:
-    """Address as it prints: street, then "City, PROV  Postal".
-
-    Two spaces before the postal code is the Canada Post convention.
-    Returns None when nothing is filled in, so callers can skip the block
-    entirely rather than printing an empty line. Shared by Company and
-    Client, which store the same four parts.
-    """
-    locality = ", ".join(part for part in (city, province) if part)
-    if postal_code:
-        locality = f"{locality}  {postal_code}".strip()
-    return "\n".join(line for line in (street, locality) if line) or None
-
-
 class Company(db.Model):
+    """The tenant.
+
+    The invoice letterhead (address, registration numbers, number prefix,
+    payment instructions) used to live here and now belongs to the billing
+    module — `billing.services.invoicing.profile_for(company_id)`. A
+    company is called the same thing whether or not it invoices, so only
+    the name stayed.
+    """
+
     __tablename__ = "companies"
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
-    # Leading segment of every invoice number this company issues
-    # ("BM" -> BM-2026-0001). Per-company because the number sequence is
-    # per-company too — see next_invoice_number() below.
-    invoice_prefix = db.Column(db.String(10), nullable=False, default="INV")
-
-    # What an invoice has to say about who issued it. Named Canadian
-    # fields rather than a generic list: they need to be labelled
-    # correctly ("GST/HST", "QST", "NEQ"), and a second country would want
-    # its own labels anyway. Copied onto each invoice when it's issued —
-    # see Invoice.issuer.
-    street = db.Column(db.String(200))
-    city = db.Column(db.String(120))
-    province = db.Column(db.String(2))  # two-letter code; see PROVINCES in app.py
-    postal_code = db.Column(db.String(10))
-    gst_number = db.Column(db.String(40))
-    # BC/Saskatchewan PST or Manitoba RST — one field because a seller is
-    # realistically registered in at most one of them. If that ever stops
-    # being true, this is the point to switch registrations over to a
-    # label+value list rather than adding pst_number_2.
-    pst_number = db.Column(db.String(40))
-    qst_number = db.Column(db.String(40))
-    neq = db.Column(db.String(40))
-    # Free text printed near the total: where to send an e-transfer, who
-    # to make a cheque out to. The reason this matters here and not on a
-    # Square-hosted invoice is that cash and e-transfer have no payment
-    # page to send anyone to.
-    payment_instructions = db.Column(db.Text)
 
     # IANA zone name. Timestamps are stored as naive UTC everywhere (see the
     # communications module's docstring); this is only how they're *rendered*,
@@ -87,11 +60,6 @@ class Company(db.Model):
         "OrderType", back_populates="company",
         order_by="OrderType.sort_order",
     )
-    invoices = db.relationship("Invoice", back_populates="company")
-
-    @property
-    def formatted_address(self) -> str | None:
-        return format_address(self.street, self.city, self.province, self.postal_code)
 
 
 class User(db.Model, UserMixin):
@@ -236,9 +204,11 @@ class Order(db.Model):
         order_by="OrderLine.sort_order",
     )
     payments = db.relationship("Payment", back_populates="order", cascade="all, delete-orphan")
+    # The billing module owns Invoice; the host wires the relationship,
+    # because billing must not know that "subject" means "order" here.
     invoice = db.relationship(
-        "Invoice", back_populates="order", uselist=False,
-        cascade="all, delete-orphan",
+        "Invoice", uselist=False, cascade="all, delete-orphan",
+        primaryjoin="Order.id == foreign(Invoice.subject_id)",
     )
 
     @property
@@ -258,15 +228,34 @@ class Order(db.Model):
         return self.invoice is not None and self.invoice.status != "draft"
 
     @property
-    def tax_lines(self) -> list[TaxLine]:
+    def amount_paid(self):
+        return sum(payment.amount for payment in self.payments)
+
+    # Everything below is the billing module's answer, not this file's.
+    # `billing.services` is imported inside the properties rather than at
+    # module scope because billing.models imports `db` from here — a
+    # top-level import would be circular. See billing/__init__.py.
+
+    @property
+    def _amounts(self):
+        from billing.services import invoicing
+
+        from billing_adapter import billable_for
+
+        return invoicing.amounts_for(
+            billable_for(self),
+            invoicing.profile_for(self.client.company_id, self.client.company.name).issuer,
+            self.invoice,
+        )
+
+    @property
+    def tax_lines(self):
         """Taxes on this order: frozen once invoiced, live before that."""
-        if self.is_issued:
-            return self.invoice.frozen_tax_lines
-        return taxes_for(self.client.province, self.client.company, self.subtotal)
+        return self._amounts.tax_lines
 
     @property
     def tax_total(self):
-        return sum(line.amount for line in self.tax_lines)
+        return self._amounts.tax_total
 
     @property
     def total(self):
@@ -276,27 +265,22 @@ class Order(db.Model):
         items afterwards can't silently change a number the client has
         already been given.
         """
-        if self.is_issued:
-            return self.invoice.subtotal + self.tax_total
-        return self.subtotal + self.tax_total
+        return self._amounts.total
 
     @property
     def tax_status(self):
-        """Why there's no tax, when there isn't — for showing a warning.
-
-        "none" means tax was calculated normally (possibly to zero).
-        """
-        if self.tax_lines:
-            return "ok"
-        if not (self.client.province or "").strip():
-            return "no_client_province"
-        if self.client.province not in PROVINCE_TAXES:
-            return "unknown_province"
-        return "not_registered"
+        """Why there's no tax, when there isn't — for showing a warning."""
+        return self._amounts.tax_status
 
     @property
-    def amount_paid(self):
-        return sum(payment.amount for payment in self.payments)
+    def invoice_status(self):
+        """The invoice's status *for display* — "paid" once payments cover
+        it, which the module derives rather than storing."""
+        from billing.services import invoicing
+
+        if self.invoice is None:
+            return None
+        return invoicing.display_status(self.invoice, self._amounts)
 
     @property
     def balance_due(self):
@@ -357,295 +341,6 @@ class Payment(db.Model):
     order = db.relationship("Order", back_populates="payments")
 
 
-# ---------------------------------------------------------------------------
-# Sales tax
-#
-# !! VERIFY THESE RATES BEFORE ISSUING A REAL INVOICE !!
-# They are the author's best understanding and are NOT tax advice. Rates
-# do change — Nova Scotia's HST in particular was reduced recently, so
-# confirm it specifically. This table is the single place to correct them.
-#
-# Two rules decide what actually gets charged:
-#   1. The *client's* province picks the row (destination-based, which is
-#      how place-of-supply works for goods shipped to a customer). A client
-#      with no province on file is charged nothing — see taxes_for.
-#   2. A tax is only charged if the company holds the matching
-#      registration. A studio under the small-supplier threshold has no
-#      gst_number and so charges no GST; one that never registered in BC
-#      charges no BC PST. That falls out of `registration_field` rather
-#      than needing a separate "do we charge tax" switch.
-# ---------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class TaxRule:
-    label: str
-    rate: float
-    registration_field: str  # Company attribute that must be set to charge it
-
-
-_GST = TaxRule("GST", 0.05, "gst_number")
-
-PROVINCE_TAXES: dict[str, tuple[TaxRule, ...]] = {
-    "AB": (_GST,),
-    "BC": (_GST, TaxRule("PST", 0.07, "pst_number")),
-    "MB": (_GST, TaxRule("RST", 0.07, "pst_number")),
-    # HST is collected under the federal GST/HST registration, so it hangs
-    # off gst_number rather than a provincial one.
-    "NB": (TaxRule("HST", 0.15, "gst_number"),),
-    "NL": (TaxRule("HST", 0.15, "gst_number"),),
-    "NS": (TaxRule("HST", 0.14, "gst_number"),),  # reduced recently — confirm
-    "NT": (_GST,),
-    "NU": (_GST,),
-    "ON": (TaxRule("HST", 0.13, "gst_number"),),
-    "PE": (TaxRule("HST", 0.15, "gst_number"),),
-    "QC": (_GST, TaxRule("QST", 0.09975, "qst_number")),
-    "SK": (_GST, TaxRule("PST", 0.06, "pst_number")),
-    "YT": (_GST,),
-}
-
-
-@dataclass(frozen=True)
-class TaxLine:
-    """One tax as it appears on an invoice: what it's called, the rate
-    applied, and the money it comes to."""
-
-    label: str
-    rate: float
-    amount: float
-
-    @property
-    def rate_percent(self) -> str:
-        """Rate for display, without trailing zeros (5%, 9.975%)."""
-        return f"{self.rate * 100:.3f}".rstrip("0").rstrip(".")
-
-
-def taxes_for(province: str | None, company: "Company", subtotal: float) -> list[TaxLine]:
-    """Taxes owed on `subtotal` for a client in `province`.
-
-    Empty when the province is unknown or unrecognised — better to charge
-    nothing visibly than to guess a rate. Callers should surface that to
-    the user rather than treating it as "no tax applies" (see
-    Order.tax_status).
-    """
-    rules = PROVINCE_TAXES.get(province or "", ())
-    return [
-        TaxLine(rule.label, rule.rate, round(subtotal * rule.rate, 2))
-        for rule in rules
-        if getattr(company, rule.registration_field, None)
-    ]
-
-
-@dataclass(frozen=True)
-class IssuerDetails:
-    """Who issued an invoice, as it should print on the document."""
-
-    name: str
-    address: str | None = None
-    gst_number: str | None = None
-    pst_number: str | None = None
-    qst_number: str | None = None
-    neq: str | None = None
-    payment_instructions: str | None = None
-
-    @classmethod
-    def from_company(cls, company: "Company") -> "IssuerDetails":
-        # address is the formatted block, not the parts: a snapshot only
-        # has to reproduce what was printed, so freezing one string beats
-        # mirroring four columns onto every invoice.
-        return cls(
-            name=company.name,
-            address=company.formatted_address,
-            gst_number=company.gst_number,
-            pst_number=company.pst_number,
-            qst_number=company.qst_number,
-            neq=company.neq,
-            payment_instructions=company.payment_instructions,
-        )
-
-    @property
-    def registrations(self) -> list[tuple[str, str]]:
-        """(label, number) pairs to print, skipping any that are unset.
-
-        Tax registrations first, NEQ last — it identifies the enterprise,
-        it isn't a tax account.
-        """
-        pairs = [
-            ("GST/HST", self.gst_number),
-            ("PST/RST", self.pst_number),
-            ("QST", self.qst_number),
-            ("NEQ", self.neq),
-        ]
-        return [(label, value) for label, value in pairs if value]
-
-
-class Invoice(db.Model):
-    """The billing record for an order, and the owner of its number.
-
-    Numbering is the app's job, not the payment processor's: one sequence
-    per company (see next_invoice_number) means a cash sale and a card sale
-    get numbers from the same run, which is the whole point of being able
-    to reconcile them. `status` only tracks the states the app can't work
-    out for itself — whether the invoice has actually been sent, and
-    whether it's been voided. Paid-ness is derived from the order's
-    payments instead of being a fourth stored state that could disagree
-    with them (see display_status).
-    """
-    __tablename__ = "invoices"
-    __table_args__ = (
-        db.UniqueConstraint("company_id", "number", name="uq_invoice_company_number"),
-    )
-
-    id = db.Column(db.Integer, primary_key=True)
-    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
-    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, unique=True)
-    number = db.Column(db.String(40), nullable=False)
-    issued_date = db.Column(db.Date, nullable=False)
-    due_date = db.Column(db.Date)
-    status = db.Column(db.String(20), nullable=False, default="draft")
-    notes = db.Column(db.Text)
-
-    # Frozen copy of the company's details, written when the invoice stops
-    # being a draft (freeze_issuer). Reprinting an invoice has to match
-    # what the client actually received, even if the studio has since
-    # moved or re-registered — so these can't be read live off Company.
-    issuer_name = db.Column(db.String(120))
-    issuer_address = db.Column(db.Text)
-    issuer_gst_number = db.Column(db.String(40))
-    issuer_pst_number = db.Column(db.String(40))
-    issuer_qst_number = db.Column(db.String(40))
-    issuer_neq = db.Column(db.String(40))
-    issuer_payment_instructions = db.Column(db.Text)
-    # The money, frozen at the same moment as the issuer details. Doubles
-    # as the "has this been frozen" marker (see is_frozen) — an invoice
-    # issued before tax existed freezes with zero tax rows, which is
-    # exactly what its client received.
-    issued_subtotal = db.Column(db.Float)
-
-    company = db.relationship("Company", back_populates="invoices")
-    order = db.relationship("Order", back_populates="invoice")
-    tax_rows = db.relationship(
-        "InvoiceTaxLine", back_populates="invoice", cascade="all, delete-orphan",
-        order_by="InvoiceTaxLine.sort_order",
-    )
-
-    @property
-    def is_frozen(self) -> bool:
-        return self.issued_subtotal is not None
-
-    @property
-    def subtotal(self) -> float:
-        """Pre-tax value: what it was issued for, or live while a draft."""
-        return self.issued_subtotal if self.is_frozen else self.order.subtotal
-
-    @property
-    def frozen_tax_lines(self) -> list[TaxLine]:
-        return [TaxLine(row.label, row.rate, row.amount) for row in self.tax_rows]
-
-    @property
-    def issuer(self) -> IssuerDetails:
-        """Company details as this invoice should print them.
-
-        A draft hasn't been issued to anyone yet, so it tracks whatever
-        settings say today — fix a typo in the GST number and every draft
-        picks it up. Anything past draft shows the frozen copy instead.
-        """
-        if self.status == "draft" or self.issuer_name is None:
-            return IssuerDetails.from_company(self.company)
-        return IssuerDetails(
-            name=self.issuer_name,
-            address=self.issuer_address,
-            gst_number=self.issuer_gst_number,
-            pst_number=self.issuer_pst_number,
-            qst_number=self.issuer_qst_number,
-            neq=self.issuer_neq,
-            payment_instructions=self.issuer_payment_instructions,
-        )
-
-    def freeze(self) -> None:
-        """Freeze everything the client will see: who issued it, and the
-        money. Call on the draft -> issued transition only."""
-        self.freeze_issuer()
-        self.issued_subtotal = self.order.subtotal
-        self.tax_rows = [
-            InvoiceTaxLine(label=line.label, rate=line.rate, amount=line.amount, sort_order=i)
-            for i, line in enumerate(
-                taxes_for(self.order.client.province, self.company, self.order.subtotal)
-            )
-        ]
-
-    def freeze_issuer(self) -> None:
-        """Copy today's company details onto this invoice.
-
-        Call on the draft -> issued transition only. Re-running it on an
-        already-issued invoice would rewrite history, which is the exact
-        thing the snapshot exists to prevent.
-        """
-        details = IssuerDetails.from_company(self.company)
-        self.issuer_name = details.name
-        self.issuer_address = details.address
-        self.issuer_gst_number = details.gst_number
-        self.issuer_pst_number = details.pst_number
-        self.issuer_qst_number = details.qst_number
-        self.issuer_neq = details.neq
-        self.issuer_payment_instructions = details.payment_instructions
-
-    @property
-    def display_status(self):
-        """Status key for display: stored state, except that a fully-paid
-        invoice reports "paid" without anyone having to remember to set it."""
-        if self.status == "void":
-            return "void"
-        if self.order.is_settled and self.order.total > 0:
-            return "paid"
-        return self.status
-
-    @property
-    def is_outstanding(self):
-        """Issued, not voided, and still owed money."""
-        return self.status != "void" and not self.order.is_settled
-
-
-class InvoiceTaxLine(db.Model):
-    """One tax line frozen onto an issued invoice.
-
-    A real table rather than JSON so tax collected can be summed straight
-    out of the database — which is what a GST/QST remittance needs.
-    """
-    __tablename__ = "invoice_tax_lines"
-
-    id = db.Column(db.Integer, primary_key=True)
-    invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False)
-    label = db.Column(db.String(20), nullable=False)
-    rate = db.Column(db.Float, nullable=False)
-    amount = db.Column(db.Float, nullable=False)
-    sort_order = db.Column(db.Integer, nullable=False, default=0)
-
-    invoice = db.relationship("Invoice", back_populates="tax_rows")
-
-
-def next_invoice_number(company: Company, today: date | None = None) -> str:
-    """Next number in `PREFIX-YEAR-0001` form for this company and year.
-
-    Derived from the highest existing number rather than a count, so voided
-    or deleted invoices don't cause a later invoice to reuse a number. The
-    unique constraint on (company_id, number) is the real guard — two
-    simultaneous requests would collide there rather than silently issuing
-    the same number twice.
-    """
-    today = today or date.today()
-    prefix = f"{company.invoice_prefix}-{today.year}-"
-    last = (
-        Invoice.query.filter(
-            Invoice.company_id == company.id,
-            Invoice.number.like(f"{prefix}%"),
-        )
-        .order_by(Invoice.number.desc())  # zero-padded, so string order == numeric order
-        .first()
-    )
-    sequence = int(last.number.rsplit("-", 1)[1]) + 1 if last else 1
-    return f"{prefix}{sequence:04d}"
-
-
 class Document(db.Model):
     __tablename__ = "documents"
 
@@ -668,17 +363,12 @@ class Document(db.Model):
 
 # (table, column, DDL type/constraint) for columns added after that table
 # first shipped. Appending here is the way to add another one.
+#
+# Columns belonging to a *module's* tables are not listed here — see
+# billing/migrations.py and communications/migrations.py. The letterhead
+# columns that used to sit on `companies` moved out with the billing
+# module and are migrated there.
 _ADDED_COLUMNS = [
-    ("companies", "invoice_prefix", "VARCHAR(10) NOT NULL DEFAULT 'INV'"),
-    ("companies", "street", "VARCHAR(200)"),
-    ("companies", "city", "VARCHAR(120)"),
-    ("companies", "province", "VARCHAR(2)"),
-    ("companies", "postal_code", "VARCHAR(10)"),
-    ("companies", "gst_number", "VARCHAR(40)"),
-    ("companies", "pst_number", "VARCHAR(40)"),
-    ("companies", "qst_number", "VARCHAR(40)"),
-    ("companies", "neq", "VARCHAR(40)"),
-    ("companies", "payment_instructions", "TEXT"),
     # Literal in the DDL rather than DEFAULT_TIMEZONE interpolated: this is a
     # record of what shipped, and it must not change if that constant does.
     ("companies", "timezone", "VARCHAR(60) NOT NULL DEFAULT 'America/Vancouver'"),
@@ -688,21 +378,15 @@ _ADDED_COLUMNS = [
     ("clients", "postal_code", "VARCHAR(10)"),
     ("payments", "method", "VARCHAR(20) NOT NULL DEFAULT 'cash'"),
     ("payments", "reference", "VARCHAR(120)"),
-    ("invoices", "issuer_name", "VARCHAR(120)"),
-    ("invoices", "issuer_address", "TEXT"),
-    ("invoices", "issuer_gst_number", "VARCHAR(40)"),
-    ("invoices", "issuer_pst_number", "VARCHAR(40)"),
-    ("invoices", "issuer_qst_number", "VARCHAR(40)"),
-    ("invoices", "issuer_neq", "VARCHAR(40)"),
-    ("invoices", "issuer_payment_instructions", "TEXT"),
-    ("invoices", "issued_subtotal", "FLOAT"),
     ("orders", "order_type_id", "INTEGER"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
-# Same table-by-table treatment: move what's there into `street`, drop the
-# old column. See _migrate_free_text_address.
-_SPLIT_ADDRESS_TABLES = ("companies", "clients")
+# `companies` isn't here any more: its address left with the billing
+# module, which migrates whatever shape it finds (see
+# billing/migrations.py). This runs first, so clients are split before
+# anything else reads a province off them.
+_SPLIT_ADDRESS_TABLES = ("clients",)
 
 
 def run_migrations() -> None:
@@ -724,8 +408,6 @@ def run_migrations() -> None:
     for table in _SPLIT_ADDRESS_TABLES:
         if "address" in existing.get(table, ()):
             _migrate_free_text_address(table)
-
-    _backfill_invoice_issuers()
 
 
 # "…\nCity, PROV  H1V 1M6" — the shape the old free-text addresses were
@@ -771,32 +453,6 @@ def _migrate_free_text_address(table: str) -> None:
         )
     db.session.execute(sa.text(f"ALTER TABLE {table} DROP COLUMN address"))  # noqa: S608
     db.session.commit()
-
-
-def _backfill_invoice_issuers() -> None:
-    """Freeze invoices that were issued before there was anything to freeze.
-
-    Two halves, and they're deliberately different:
-
-    - Issuer details: today's company settings are the only approximation
-      available, so freeze those rather than let Invoice.issuer keep
-      falling back to live values.
-    - Money: freeze the subtotal, but with **no tax rows**. These invoices
-      were issued before tax was calculated at all, so zero tax is what
-      their clients actually received — inventing tax for them now would
-      change amounts that have already been billed.
-    """
-    stale = Invoice.query.filter(
-        Invoice.status != "draft",
-        sa.or_(Invoice.issuer_name.is_(None), Invoice.issued_subtotal.is_(None)),
-    ).all()
-    for invoice in stale:
-        if invoice.issuer_name is None:
-            invoice.freeze_issuer()
-        if invoice.issued_subtotal is None:
-            invoice.issued_subtotal = invoice.order.subtotal
-    if stale:
-        db.session.commit()
 
 
 def _migrate_order_price_to_lines() -> None:
@@ -901,10 +557,10 @@ _SAMPLE_ORDERS = [
 # order 1 is fully paid (so it renders as "Paid" without the status saying
 # so), 2 and 4 are sent-and-partly-paid, 12 is still a draft.
 _SAMPLE_INVOICES = [
-    {"order_id": 1, "number": "BM-2026-0001", "issued_date": date(2026, 8, 1), "due_date": date(2026, 8, 15), "status": "sent", "notes": None},
-    {"order_id": 2, "number": "BM-2026-0002", "issued_date": date(2026, 8, 8), "due_date": date(2026, 8, 29), "status": "sent", "notes": "50% deposit taken on issue."},
-    {"order_id": 4, "number": "BM-2026-0003", "issued_date": date(2026, 8, 18), "due_date": date(2026, 8, 30), "status": "sent", "notes": "Rush order — balance due at pickup."},
-    {"order_id": 12, "number": "BM-2026-0004", "issued_date": date(2026, 8, 21), "due_date": None, "status": "draft", "notes": None},
+    {"subject_id": 1, "number": "BM-2026-0001", "issued_date": date(2026, 8, 1), "due_date": date(2026, 8, 15), "status": "sent", "notes": None},
+    {"subject_id": 2, "number": "BM-2026-0002", "issued_date": date(2026, 8, 8), "due_date": date(2026, 8, 29), "status": "sent", "notes": "50% deposit taken on issue."},
+    {"subject_id": 4, "number": "BM-2026-0003", "issued_date": date(2026, 8, 18), "due_date": date(2026, 8, 30), "status": "sent", "notes": "Rush order — balance due at pickup."},
+    {"subject_id": 12, "number": "BM-2026-0004", "issued_date": date(2026, 8, 21), "due_date": None, "status": "draft", "notes": None},
 ]
 
 _SAMPLE_DOCUMENTS = [
@@ -950,8 +606,16 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
     # qst_number/neq are left unset entirely rather than blanked strings —
     # same "blank registrations don't print" path the sample data has always
     # exercised, just via the BC side of it now.
-    company = Company(
-        name="By Monsieur",
+    from billing.services import invoicing
+
+    company = Company(name="By Monsieur")
+    db.session.add(company)
+    db.session.flush()  # assigns company.id
+
+    # The letterhead belongs to the billing module now, so it's seeded
+    # through that module's API rather than as columns on Company.
+    invoicing.update_profile(
+        company.id, display_name=company.name,
         invoice_prefix="BM",
         street="Laurel Street, Studio 3",
         city="Vancouver",
@@ -964,8 +628,6 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
             "Cash accepted at pickup. Cheques payable to By Monsieur."
         ),
     )
-    db.session.add(company)
-    db.session.flush()  # assigns company.id
 
     admin = User(company_id=company.id, username="admin")
     admin.set_password(admin_password)
@@ -1014,14 +676,25 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
                 method=method, reference=reference,
             ))
 
-    invoices = [Invoice(company_id=company.id, **inv) for inv in _SAMPLE_INVOICES]
-    db.session.add_all(invoices)
-    db.session.flush()  # so invoice.order / invoice.company resolve below
+    db.session.flush()  # assigns order ids, needed by the adapter below
 
-    # Freeze exactly the way the app does at the draft -> issued
-    # transition, so the sample data isn't in a state the app can't reach.
-    for invoice in invoices:
-        if invoice.status != "draft":
-            invoice.freeze()
+    # Raised and frozen through the billing module's own API, so the sample
+    # data is never in a state the running app couldn't reach.
+    from billing_adapter import billable_for
+
+    for spec in _SAMPLE_INVOICES:
+        order = db.session.get(Order, spec["subject_id"])
+        billable = billable_for(order)
+        invoice = invoicing.create_invoice(
+            company.id, billable, due_date=spec["due_date"],
+            display_name=company.name, today=spec["issued_date"],
+        )
+        invoice.number = spec["number"]  # fixed numbers keep the sample stable
+        invoice.notes = spec["notes"]
+        invoicing.set_status(
+            company.id, invoice, spec["status"], billable,
+            notes=spec["notes"] or "", due_date=spec["due_date"],
+            display_name=company.name,
+        )
 
     db.session.commit()

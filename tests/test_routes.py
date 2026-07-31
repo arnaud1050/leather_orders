@@ -486,7 +486,7 @@ def test_callback_surfaces_a_failure_instead_of_500ing(logged_in, company, monke
 # --- navigation -----------------------------------------------------------
 
 def test_settings_nav_includes_integrations_on_every_settings_page(logged_in):
-    for path in ("/settings/invoicing", "/settings/preferences", "/settings/integrations"):
+    for path in ("/settings/general", "/settings/invoicing", "/settings/orders", "/settings/clients", "/settings/integrations"):
         assert "Integrations" in logged_in.get(path).get_data(as_text=True)
 
 
