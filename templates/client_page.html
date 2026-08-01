@@ -60,11 +60,17 @@
       <div class="checkbox-group">
         {% for option in source_options %}
         <label class="checkbox-group__item">
-          <input type="checkbox" name="source_ids" value="{{ option.id }}" {% if option in client.sources %}checked{% endif %}>
+          <input type="checkbox" name="source_ids" value="{{ option.id }}" {% if option.is_other %}id="source-other-checkbox"{% endif %} {% if option in client.sources %}checked{% endif %}>
           {{ option.label }}{% if not option.is_active %} <span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
         </label>
         {% endfor %}
       </div>
+      {% if other_source_option %}
+      <label id="source-other-detail" class="detail-form__note" {% if other_source_option not in client.sources %}hidden{% endif %}>
+        Please specify
+        <input type="text" name="other_source_detail" value="{{ client.other_source_detail or '' }}" maxlength="200">
+      </label>
+      {% endif %}
     </fieldset>
     <div>
       <button type="submit" class="btn-primary">Save changes</button>
@@ -96,4 +102,17 @@
   {% endif %}
 
 </div>
+
+{% if other_source_option %}
+<script>
+  (function () {
+    var checkbox = document.getElementById('source-other-checkbox');
+    var detail = document.getElementById('source-other-detail');
+    if (!checkbox || !detail) return;
+    checkbox.addEventListener('change', function () {
+      detail.hidden = !checkbox.checked;
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

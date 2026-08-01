@@ -491,10 +491,14 @@ def _apply_details(client: Client, overrides: dict) -> None:
     an existing client is the common case, and their phone number on file
     beats whatever they retyped into a web form.
 
-    `source` is matched against the company's existing `SourceOption`s and
-    ignored when nothing matches. Deliberately not created: an arbitrary
-    string from a public form should not be able to invent options that then
-    show up in everyone's client page and the analytics breakdown.
+    `source` is matched against the company's existing `SourceOption`s and,
+    failing that, falls back to whichever option the company has marked
+    `is_other` (see /settings/clients) — the raw text becomes
+    `Client.other_source_detail`, the same "Please specify" box a person
+    filling in the client page by hand would see. Deliberately not creating
+    a brand new option: an arbitrary string from a public form should not be
+    able to invent options that then show up in everyone's client page and
+    the analytics breakdown.
     """
     from models import SourceOption  # host model; see the note in CLAUDE.md
 
@@ -510,6 +514,12 @@ def _apply_details(client: Client, overrides: dict) -> None:
         SourceOption.company_id == client.company_id,
         db.func.lower(SourceOption.label) == label.lower(),
     ).first()
+    if option is None:
+        option = SourceOption.query.filter_by(
+            company_id=client.company_id, is_other=True
+        ).first()
+        if option is not None and not (client.other_source_detail or "").strip():
+            client.other_source_detail = label[:200]
     if option is not None and option not in client.sources:
         client.sources.append(option)
 

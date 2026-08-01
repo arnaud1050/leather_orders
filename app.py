@@ -747,6 +747,7 @@ def client_page(client_id: int):
         {o.id: o for o in active_options + client.sources}.values(),
         key=lambda o: o.sort_order,
     )
+    other_source_option = next((o for o in source_options if o.is_other), None)
     return render_template(
         "client_page.html",
         section="info",
@@ -754,6 +755,7 @@ def client_page(client_id: int):
         return_to=return_to,
         back_label=back_label(return_to),
         source_options=source_options,
+        other_source_option=other_source_option,
         provinces=PROVINCES,
         active_view=None,
     )
@@ -799,6 +801,14 @@ def edit_client(client_id: int):
         SourceOption.id.in_(source_ids),
         SourceOption.company_id == current_user.company_id,
     ).all()
+
+    # The free-text detail behind whichever source is marked is_other only
+    # means anything while that option is actually checked — kept blank the
+    # rest of the time rather than holding onto stale text nobody can see.
+    if any(o.is_other for o in client.sources):
+        client.other_source_detail = request.form.get("other_source_detail", "").strip() or None
+    else:
+        client.other_source_detail = None
 
     db.session.commit()
     return_to = request.form.get("return_to") or url_for("timeline_view")
@@ -1363,6 +1373,50 @@ def toggle_source_option(source_option_id: int):
     option.is_active = not option.is_active
     db.session.commit()
     return redirect(url_for("settings_clients"))
+
+
+@app.route("/settings/sources/<int:source_option_id>/set-other", methods=["POST"])
+@login_required
+def set_other_source_option(source_option_id: int):
+    """Pair (or unpair) a free-text box with this option, on the client page.
+
+    Handy as an "Other, please specify" catch-all, but that's just the
+    common case — the mechanism is a plain "this option gets a text box
+    too", usable on whichever option needs one. At most one per company —
+    adding it here removes it from whatever option held it before, same
+    "only one at a time" shape a radio group would give, but built on the
+    existing toggle-button convention instead of a new form control.
+    """
+    option = get_source_option_or_404(source_option_id)
+    turning_on = not option.is_other
+    SourceOption.query.filter_by(
+        company_id=current_user.company_id, is_other=True
+    ).update({"is_other": False})
+    option.is_other = turning_on
+    db.session.commit()
+    return redirect(url_for("settings_clients"))
+
+
+@app.route("/settings/sources/reorder", methods=["POST"])
+@login_required
+def reorder_source_options():
+    """Fired by the drag-and-drop handler in settings.html — a JSON body,
+    not a form post, since there's no page navigation involved. Same shape
+    as documents.reorder_types: ids not belonging to this company are
+    silently skipped rather than trusted, since the request is data from a
+    fetch() call, not a form the server built."""
+    payload = request.get_json(silent=True) or {}
+    ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
+    options_by_id = {
+        o.id: o for o in
+        SourceOption.query.filter_by(company_id=current_user.company_id).all()
+    }
+    for index, option_id in enumerate(ordered_ids):
+        option = options_by_id.get(option_id)
+        if option is not None:
+            option.sort_order = index
+    db.session.commit()
+    return ("", 204)
 
 
 @app.route("/settings/sources/<int:source_option_id>/delete", methods=["POST"])

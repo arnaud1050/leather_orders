@@ -108,6 +108,13 @@ class SourceOption(db.Model):
     label = db.Column(db.String(120), nullable=False)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    # At most one option per company can carry a free-text box alongside its
+    # checkbox on the client page (see /settings/clients), written into
+    # Client.other_source_detail. "Other, please specify" is the obvious
+    # use, not the only one — this is a plain boolean rather than a fixed
+    # "Other" label match, since it's really "pair a text box with this
+    # option", usable on whichever one actually needs it.
+    is_other = db.Column(db.Boolean, nullable=False, default=False)
 
     company = db.relationship("Company", back_populates="source_options")
     clients = db.relationship("Client", secondary=client_sources, back_populates="sources")
@@ -164,6 +171,12 @@ class Client(db.Model):
     # by staff. Blank for manually-created clients.
     inquiry_type = db.Column(db.String(120))
     first_message = db.Column(db.Text)
+    # Free text behind the SourceOption marked is_other — the written
+    # answer for whichever option a company has paired with a text box.
+    # Blank whenever that option isn't one of this client's sources; not
+    # cleared automatically if the option later loses its text box, so
+    # nothing already on file is lost, it just stops rendering anywhere.
+    other_source_detail = db.Column(db.String(200))
 
     company = db.relationship("Company", back_populates="clients")
     orders = db.relationship("Order", back_populates="client")
@@ -379,6 +392,8 @@ _ADDED_COLUMNS = [
     ("orders", "order_type_id", "INTEGER"),
     ("orders", "pickup_date", "DATE"),
     ("companies", "order_columns", "TEXT"),
+    ("source_options", "is_other", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("clients", "other_source_detail", "VARCHAR(200)"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
