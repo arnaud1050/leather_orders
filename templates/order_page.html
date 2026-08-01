@@ -15,6 +15,7 @@
 
   <nav class="settings-nav">
     <a href="{{ url_for('order_page', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'details' else '' }}">Details</a>
+    <a href="{{ url_for('order_materials', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'materials' else '' }}">Materials</a>
     <a href="{{ url_for('order_billing', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'billing' else '' }}">Billing</a>
   </nav>
 
@@ -53,6 +54,10 @@
     <h2>Documents</h2>
     {% include "documents/_explorer.html" %}
   </section>
+
+  {% elif section == 'materials' %}
+
+  {% include "inventory/_order_materials.html" %}
 
   {% elif section == 'billing' %}
 

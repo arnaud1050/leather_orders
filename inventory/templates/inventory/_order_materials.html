@@ -1,0 +1,187 @@
+{% from "inventory/_icons.html" import icon_pencil, icon_trash %}
+{# Included from templates/order_page.html's "materials" section. Context
+   expected: order, materials (OrderMaterial rows), others
+   (OrderMaterialOther rows), selectable_items (InventoryItem, active ∪
+   already used on this order), total_material_cost, unit_labels, return_to.
+
+   This tab is cost-tracking only — nothing here touches order.total,
+   OrderLine, or the invoice. See inventory/__init__.py. #}
+
+<section class="detail-lines">
+  <h2>Materials</h2>
+  <p class="detail-note">
+    Internal cost tracking only — this never changes what the client is
+    billed (see the Billing tab for that). Adding a material here decreases
+    its remaining quantity on the <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a> page.
+  </p>
+
+  {% if materials %}
+  <ul class="doc-list">
+    {% for material in materials %}
+    <li class="doc-list__item">
+      <span class="doc-list__label">{{ material.item_name }}</span>
+      <span class="doc-list__filename">
+        {{ (material.quantity_used|round(0)|int) if material.unit == 'each' else ('%.2f'|format(material.quantity_used)) }}
+        {{ unit_labels[material.unit] }} &times; ${{ '%.2f'|format(material.unit_price) }}
+      </span>
+      <span class="doc-list__amount">${{ '%.2f'|format(material.total) }}</span>
+      <div class="doc-list__actions">
+        <button type="button" class="icon-btn" data-open-item="material-{{ material.id }}" title="Edit" aria-label="Edit {{ material.item_name }}">{{ icon_pencil() }}</button>
+        <form method="post" action="{{ url_for('inventory.delete_material', order_id=order.id, material_id=material.id) }}" class="icon-form">
+          <input type="hidden" name="return_to" value="{{ request.path }}">
+          <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ material.item_name }}">{{ icon_trash() }}</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="detail-note">No materials drawn from inventory yet.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('inventory.add_material', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="return_to" value="{{ request.path }}">
+    <label>Item
+      <select name="inventory_item_id" id="material-item-select">
+        <option value="" disabled selected>Select an item</option>
+        {% set ns = namespace(current_type=None, open_group=False) %}
+        {% for item in selectable_items %}
+          {% set type_label = item.inventory_type.label if item.inventory_type else 'Other' %}
+          {% if type_label != ns.current_type %}
+            {% if ns.open_group %}</optgroup>{% endif %}
+            <optgroup label="{{ type_label }}">
+            {% set ns.current_type = type_label %}
+            {% set ns.open_group = true %}
+          {% endif %}
+          <option value="{{ item.id }}" data-unit="{{ item.unit }}" data-price="{{ item.unit_price }}">{{ item.name }} ({{ unit_labels[item.unit] }}, ${{ '%.2f'|format(item.unit_price) }})</option>
+        {% endfor %}
+        {% if ns.open_group %}</optgroup>{% endif %}
+      </select>
+    </label>
+    <label>Quantity<input type="number" name="quantity_used" id="material-quantity" step="1" min="0" required></label>
+    <p class="detail-note detail-form__note" id="material-estimate"></p>
+    <div>
+      <button type="submit" class="btn-primary">Add material</button>
+    </div>
+  </form>
+</section>
+
+<section class="detail-lines">
+  <h2>Others</h2>
+  <p class="detail-note">One-off material costs not tracked in inventory (e.g. a one-time hardware purchase).</p>
+
+  {% if others %}
+  <ul class="doc-list">
+    {% for other in others %}
+    <li class="doc-list__item">
+      <span class="doc-list__label">{{ other.description }}</span>
+      <span class="doc-list__amount">${{ '%.2f'|format(other.cost) }}</span>
+      <div class="doc-list__actions">
+        <button type="button" class="icon-btn" data-open-item="other-{{ other.id }}" title="Edit" aria-label="Edit {{ other.description }}">{{ icon_pencil() }}</button>
+        <form method="post" action="{{ url_for('inventory.delete_other', order_id=order.id, other_id=other.id) }}" class="icon-form">
+          <input type="hidden" name="return_to" value="{{ request.path }}">
+          <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ other.description }}">{{ icon_trash() }}</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="detail-note">No one-off costs added yet.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('inventory.add_other', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="return_to" value="{{ request.path }}">
+    <label>Description<input type="text" name="description" placeholder="e.g. Replacement buckle" required></label>
+    <label>Cost<input type="number" name="cost" step="0.01" min="0" required></label>
+    <div>
+      <button type="submit" class="btn-primary">Add cost</button>
+    </div>
+  </form>
+
+  <div class="line-totals">
+    <p class="line-totals__total"><span>Total material cost</span> <strong>${{ '%.2f'|format(total_material_cost) }}</strong></p>
+  </div>
+</section>
+
+{# Edit dialogs — one per material/other row, same pre-rendered-modal
+   pattern as the timeline's client/order modals. Only the editable fields
+   are here: a material's item/unit/price stay a snapshot (see
+   inventory/models.py), so only its quantity can be corrected. #}
+{% for material in materials %}
+<dialog id="item-modal-material-{{ material.id }}" class="modal">
+  <form method="post" action="{{ url_for('inventory.edit_material', order_id=order.id, material_id=material.id) }}" class="modal__form">
+    <input type="hidden" name="return_to" value="{{ request.path }}">
+    <h2 class="modal__title">{{ material.item_name }}</h2>
+    <label class="modal__field">Quantity ({{ unit_labels[material.unit] }})<input type="number" name="quantity_used" step="0.01" min="0" value="{{ material.quantity_used }}" required></label>
+    <div class="modal__field">Unit price<span class="modal__readout">${{ '%.2f'|format(material.unit_price) }}</span></div>
+    <div class="modal__actions">
+      <div class="modal__buttons">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
+
+{% for other in others %}
+<dialog id="item-modal-other-{{ other.id }}" class="modal">
+  <form method="post" action="{{ url_for('inventory.edit_other', order_id=order.id, other_id=other.id) }}" class="modal__form">
+    <input type="hidden" name="return_to" value="{{ request.path }}">
+    <h2 class="modal__title">{{ other.description }}</h2>
+    <label class="modal__field">Description<input type="text" name="description" value="{{ other.description }}" required></label>
+    <label class="modal__field">Cost<input type="number" name="cost" step="0.01" min="0" value="{{ other.cost }}" required></label>
+    <div class="modal__actions">
+      <div class="modal__buttons">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+{% endfor %}
+
+<script>
+  (function () {
+    var select = document.getElementById('material-item-select');
+    var quantity = document.getElementById('material-quantity');
+    var estimate = document.getElementById('material-estimate');
+    if (!select || !quantity) return;
+
+    function sync() {
+      var option = select.options[select.selectedIndex];
+      var unit = option ? option.dataset.unit : null;
+      var price = option ? parseFloat(option.dataset.price) : NaN;
+      quantity.step = unit === 'sqft' ? '0.01' : '1';
+      var qty = parseFloat(quantity.value);
+      if (!estimate) return;
+      estimate.textContent = (option && option.value && !isNaN(qty) && !isNaN(price))
+        ? '≈ $' + (qty * price).toFixed(2)
+        : '';
+    }
+
+    select.addEventListener('change', sync);
+    quantity.addEventListener('input', sync);
+    sync();
+  })();
+
+  document.querySelectorAll('[data-open-item]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var modal = document.getElementById('item-modal-' + el.dataset.openItem);
+      if (modal) modal.showModal();
+    });
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      el.closest('dialog').close();
+    });
+  });
+
+  document.querySelectorAll('dialog.modal').forEach(function (dialog) {
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+</script>

@@ -64,6 +64,13 @@ import documents.migrations as documents_migrations  # noqa: E402
 import documents.routes as documents_routes  # noqa: E402
 from documents import config as documents_config  # noqa: E402
 from documents import services as documents_service  # noqa: E402
+# Self-contained module: its own tables, migrations, blueprint and templates
+# (see inventory/__init__.py). Cost-tracking only — nothing here ever
+# touches Order.total/OrderLine/the invoice.
+import inventory.migrations as inventory_migrations  # noqa: E402
+import inventory.routes as inventory_routes  # noqa: E402
+from inventory import services as inventory_service  # noqa: E402
+from inventory.config import UNIT_LABELS as INVENTORY_UNIT_LABELS  # noqa: E402
 
 app = Flask(__name__)
 
@@ -143,6 +150,10 @@ with app.app_context():
     # documents/migrations.py) — run before seeding so a fresh company
     # never sees the old placeholder rows this replaces.
     documents_migrations.run_migrations()
+    # Same arrangement again: its own tables (inventory_types,
+    # inventory_items, order_materials, order_material_others), nothing to
+    # migrate yet since every one is brand new.
+    inventory_migrations.run_migrations()
     seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
 
 # Background mailbox/calendar sync. A no-op unless RUN_SCHEDULER=1 — with
@@ -244,6 +255,7 @@ def get_order_or_404(order_id: int) -> Order:
 
 
 documents_routes.register(app, resolve_order=get_order_or_404)
+inventory_routes.register(app, resolve_order=get_order_or_404)
 
 
 def _parse_amount(raw: str | None) -> float | None:
@@ -879,6 +891,28 @@ def order_billing(order_id: int):
     )
 
 
+@app.route("/orders/<int:order_id>/materials")
+@login_required
+def order_materials(order_id: int):
+    """The order page's "Materials" tab — cost-tracking only, see
+    inventory/__init__.py. Renders order_page.html same as order_billing()."""
+    order = get_order_or_404(order_id)
+    return_to = request.args.get("return_to") or url_for("timeline_view")
+    return render_template(
+        "order_page.html",
+        section="materials",
+        order=order,
+        materials=inventory_service.list_materials_for_order(order.id),
+        others=inventory_service.list_others_for_order(order.id),
+        total_material_cost=inventory_service.total_material_cost(order.id),
+        selectable_items=inventory_service.selectable_items(current_user.company_id, order.id),
+        unit_labels=INVENTORY_UNIT_LABELS,
+        return_to=return_to,
+        back_label=back_label(return_to),
+        active_view=None,
+    )
+
+
 @app.route("/orders/<int:order_id>/edit", methods=["POST"])
 @login_required
 def edit_order(order_id: int):
@@ -1073,6 +1107,19 @@ def settings_orders():
         # For the documents/_settings_types.html partial included below.
         document_types=documents_service.list_document_types(current_user.company_id),
         documents_notice=documents_routes.take_notice(),
+        notice=_take_settings_notice(),
+        active_view="settings",
+    )
+
+
+@app.route("/settings/inventory")
+@login_required
+def settings_inventory():
+    return render_template(
+        "settings.html",
+        section="inventory",
+        company=db.session.get(Company, current_user.company_id),
+        inventory_types=inventory_service.list_types(current_user.company_id),
         notice=_take_settings_notice(),
         active_view="settings",
     )

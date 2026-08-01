@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% from "inventory/_icons.html" import icon_pencil, icon_trash, icon_eye, icon_eye_slash %}
+{% block title %}Inventory — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  {% macro sort_link(key, label) %}
+  {% set next_dir = 'desc' if sort_by == key and sort_dir == 'asc' else 'asc' %}
+  <a href="{{ url_for('inventory.inventory_list', sort=key, dir=next_dir) }}" class="sort-link {{ 'is-active' if sort_by == key else '' }}">
+    {{ label }}
+    {% if sort_by == key %}
+    <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      {% if sort_dir == 'asc' %}<path d="M6 15l6-6 6 6" />{% else %}<path d="M6 9l6 6 6-6" />{% endif %}
+    </svg>
+    {% endif %}
+  </a>
+  {% endmacro %}
+
+  <header class="detail-header">
+    <h1>Inventory</h1>
+    <p class="detail-subtitle">Materials on hand — used to stock the Materials tab on an order</p>
+  </header>
+
+  <div class="legend-row">
+    <button type="button" class="btn-primary" data-open-item="new">+ Add item</button>
+  </div>
+
+  {% if filter_types %}
+  <div class="legend-row">
+    <span class="legend__label">Filter by</span>
+    <div class="legend" id="type-legend">
+      {% for filter_type in filter_types %}
+      <button type="button" class="legend__item" data-type="{{ filter_type.value }}">{{ filter_type.label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if items %}
+  <div class="table-scroll">
+    <table class="invoice-table invoice-table--no-mono" id="inventory-table">
+      <thead>
+        <tr>
+          <th>{{ sort_link('type', 'Type') }}</th>
+          <th>{{ sort_link('name', 'Name') }}</th>
+          <th>Unit</th>
+          <th class="is-numeric">Quantity on hand</th>
+          <th class="is-numeric">Unit price</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr data-type="{{ item.inventory_type_id if item.inventory_type_id else 'none' }}">
+          <td>{% if item.inventory_type %}{{ item.inventory_type.label }}{% else %}&mdash;{% endif %}</td>
+          <td>
+            <button type="button" class="link-button" data-open-item="{{ item.id }}">{{ item.name }}</button>
+            {% if not item.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+          </td>
+          <td>{{ unit_labels[item.unit] }}</td>
+          <td class="is-numeric {{ 'inventory-qty--negative' if item.quantity_on_hand < 0 else '' }}">
+            {{ ('%.0f'|format(item.quantity_on_hand)) if item.unit == 'each' else ('%.2f'|format(item.quantity_on_hand)) }}
+          </td>
+          <td class="is-numeric">${{ '%.2f'|format(item.unit_price) }}</td>
+          <td>
+            <div class="icon-actions">
+              <form method="post" action="{{ url_for('inventory.toggle_item', item_id=item.id) }}" class="icon-form">
+                <button type="submit" class="icon-btn" title="{{ 'Unhide' if not item.is_active else 'Hide' }}" aria-label="{{ 'Unhide' if not item.is_active else 'Hide' }} {{ item.name }}">
+                  {{ icon_eye() if not item.is_active else icon_eye_slash() }}
+                </button>
+              </form>
+              {% if item.can_delete %}
+              <form method="post" action="{{ url_for('inventory.delete_item', item_id=item.id) }}" class="icon-form">
+                <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ item.name }}">{{ icon_trash() }}</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="detail-note">No inventory items on file yet.</p>
+  {% endif %}
+
+  <p class="detail-note">
+    Item types are managed from <a href="{{ url_for('settings_inventory') }}">Settings &rarr; Inventory</a>.
+  </p>
+
+  {% macro item_fields(item=none) %}
+  <label class="modal__field">Name<input type="text" name="name" value="{{ item.name if item else '' }}" required></label>
+  {% if inventory_types or (item and item.inventory_type) %}
+  <label class="modal__field">Type
+    <select name="inventory_type_id">
+      <option value="">—</option>
+      {% for inventory_type in inventory_types %}
+      <option value="{{ inventory_type.id }}" {% if item and item.inventory_type_id == inventory_type.id %}selected{% endif %}>{{ inventory_type.label }}</option>
+      {% endfor %}
+      {% if item and item.inventory_type and not item.inventory_type.is_active %}
+      <option value="{{ item.inventory_type.id }}" selected>{{ item.inventory_type.label }} (hidden)</option>
+      {% endif %}
+    </select>
+  </label>
+  {% endif %}
+  <label class="modal__field">Unit
+    <select name="unit">
+      {% for key, label in unit_labels.items() %}
+      <option value="{{ key }}" {% if item and key == item.unit %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="modal__field">Quantity on hand<input type="number" name="quantity_on_hand" step="0.01" value="{{ item.quantity_on_hand if item else '0' }}" required></label>
+  <label class="modal__field">Unit price<input type="number" name="unit_price" step="0.01" min="0" value="{{ item.unit_price if item else '0.00' }}" required></label>
+  {% endmacro %}
+
+  {# Add-item modal, opened by the button above. #}
+  <dialog id="item-modal-new" class="modal">
+    <form method="post" action="{{ url_for('inventory.add_item') }}" class="modal__form">
+      <h2 class="modal__title">Add item</h2>
+      {{ item_fields() }}
+      <div class="modal__actions">
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn-primary">Add item</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  {# One edit dialog per item, same pre-rendered-modal pattern as the
+     timeline's client/order modals. Hide/Delete live in the table's
+     Actions column now, not in here. #}
+  {% for item in items %}
+  <dialog id="item-modal-{{ item.id }}" class="modal">
+    <form method="post" action="{{ url_for('inventory.edit_item', item_id=item.id) }}" class="modal__form">
+      <h2 class="modal__title">{{ item.name }}</h2>
+      {{ item_fields(item) }}
+      <div class="modal__actions">
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  {% endfor %}
+
+</div>
+
+<script>
+  document.querySelectorAll('[data-open-item]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var modal = document.getElementById('item-modal-' + el.dataset.openItem);
+      if (modal) modal.showModal();
+    });
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      el.closest('dialog').close();
+    });
+  });
+
+  document.querySelectorAll('dialog.modal').forEach(function (dialog) {
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+
+  // Type filter — same click-a-legend-item-to-hide pattern as the timeline
+  // and /orders (see timeline.html/orders_list.html), own localStorage key.
+  (function () {
+    var HIDDEN_KEY = 'inventory-hidden-types';
+
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#inventory-table tbody tr'));
+    var legendButtons = document.querySelectorAll('#type-legend .legend__item');
+    if (!rows.length || !legendButtons.length) return;
+
+    function getHidden() {
+      try {
+        return JSON.parse(localStorage.getItem(HIDDEN_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function applyFilter() {
+      var hidden = getHidden();
+      rows.forEach(function (row) {
+        row.hidden = hidden.indexOf(row.dataset.type) !== -1;
+      });
+      legendButtons.forEach(function (btn) {
+        btn.classList.toggle('legend__item--off', hidden.indexOf(btn.dataset.type) !== -1);
+      });
+    }
+
+    legendButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var hidden = getHidden();
+        var type = btn.dataset.type;
+        var index = hidden.indexOf(type);
+        if (index === -1) {
+          hidden.push(type);
+        } else {
+          hidden.splice(index, 1);
+        }
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+        applyFilter();
+      });
+    });
+
+    applyFilter();
+  })();
+</script>
+{% endblock %}

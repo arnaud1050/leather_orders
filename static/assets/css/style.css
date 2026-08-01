@@ -1432,6 +1432,60 @@ dialog.modal::backdrop {
   font-family: var(--font-body);
 }
 
+/* A <button> that reads exactly like .invoice-table a — for the inventory
+   item name, which has to be a button (it opens an edit modal) rather than
+   a link. */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--status-progress);
+}
+
+/* Flags a negative quantity_on_hand on the inventory list — allowed, not
+   blocked (see inventory/services.py), so this is the only signal that
+   something's oversold. */
+.inventory-qty--negative {
+  color: var(--day-today);
+  font-weight: 600;
+}
+
+/* A row of icon-btns inside a table cell — the inventory list's Actions
+   column (hide/unhide, delete). */
+.icon-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Same idea as .doc-list__delete-form/.doc-explorer__delete-form: a <form>
+   wrapping a single icon button among flex siblings shouldn't itself take
+   up flex layout space. Generic (not scoped to one component) since both
+   the inventory table and the order Materials tab's .doc-list rows need it. */
+.icon-form {
+  display: contents;
+}
+
+/* Icon-button equivalent of .doc-list__delete-form — sits where the old
+   text "Remove" button did, holding an Edit + Delete icon pair. */
+.doc-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.doc-list__amount + .doc-list__actions {
+  margin-left: 16px;
+}
+
 /* Recent activity (audit log) — "Detail" can be a long freeform message, so
    this variant fixes the table to the container width and wraps text
    instead of forcing a horizontal scroll. */

@@ -1,0 +1,42 @@
+{# Included from templates/settings.html's "inventory" section. Context
+   expected: inventory_types (list, in sort_order, active + hidden — see
+   inventory.services.list_types), notice. Same shape as the Order types
+   section on the "orders" settings page — no drag-reorder, unlike
+   documents' DocumentType list. #}
+
+<h2>Inventory types</h2>
+<p class="detail-note">
+  Categories for a material (e.g. Leather, Lining, Hardware) — shown as a
+  dropdown when adding or editing an inventory item, and used to group the
+  item picker on an order's Materials tab. A type can't be deleted once an
+  item has been tagged with it — hide it instead to remove it from new
+  selections while keeping that item labelled correctly.
+</p>
+
+<ul class="settings-source-list">
+  {% for inventory_type in inventory_types %}
+  <li class="settings-source-list__item {% if not inventory_type.is_active %}settings-source-list__item--hidden{% endif %}">
+    <span class="settings-source-list__label">
+      {{ inventory_type.label }}
+      {% if not inventory_type.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+    </span>
+    <div class="settings-source-list__actions">
+      <form method="post" action="{{ url_for('inventory.toggle_type', inventory_type_id=inventory_type.id) }}">
+        <button type="submit" class="btn-secondary">{{ 'Unhide' if not inventory_type.is_active else 'Hide' }}</button>
+      </form>
+      {% if inventory_type.can_delete %}
+      <form method="post" action="{{ url_for('inventory.delete_type', inventory_type_id=inventory_type.id) }}">
+        <button type="submit" class="btn-secondary">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+
+<form method="post" action="{{ url_for('inventory.add_type') }}" class="detail-form settings-source-add">
+  <label>Add a new type<input type="text" name="label" placeholder="e.g. Leather" required></label>
+  <div>
+    <button type="submit" class="btn-primary">Add</button>
+  </div>
+</form>

@@ -1,0 +1,31 @@
+{# Small inline-SVG icon macros shared by inventory_list.html and
+   _order_materials.html, built to the same stroke-currentColor convention
+   as the icon-btn component documents/_explorer.html introduced (reusing
+   its exact trash path so "delete" reads the same everywhere in the app). #}
+
+{% macro icon_pencil() %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12.6 3.4a1.7 1.7 0 0 1 2.4 2.4L6.4 14.4l-3.4.9.9-3.4 8.7-8.5Z"/>
+</svg>
+{% endmacro %}
+
+{% macro icon_trash() %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4.5 6h11M8 6V4.5h4V6M6 6l.6 9.2c.04.7.62 1.3 1.32 1.3h4.16c.7 0 1.28-.6 1.32-1.3L14 6"/>
+</svg>
+{% endmacro %}
+
+{% macro icon_eye() %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2.5 10S5 4.5 10 4.5 17.5 10 17.5 10 15 15.5 10 15.5 2.5 10 2.5 10Z"/>
+  <circle cx="10" cy="10" r="2.3"/>
+</svg>
+{% endmacro %}
+
+{% macro icon_eye_slash() %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2.5 10S5 4.5 10 4.5 17.5 10 17.5 10 15 15.5 10 15.5 2.5 10 2.5 10Z"/>
+  <circle cx="10" cy="10" r="2.3"/>
+  <path d="M3 3l14 14"/>
+</svg>
+{% endmacro %}
