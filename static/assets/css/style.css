@@ -2030,6 +2030,12 @@ dialog.modal::backdrop {
     position: sticky;
     left: 0;
     background: var(--paper);
+    /* .timeline__track is also position:relative (for its bars' absolute
+       zebra-striping background), so without an explicit z-index the two
+       positioned siblings paint in DOM order — track after label — and the
+       scrolling bars/week-labels end up drawn over the sticky name column
+       instead of passing behind it. */
+    z-index: 2;
   }
 
   .invoice-doc__parties {

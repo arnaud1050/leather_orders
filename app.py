@@ -9,6 +9,7 @@ seeded, but every query already filters by company_id so adding a second
 tenant later is additive.
 """
 
+import json
 import os
 import re
 
@@ -558,6 +559,62 @@ ORDER_SORT_KEYS = {
     "balance": lambda o: o.balance_due,
 }
 
+# Canonical Orders-list columns: key -> (label, numeric). This dict is both
+# the fallback order for a company that's never saved a preference and the
+# whitelist a saved preference is filtered against — a key removed from here
+# later just drops out of anyone's stored JSON instead of erroring.
+ORDER_COLUMNS = {
+    "item": ("Item", False),
+    "client": ("Client", False),
+    "type": ("Type", False),
+    "status": ("Status", False),
+    "start": ("Start", False),
+    "due": ("Due", False),
+    "total": ("Total", True),
+    "paid": ("Paid", True),
+    "balance": ("Balance", True),
+}
+
+
+def _order_columns_for(company_id: int) -> list[dict]:
+    """This company's Orders-list columns, in the order/visibility it saved.
+
+    Stored as one JSON blob on Company.order_columns rather than a table like
+    SourceOption/OrderType — this is a fixed set of 9 known columns, not an
+    open-ended list a user names, so there's nothing per-row to hide-not-delete.
+    Merges the saved list against ORDER_COLUMNS so a column added to the app
+    later appears (visible, appended at the end) for a company with an older
+    saved blob, and a column since removed from the app silently drops out
+    instead of erroring.
+    """
+    company = db.session.get(Company, company_id)
+    saved = []
+    if company.order_columns:
+        try:
+            saved = json.loads(company.order_columns)
+        except (ValueError, TypeError):
+            saved = []
+    seen = set()
+    columns = []
+    for entry in saved:
+        key = entry.get("key") if isinstance(entry, dict) else None
+        if key in ORDER_COLUMNS and key not in seen:
+            seen.add(key)
+            label, numeric = ORDER_COLUMNS[key]
+            columns.append({"key": key, "label": label, "numeric": numeric, "visible": bool(entry.get("visible", True))})
+    for key, (label, numeric) in ORDER_COLUMNS.items():
+        if key not in seen:
+            columns.append({"key": key, "label": label, "numeric": numeric, "visible": True})
+    return columns
+
+
+def _save_order_columns(company_id: int, columns: list[dict]) -> None:
+    company = db.session.get(Company, company_id)
+    company.order_columns = json.dumps([
+        {"key": c["key"], "visible": c["visible"]} for c in columns
+    ])
+    db.session.commit()
+
 CLIENT_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
     "orders": lambda c: len(c.orders),
@@ -588,11 +645,19 @@ def orders_list():
     has_order_types = (
         OrderType.query.filter_by(company_id=current_user.company_id).first() is not None
     )
+    # A column can be hidden in settings, and Type additionally only ever
+    # shows when there's a type to show — same "don't show empty" rule the
+    # dropdown on the order form already follows.
+    columns = [
+        c for c in _order_columns_for(current_user.company_id)
+        if c["visible"] and (c["key"] != "type" or has_order_types)
+    ]
     return render_template(
         "orders_list.html",
         orders=orders,
         status_labels=STATUS_LABELS,
         has_order_types=has_order_types,
+        columns=columns,
         sort_by=sort_by,
         sort_dir=sort_dir,
         active_view="orders",
@@ -1099,11 +1164,24 @@ def settings_orders():
         .order_by(OrderType.sort_order)
         .all()
     )
+    # Same "any type at all, not just active" rule as orders_list()'s
+    # has_order_types — with none, the Type column can never show on the
+    # Orders list regardless of its saved visibility, so there's nothing for
+    # this editor to offer a row for either.
+    has_order_types = bool(order_types)
     return render_template(
         "settings.html",
         section="orders",
         company=db.session.get(Company, current_user.company_id),
         order_types=order_types,
+        # Every column, not just visible ones — this editor is what turns
+        # visibility back on, so a hidden column has to still render its row.
+        # Type is the one exception: it's excluded entirely with no order
+        # types on file, matching the Orders list's own "don't show empty" rule.
+        order_columns=[
+            c for c in _order_columns_for(current_user.company_id)
+            if c["key"] != "type" or has_order_types
+        ],
         # For the documents/_settings_types.html partial included below.
         document_types=documents_service.list_document_types(current_user.company_id),
         documents_notice=documents_routes.take_notice(),
@@ -1220,6 +1298,42 @@ def delete_order_type(order_type_id: int):
         db.session.delete(order_type)
         db.session.commit()
     return redirect(url_for("settings_orders"))
+
+
+# Orders-list column order/visibility — same drag-to-reorder pattern as
+# documents.reorder_types (immediate fetch on drop), plus a per-column
+# hide/show toggle matching the order-type/source-option Hide button, rather
+# than a checkbox-plus-Save form: everything else in Settings acts
+# immediately on click, and this shouldn't be the odd one out.
+@app.route("/settings/order-columns/<key>/toggle", methods=["POST"])
+@login_required
+def toggle_order_column(key: str):
+    if key not in ORDER_COLUMNS:
+        abort(404)
+    columns = _order_columns_for(current_user.company_id)
+    for col in columns:
+        if col["key"] == key:
+            col["visible"] = not col["visible"]
+    _save_order_columns(current_user.company_id, columns)
+    return redirect(url_for("settings_orders"))
+
+
+@app.route("/settings/order-columns/reorder", methods=["POST"])
+@login_required
+def reorder_order_columns():
+    payload = request.get_json(silent=True) or {}
+    order = [key for key in payload.get("order", []) if key in ORDER_COLUMNS]
+    if not order:
+        return ("", 204)
+    visibility = {c["key"]: c["visible"] for c in _order_columns_for(current_user.company_id)}
+    columns = [{"key": key, "visible": visibility.get(key, True)} for key in order]
+    # A key the client didn't send back (shouldn't happen — every column
+    # renders a draggable row) is appended rather than silently dropped.
+    for key in visibility:
+        if key not in order:
+            columns.append({"key": key, "visible": visibility[key]})
+    _save_order_columns(current_user.company_id, columns)
+    return ("", 204)
 
 
 @app.route("/settings/sources", methods=["POST"])

@@ -48,36 +48,40 @@
     <table class="invoice-table invoice-table--no-mono" id="orders-table">
       <thead>
         <tr>
-          <th>{{ sort_link('item', 'Item') }}</th>
-          <th>{{ sort_link('client', 'Client') }}</th>
-          {% if has_order_types %}<th>{{ sort_link('type', 'Type') }}</th>{% endif %}
-          <th>{{ sort_link('status', 'Status') }}</th>
-          <th>{{ sort_link('start', 'Start') }}</th>
-          <th>{{ sort_link('due', 'Due') }}</th>
-          <th class="is-numeric">{{ sort_link('total', 'Total', numeric=True) }}</th>
-          <th class="is-numeric">{{ sort_link('paid', 'Paid', numeric=True) }}</th>
-          <th class="is-numeric">{{ sort_link('balance', 'Balance', numeric=True) }}</th>
+          {% for col in columns %}
+          <th {% if col.numeric %}class="is-numeric"{% endif %}>{{ sort_link(col.key, col.label, numeric=col.numeric) }}</th>
+          {% endfor %}
         </tr>
       </thead>
       <tbody>
         {% for order in orders %}
         <tr data-status="{{ order.status }}" data-balance="{{ order.balance_due }}">
+          {% for col in columns %}
+          {% if col.key == 'item' %}
           <td><a href="{{ url_for('order_page', order_id=order.id) }}?return_to={{ request.path }}">{{ order.item }}</a></td>
+          {% elif col.key == 'client' %}
           <td>
             <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a>
             {% if order.client.is_returning %}
             <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor" title="Returning client"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
             {% endif %}
           </td>
-          {% if has_order_types %}
+          {% elif col.key == 'type' %}
           <td>{% if order.order_type %}<span class="pill">{{ order.order_type.label }}</span>{% else %}&mdash;{% endif %}</td>
-          {% endif %}
+          {% elif col.key == 'status' %}
           <td><span class="pill pill--{{ order.status }}">{{ status_labels[order.status] }}</span></td>
+          {% elif col.key == 'start' %}
           <td>{{ order.start.strftime('%Y-%m-%d') }}</td>
+          {% elif col.key == 'due' %}
           <td>{{ order.due.strftime('%Y-%m-%d') }}</td>
+          {% elif col.key == 'total' %}
           <td class="is-numeric">${{ '%.2f'|format(order.total) }}</td>
+          {% elif col.key == 'paid' %}
           <td class="is-numeric">${{ '%.2f'|format(order.amount_paid) }}</td>
+          {% elif col.key == 'balance' %}
           <td class="is-numeric">${{ '%.2f'|format(order.balance_due) }}</td>
+          {% endif %}
+          {% endfor %}
         </tr>
         {% endfor %}
       </tbody>

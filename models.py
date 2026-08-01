@@ -50,6 +50,12 @@ class Company(db.Model):
     # so changing it re-labels history rather than rewriting it.
     timezone = db.Column(db.String(60), nullable=False, default=DEFAULT_TIMEZONE)
 
+    # JSON list of {"key", "visible"} dicts, in display order, for the Orders
+    # list columns — see ORDER_COLUMNS / _order_columns_for() in app.py. Null
+    # until a company saves a preference, at which point every column reads
+    # the default order and stays visible.
+    order_columns = db.Column(db.Text)
+
     users = db.relationship("User", back_populates="company")
     clients = db.relationship("Client", back_populates="company")
     source_options = db.relationship(
@@ -372,6 +378,7 @@ _ADDED_COLUMNS = [
     ("payments", "reference", "VARCHAR(120)"),
     ("orders", "order_type_id", "INTEGER"),
     ("orders", "pickup_date", "DATE"),
+    ("companies", "order_columns", "TEXT"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.

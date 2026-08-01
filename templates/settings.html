@@ -80,6 +80,42 @@
   </section>
 
   <section class="detail-orders">
+    <h2>Orders list columns</h2>
+    <p class="detail-note">
+      Reorder and hide/show the columns shown on the
+      <a href="{{ url_for('orders_list') }}">Orders</a> list. Drag a row by
+      its handle to reorder — it saves as you drop it. Hidden columns keep
+      their data; they just stop rendering that column.
+    </p>
+
+    <ul class="settings-source-list" id="order-column-list">
+      {% for col in order_columns %}
+      <li class="settings-source-list__item {% if not col.visible %}settings-source-list__item--hidden{% endif %}" draggable="true" data-key="{{ col.key }}">
+        <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
+          <svg viewBox="0 0 10 16" fill="currentColor">
+            <circle cx="2" cy="2" r="1.3"/>
+            <circle cx="8" cy="2" r="1.3"/>
+            <circle cx="2" cy="8" r="1.3"/>
+            <circle cx="8" cy="8" r="1.3"/>
+            <circle cx="2" cy="14" r="1.3"/>
+            <circle cx="8" cy="14" r="1.3"/>
+          </svg>
+        </span>
+        <span class="settings-source-list__label">
+          {{ col.label }}
+          {% if not col.visible %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('toggle_order_column', key=col.key) }}">
+            <button type="submit" class="btn-secondary">{{ 'Show' if not col.visible else 'Hide' }}</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="detail-orders">
     {% include "documents/_settings_types.html" %}
   </section>
 
@@ -183,4 +219,48 @@
   {% endif %}
 
 </div>
+
+<script>
+  (function () {
+    var list = document.getElementById('order-column-list');
+    if (!list) return;
+    var dragged = null;
+
+    list.addEventListener('dragstart', function (e) {
+      var item = e.target.closest('.settings-source-list__item');
+      if (!item) return;
+      dragged = item;
+      item.classList.add('settings-source-list__item--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox won't start a drag at all without setData.
+      e.dataTransfer.setData('text/plain', item.dataset.key);
+    });
+
+    list.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      var target = e.target.closest('.settings-source-list__item');
+      if (!target || target === dragged) return;
+      var rect = target.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < rect.height / 2;
+      list.insertBefore(dragged, before ? target : target.nextSibling);
+    });
+
+    list.addEventListener('drop', function (e) {
+      e.preventDefault();
+    });
+
+    list.addEventListener('dragend', function () {
+      if (dragged) dragged.classList.remove('settings-source-list__item--dragging');
+      dragged = null;
+      var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
+        .map(function (item) { return item.dataset.key; });
+      fetch("{{ url_for('reorder_order_columns') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: order }),
+      });
+    });
+  })();
+</script>
 {% endblock %}
