@@ -278,6 +278,16 @@ body {
   text-decoration: line-through;
 }
 
+/* Sizes an icon-btn-style SVG (e.g. the "Show hidden" toggle's hide icon)
+   dropped into a plain .legend__item — those buttons carry no width/height
+   of their own, and stroke="currentColor" already ties the icon's color to
+   .legend__item/.legend__item--off without any extra rule needed here. */
+.legend__item svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
 .legend__item--off .dot {
   opacity: 0.35;
 }

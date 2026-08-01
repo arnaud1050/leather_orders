@@ -66,6 +66,7 @@ def _flash_settings_notice(message: str) -> None:
 INVENTORY_SORT_KEYS = {
     "type": lambda i: (i.inventory_type.label.lower() if i.inventory_type else "", i.name.lower()),
     "name": lambda i: i.name.lower(),
+    "price": lambda i: i.unit_price,
 }
 
 
@@ -85,7 +86,11 @@ def inventory_list():
     # table), plus "No Type" whenever some item has none. Ordered by the
     # type's own sort_order so this lines up with the Type dropdown
     # elsewhere, "No Type" last since it's the catch-all rather than a
-    # configured category.
+    # configured category. "No Type" is further gated on the company having
+    # defined at least one real type at all (has_types) — with none defined,
+    # "No Type" would be the only bucket that could ever show, which isn't a
+    # filter worth offering (same "don't show it until there's something to
+    # show" rule as the Type column on /orders).
     seen_type_ids: set[int] = set()
     filter_types = []
     has_untyped = False
@@ -95,13 +100,18 @@ def inventory_list():
         elif item.inventory_type.id not in seen_type_ids:
             seen_type_ids.add(item.inventory_type.id)
             filter_types.append({"value": str(item.inventory_type.id), "label": item.inventory_type.label})
-    if has_untyped:
+    if has_untyped and services.has_types(current_user.company_id):
         filter_types.append({"value": "none", "label": "No Type"})
 
     return render_template(
         "inventory/inventory_list.html",
         items=items,
         filter_types=filter_types,
+        # Hidden items stay in the DOM (so Unhide keeps working) but are
+        # filtered out client-side by default — see inventory_list.html's
+        # script. This just tells the template whether the "Show hidden"
+        # toggle needs to render at all.
+        has_hidden_items=any(not item.is_active for item in items),
         sort_by=sort_by,
         sort_dir=sort_dir,
         inventory_types=services.active_types(current_user.company_id),

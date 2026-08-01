@@ -4,9 +4,9 @@
 {% block content %}
 <div class="ledger">
 
-  {% macro sort_link(key, label) %}
+  {% macro sort_link(key, label, numeric=False) %}
   {% set next_dir = 'desc' if sort_by == key and sort_dir == 'asc' else 'asc' %}
-  <a href="{{ url_for('inventory.inventory_list', sort=key, dir=next_dir) }}" class="sort-link {{ 'is-active' if sort_by == key else '' }}">
+  <a href="{{ url_for('inventory.inventory_list', sort=key, dir=next_dir) }}" class="sort-link {{ 'is-active' if sort_by == key else '' }} {{ 'is-numeric' if numeric else '' }}">
     {{ label }}
     {% if sort_by == key %}
     <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -21,20 +21,38 @@
     <p class="detail-subtitle">Materials on hand — used to stock the Materials tab on an order</p>
   </header>
 
+  {# Same shape as the timeline/orders-list legend-row: filters on the left,
+     "+ Add item" pushed right via .legend__new-order — always present even
+     with nothing to filter, same "button outside the {% if %}" convention
+     orders_list.html uses for "+ Add order". #}
   <div class="legend-row">
-    <button type="button" class="btn-primary" data-open-item="new">+ Add item</button>
-  </div>
-
-  {% if filter_types %}
-  <div class="legend-row">
+    {% if filter_types or has_hidden_items %}
     <span class="legend__label">Filter by</span>
+    {% if filter_types %}
     <div class="legend" id="type-legend">
       {% for filter_type in filter_types %}
       <button type="button" class="legend__item" data-type="{{ filter_type.value }}">{{ filter_type.label }}</button>
       {% endfor %}
     </div>
+    {% endif %}
+    {% if has_hidden_items %}
+    {# Off by default (hidden items start filtered out) — the inverse of the
+       type buttons above, which start all showing. Same plain .legend__item
+       styling as those (no --off dimming/strikethrough here — the label
+       itself flips between "Show hidden"/"Hide hidden" to say what's
+       currently applied), plus the same "Hide" icon the table's Actions
+       column uses, so this reads as a visibility control rather than
+       another type. Wrapped in its own .legend div — not #type-legend,
+       since it isn't a type — purely so it picks up the same font-size/
+       letter-spacing that div gives the type buttons, rather than
+       inheriting the page's larger body text. #}
+    <div class="legend">
+      <button type="button" class="legend__item" id="show-hidden-toggle">{{ icon_eye_slash() }} <span id="show-hidden-label">Show hidden</span></button>
+    </div>
+    {% endif %}
+    {% endif %}
+    <button type="button" class="btn-primary legend__new-order" data-open-item="new">+ Add item</button>
   </div>
-  {% endif %}
 
   {% if items %}
   <div class="table-scroll">
@@ -45,13 +63,13 @@
           <th>{{ sort_link('name', 'Name') }}</th>
           <th>Unit</th>
           <th class="is-numeric">Quantity on hand</th>
-          <th class="is-numeric">Unit price</th>
+          <th class="is-numeric">{{ sort_link('price', 'Unit price', numeric=True) }}</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for item in items %}
-        <tr data-type="{{ item.inventory_type_id if item.inventory_type_id else 'none' }}">
+        <tr data-type="{{ item.inventory_type_id if item.inventory_type_id else 'none' }}" data-active="{{ 'true' if item.is_active else 'false' }}">
           <td>{% if item.inventory_type %}{{ item.inventory_type.label }}{% else %}&mdash;{% endif %}</td>
           <td>
             <button type="button" class="link-button" data-open-item="{{ item.id }}">{{ item.name }}</button>
@@ -170,15 +188,22 @@
   });
 
   // Type filter — same click-a-legend-item-to-hide pattern as the timeline
-  // and /orders (see timeline.html/orders_list.html), own localStorage key.
+  // and /orders (see timeline.html/orders_list.html), own localStorage key —
+  // plus the "Show hidden" toggle, which runs the other way round: hidden
+  // items start filtered OUT, and the button reveals them, rather than
+  // starting shown and being clicked away.
   (function () {
     var HIDDEN_KEY = 'inventory-hidden-types';
+    var SHOW_HIDDEN_KEY = 'inventory-show-hidden-items';
 
     var rows = Array.prototype.slice.call(document.querySelectorAll('#inventory-table tbody tr'));
-    var legendButtons = document.querySelectorAll('#type-legend .legend__item');
-    if (!rows.length || !legendButtons.length) return;
+    if (!rows.length) return;
 
-    function getHidden() {
+    var legendButtons = document.querySelectorAll('#type-legend .legend__item');
+    var showHiddenBtn = document.getElementById('show-hidden-toggle');
+    var showHiddenLabel = document.getElementById('show-hidden-label');
+
+    function getHiddenTypes() {
       try {
         return JSON.parse(localStorage.getItem(HIDDEN_KEY)) || [];
       } catch (e) {
@@ -186,30 +211,49 @@
       }
     }
 
+    function getShowHidden() {
+      return localStorage.getItem(SHOW_HIDDEN_KEY) === 'true';
+    }
+
     function applyFilter() {
-      var hidden = getHidden();
+      var hiddenTypes = getHiddenTypes();
+      var showHidden = getShowHidden();
       rows.forEach(function (row) {
-        row.hidden = hidden.indexOf(row.dataset.type) !== -1;
+        var typeFiltered = hiddenTypes.indexOf(row.dataset.type) !== -1;
+        var isHiddenItem = row.dataset.active === 'false';
+        row.hidden = typeFiltered || (isHiddenItem && !showHidden);
       });
       legendButtons.forEach(function (btn) {
-        btn.classList.toggle('legend__item--off', hidden.indexOf(btn.dataset.type) !== -1);
+        btn.classList.toggle('legend__item--off', hiddenTypes.indexOf(btn.dataset.type) !== -1);
       });
+      if (showHiddenLabel) {
+        // No --off styling here (same size/weight/color as every other
+        // filter button) — the label itself says what's currently applied.
+        showHiddenLabel.textContent = showHidden ? 'Hide hidden' : 'Show hidden';
+      }
     }
 
     legendButtons.forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var hidden = getHidden();
+        var hiddenTypes = getHiddenTypes();
         var type = btn.dataset.type;
-        var index = hidden.indexOf(type);
+        var index = hiddenTypes.indexOf(type);
         if (index === -1) {
-          hidden.push(type);
+          hiddenTypes.push(type);
         } else {
-          hidden.splice(index, 1);
+          hiddenTypes.splice(index, 1);
         }
-        localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenTypes));
         applyFilter();
       });
     });
+
+    if (showHiddenBtn) {
+      showHiddenBtn.addEventListener('click', function () {
+        localStorage.setItem(SHOW_HIDDEN_KEY, (!getShowHidden()).toString());
+        applyFilter();
+      });
+    }
 
     applyFilter();
   })();

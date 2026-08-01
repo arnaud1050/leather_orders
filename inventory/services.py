@@ -19,6 +19,16 @@ from inventory.models import InventoryItem, InventoryType, OrderMaterial, OrderM
 # shape as OrderType/DocumentType.
 # ---------------------------------------------------------------------------
 
+def has_types(company_id: int) -> bool:
+    """Whether the company has defined any InventoryType at all — active or
+    hidden. Gates whether the master list's "No Type" filter button appears
+    (see inventory/routes.py): with zero types ever defined, every item is
+    untyped by definition, so a filter for that single, all-or-nothing
+    bucket would be pointless. Existence, not is_active — same "does the
+    category exist at all" question `has_order_types` asks in app.py."""
+    return InventoryType.query.filter_by(company_id=company_id).first() is not None
+
+
 def list_types(company_id: int) -> list[InventoryType]:
     """Every type, active or hidden — the settings page needs both."""
     return (

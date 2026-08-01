@@ -82,6 +82,26 @@ def test_delete_type_is_blocked_once_referenced(company):
     assert db.session.get(InventoryType, leather.id).can_delete is False
 
 
+def test_has_types_is_false_when_none_defined(company):
+    assert services.has_types(company.id) is False
+
+
+def test_has_types_is_true_once_a_type_exists(company):
+    services.add_type(company.id, "Leather")
+    assert services.has_types(company.id) is True
+
+
+def test_has_types_is_true_even_for_a_hidden_type(company):
+    leather = services.add_type(company.id, "Leather")
+    services.toggle_type(company.id, leather.id)  # hide
+    assert services.has_types(company.id) is True
+
+
+def test_has_types_is_scoped_to_the_tenant(company, other_company):
+    services.add_type(other_company.id, "Theirs")
+    assert services.has_types(company.id) is False
+
+
 # --- inventory items: add / edit / hide-don't-delete / tenant scoping ------
 
 def test_add_item_creates_it_with_given_fields(company):
@@ -465,6 +485,85 @@ def test_inventory_list_sorts_by_name(logged_in, company):
     response = logged_in.get("/inventory?sort=name&dir=asc")
     body = response.data.decode()
     assert body.index("Awl") < body.index("Zipper")
+
+
+def test_inventory_list_sorts_by_price(logged_in, company):
+    services.add_item(
+        company.id, name="Pricey", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=99.00,
+    )
+    services.add_item(
+        company.id, name="Cheap", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1.00,
+    )
+    response = logged_in.get("/inventory?sort=price&dir=asc")
+    body = response.data.decode()
+    assert body.index("Cheap") < body.index("Pricey")
+
+
+def test_filter_types_excludes_no_type_when_company_has_no_types_defined(logged_in, company):
+    """No InventoryType exists for this company at all, so every item is
+    untyped by definition — "No Type" would be the only possible filter
+    button and isn't offered (see services.has_types)."""
+    services.add_item(
+        company.id, name="Untyped widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    response = logged_in.get("/inventory")
+    assert b"No Type" not in response.data
+
+
+def test_filter_types_includes_no_type_when_a_type_exists_and_an_item_is_untyped(logged_in, company):
+    leather = services.add_type(company.id, "Leather")
+    services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=leather.id, quantity_on_hand=1, unit_price=1,
+    )
+    services.add_item(
+        company.id, name="Untyped widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    response = logged_in.get("/inventory")
+    assert b"No Type" in response.data
+
+
+def test_inventory_list_marks_hidden_items_with_data_active_false(logged_in, company):
+    active = services.add_item(
+        company.id, name="Active widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    hidden = services.add_item(
+        company.id, name="Hidden widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    services.toggle_item(company.id, hidden.id)
+
+    body = logged_in.get("/inventory").data.decode()
+
+    assert f'data-active="true"' in body
+    assert f'data-active="false"' in body
+
+
+def test_show_hidden_toggle_appears_when_a_hidden_item_exists(logged_in, company):
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    services.toggle_item(company.id, item.id)
+    response = logged_in.get("/inventory")
+    # The double-quoted HTML attribute form, not a bare substring match — the
+    # inline script always mentions the id in a getElementById() call
+    # (single-quoted) regardless of whether the button itself is rendered.
+    assert b'id="show-hidden-toggle"' in response.data
+
+
+def test_show_hidden_toggle_absent_when_nothing_is_hidden(logged_in, company):
+    services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    response = logged_in.get("/inventory")
+    assert b'id="show-hidden-toggle"' not in response.data
 
 
 def test_add_item_route_creates_an_item(logged_in, company):

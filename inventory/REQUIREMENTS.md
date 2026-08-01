@@ -42,6 +42,11 @@ choices; this file is the checklist of *what must hold true*.
   the type stays exactly as it was.
 - **T8.** The settings page lists every type for a company — active and
   hidden both.
+- **T9.** `has_types(company_id)` reports whether the company has defined
+  **any** `InventoryType` at all — active or hidden. Used to decide whether
+  the master list's "No Type" filter button can appear at all (see U10) —
+  existence, not `is_active`, same "does the category exist" question
+  `has_order_types` asks elsewhere in the app.
 
 ## 2. Inventory items (`InventoryItem`)
 
@@ -157,15 +162,17 @@ choices; this file is the checklist of *what must hold true*.
 
 ## 8. UI behavior
 
-- **U1.** The master list is sortable by **Type** or **Name**
-  (`?sort=&dir=`), defaulting to Type ascending; sorting by Type breaks
-  ties by name.
+- **U1.** The master list is sortable by **Type**, **Name**, or **Unit
+  price** (`?sort=&dir=`), defaulting to Type ascending; sorting by Type
+  breaks ties by name.
 - **U2.** The list is filterable by type via legend buttons — one per type
-  actually represented among the company's items, plus "No Type" whenever
-  some item has none — persisted client-side in `localStorage`
-  (`inventory-hidden-types`), independent of any other page's filters.
+  actually represented among the company's items — persisted client-side in
+  `localStorage` (`inventory-hidden-types`), independent of any other page's
+  filters.
 - **U3.** "+ Add item" opens a modal to create a new item, not an inline
-  form on the page.
+  form on the page. It sits on the same row as the type filters, pushed to
+  the right (same layout as the Timeline/Orders "+ New order" button), and
+  is always present regardless of whether any filters are showing.
 - **U4.** Clicking an item's name opens its own edit modal (name / type /
   unit / quantity / price only — Hide/Delete are not in this modal).
 - **U5.** Each row's Actions column offers Hide/Unhide and Delete (the
@@ -180,6 +187,27 @@ choices; this file is the checklist of *what must hold true*.
   cost before submitting.
 - **U9.** Material and Other rows use pencil (edit) / trash (delete) icon
   buttons with tooltips instead of a text "Remove" button.
+- **U10.** A "No Type" filter button only appears when the company has
+  **both** (a) defined at least one `InventoryType` (T9) **and** (b) at
+  least one item with none. With zero types ever defined, "No Type" is not
+  offered at all — every item is untyped by definition, so a filter for
+  that single, all-or-nothing bucket would be pointless.
+- **U11.** Hidden items (`is_active = False`) are **not visible by default**
+  on the master list.
+- **U12.** A "Show hidden" toggle appears whenever at least one item is
+  hidden — regardless of whether any type filter buttons are showing — and
+  reveals hidden items when clicked. It's persisted client-side in
+  `localStorage` (`inventory-show-hidden-items`), a separate key from the
+  type filter's, and combines with it: a hidden item whose type is also
+  filtered out stays hidden even with hidden items shown. It's styled
+  **identically** to the type filter buttons (same plain `.legend__item`
+  class, same font-size/weight/color, no dimming or strikethrough) — the
+  only difference is the "Hide" (eye-slash) icon the table's Actions column
+  also uses, and its own label swapping between **"Show hidden"** (default)
+  and **"Hide hidden"** (once clicked) to say what it currently does, rather
+  than a style change signaling on/off the way the type buttons do.
+- **U13.** The "Show hidden" toggle is absent entirely when no item is
+  hidden — there being nothing for it to reveal.
 
 ## 9. Explicit non-requirements
 
@@ -215,6 +243,7 @@ catch a regression of it; that's a to-do, not a shrug.
 | T6 | `test_toggle_type_flips_is_active`, `test_toggle_type_is_scoped_to_the_tenant` |
 | T7 | `test_delete_type_removes_it_when_unused`, `test_delete_type_is_blocked_once_referenced` |
 | T8 | `test_settings_inventory_page_lists_types` |
+| T9 | `test_has_types_is_false_when_none_defined`, `test_has_types_is_true_once_a_type_exists`, `test_has_types_is_true_even_for_a_hidden_type`, `test_has_types_is_scoped_to_the_tenant` |
 | I1 | *(implicit — model shape)* |
 | I2 | `test_add_item_rejects_an_invalid_unit` |
 | I3 | `test_add_item_rejects_a_blank_name`, `test_add_item_rejects_an_invalid_unit` |
@@ -254,7 +283,7 @@ catch a regression of it; that's a to-do, not a shrug.
 | A3 | `test_item_management_routes_are_scoped_to_the_tenant`, `test_toggle_type_is_scoped_to_the_tenant` |
 | A4 | `test_add_material_404s_for_another_tenants_order`, `test_edit_material_404s_for_another_tenants_order`, `test_delete_material_404s_for_another_tenants_order`, `test_order_materials_page_404s_for_another_tenants_order` |
 | A5 | `test_settings_inventory_page_lists_types` |
-| U1 | `test_inventory_list_sorts_by_name` — gap: sorting by **Type** has no route test |
+| U1 | `test_inventory_list_sorts_by_name`, `test_inventory_list_sorts_by_price` — gap: sorting by **Type** has no route test |
 | U2 | — gap — (client-side `localStorage` filter; manually verified in browser only) |
 | U3 | — gap — (modal-vs-inline is markup/JS; the underlying POST is covered by `test_add_item_route_creates_an_item`) |
 | U4 | — gap — (client-side; manually verified in browser only) |
@@ -263,6 +292,10 @@ catch a regression of it; that's a to-do, not a shrug.
 | U7 | — gap — (tab order isn't asserted by a route test) |
 | U8 | — gap — (client-side JS; manually verified in browser only) |
 | U9 | — gap — (icon/tooltip markup isn't asserted; manually verified in browser only) |
+| U10 | `test_filter_types_excludes_no_type_when_company_has_no_types_defined`, `test_filter_types_includes_no_type_when_a_type_exists_and_an_item_is_untyped` |
+| U11 | `test_inventory_list_marks_hidden_items_with_data_active_false` (asserts the data attribute the client-side default-hide reads — the actual hiding is JS, manually verified in browser only) |
+| U12 | `test_show_hidden_toggle_appears_when_a_hidden_item_exists` (presence only — the reveal-on-click behavior itself is JS, manually verified in browser only) |
+| U13 | `test_show_hidden_toggle_absent_when_nothing_is_hidden` |
 
 Everything marked "manually verified in browser only" was exercised by hand
 during development (see the session that built this module) but has no
