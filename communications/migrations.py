@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 ADDED_COLUMNS = [
     ("email_threads", "dismissed_at", "DATETIME"),
     ("email_threads", "dismissed_reason", "VARCHAR(20)"),
+    ("email_threads", "opened_at", "DATETIME"),
 ]
 
 

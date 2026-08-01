@@ -11,13 +11,16 @@ would do:
    trashed.
 """
 
+from datetime import timedelta
+
 import pytest
 
 from models import db
 
+from communications import config
 from communications.models import (
     AUDIT_THREAD_TRASHED, DISMISSED_HIDDEN, DISMISSED_TRASHED, AuditLog,
-    EmailThread,
+    EmailAccount, EmailThread, utcnow,
 )
 from communications.providers.base import ProviderError
 from communications.services import email_service
@@ -55,10 +58,12 @@ def test_hiding_records_the_reason(app, company, account, lead_thread):
     assert thread.was_trashed is False
 
 
-def test_hiding_lowers_the_badge(app, company, user, account, lead_thread):
-    assert email_service.new_lead_count(company.id, user.id) == 1
+def test_hiding_lowers_the_badge(app, company, account, lead_thread):
+    """Hiding is one of the three things that resolve a lead, so it's one of
+    the three things that clear the count."""
+    assert email_service.pending_lead_count(company.id) == 1
     email_service.dismiss_thread(company.id, lead_thread.id)
-    assert email_service.new_lead_count(company.id, user.id) == 0
+    assert email_service.pending_lead_count(company.id) == 0
 
 
 def test_a_hidden_thread_stays_hidden_across_a_sync(app, company, account, lead_thread):
@@ -297,6 +302,177 @@ def test_resyncing_the_same_window_does_not_resurface_repeatedly(
     assert email_service.lead_threads(company.id) == []
 
 
+# --- recovering from Trash ------------------------------------------------
+#
+# Un-trashing happens in Gmail and produces no new message, so nothing in
+# the normal sync flow would ever notice it: every query carries -in:trash,
+# and the window is keyed on message dates that recovering doesn't change.
+# _recover_untrashed asks about the threads we trashed ourselves — which is
+# what makes the promise the UI already makes actually true.
+
+def test_recovering_a_thread_in_gmail_brings_it_back(app, company, account, lead_thread):
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        result = email_sync.sync_account(account)
+
+    assert result.threads_recovered == 1
+    assert [t.id for t in email_service.lead_threads(company.id)] == [lead_thread.id]
+    assert email_service.dismissed_lead_threads(company.id) == []
+
+
+def test_a_recovered_thread_is_no_longer_marked_trashed(app, company, account, lead_thread):
+    """So the row offers Hide/Trash again rather than the "recover it in
+    Gmail" note — it really is back in the inbox, in Gmail and here."""
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        email_sync.sync_account(account)
+
+    thread = db.session.get(EmailThread, lead_thread.id)
+    assert thread.is_dismissed is False
+    assert thread.was_trashed is False
+    assert thread.dismissed_reason is None
+
+
+def test_a_thread_still_in_trash_stays_dismissed(app, company, account, lead_thread):
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+
+    with fakes.fake_providers(trash_state={"t-lead": True}):
+        result = email_sync.sync_account(account)
+
+    assert result.threads_recovered == 0
+    assert email_service.lead_threads(company.id) == []
+
+
+def test_a_purged_thread_stays_dismissed(app, company, account, lead_thread):
+    """`None` is "can't tell" — a conversation Gmail has purged has nothing to
+    recover, and reading that as "recovered" would put mail the user binned a
+    month ago back in the lead inbox."""
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+
+    with fakes.fake_providers(trash_state={"t-lead": None}):
+        result = email_sync.sync_account(account)
+
+    assert result.threads_recovered == 0
+    assert email_service.lead_threads(company.id) == []
+
+
+def test_recovery_shows_in_the_sync_summary(app, company, account, lead_thread):
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        result = email_sync.sync_account(account)
+
+    assert "1 recovered from Trash" in result.summary()
+
+
+def test_a_recovered_lead_counts_again(app, company, account, lead_thread):
+    """It's back in the inbox, so it's back in the badge — the count is a
+    query over the same list, not a separate tally that could disagree."""
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+    assert email_service.pending_lead_count(company.id) == 0
+
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        email_sync.sync_account(account)
+
+    assert email_service.pending_lead_count(company.id) == 1
+
+
+def test_hidden_threads_are_never_checked_against_the_provider(
+    app, company, account, lead_thread,
+):
+    """Hiding is local by definition — asking Gmail about it would be a
+    pointless API call, and a `False` answer would silently undo the hide."""
+    email_service.dismiss_thread(company.id, lead_thread.id)
+
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        result = email_sync.sync_account(account)
+
+    assert fakes.TRASH_CHECK_LOG == []
+    assert result.threads_recovered == 0
+    assert email_service.lead_threads(company.id) == []
+
+
+def test_threads_trashed_long_ago_are_not_checked(app, company, account, lead_thread):
+    """Gmail purges its own Trash after 30 days. Past that there's nothing to
+    recover, and without a cutoff this costs one API call per thread ever
+    trashed, on every sync, forever."""
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+    lead_thread.dismissed_at = utcnow() - timedelta(
+        days=config.TRASH_RECOVERY_WINDOW_DAYS + 1,
+    )
+    db.session.commit()
+
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        result = email_sync.sync_account(account)
+
+    assert fakes.TRASH_CHECK_LOG == []
+    assert result.threads_recovered == 0
+
+
+def test_another_accounts_trashed_thread_is_not_checked(app, company, account, lead_thread):
+    """The pass runs per mailbox, inside that mailbox's own sync — asking one
+    account's provider about another's thread id would 404 at best."""
+    second = EmailAccount(
+        company_id=company.id, provider="gmail", email_address="other@example.com",
+    )
+    db.session.add(second)
+    db.session.commit()
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        email_sync.sync_account(second)
+
+    assert fakes.TRASH_CHECK_LOG == []
+    assert db.session.get(EmailThread, lead_thread.id).was_trashed is True
+
+
+def test_a_failed_trash_check_does_not_fail_the_sync(app, company, account, lead_thread):
+    """Mail that downloaded fine must still be stored — the same rule as an
+    attachment that wouldn't download."""
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+    account.last_sync_at = None
+    db.session.commit()
+
+    with fakes.fake_providers(
+        threads=[fakes.thread(thread_id="t-new", messages=[fakes.message(
+            message_id="m-new", thread_id="t-new", sender="someone@example.com",
+        )])],
+        trash_check_error=ProviderError("Gmail hiccuped"),
+    ):
+        result = email_sync.sync_account(account)
+
+    assert result.ok is True
+    assert result.messages_created == 1
+    assert result.threads_recovered == 0
+    assert any("Gmail hiccuped" in error for error in result.errors)
+
+
+def test_the_dismissed_view_promises_what_the_sync_now_delivers(
+    logged_in, company, account, lead_thread,
+):
+    """The page has always said a recovered thread comes back on the next
+    sync. This is the test that keeps that from being a lie."""
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+    # Collapsed: the sentence wraps in the template source.
+    body = " ".join(logged_in.get("/mail/leads?show=dismissed").get_data(as_text=True).split())
+    assert "come back on the next sync if you recover them there" in body
+
+    with fakes.fake_providers(trash_state={"t-lead": False}):
+        email_sync.sync_account(account)
+
+    assert "Messenger bag enquiry" in logged_in.get("/mail/leads").get_data(as_text=True)
+
+
 # --- routes ---------------------------------------------------------------
 
 def test_hide_button_hides(logged_in, csrf, company, account, lead_thread):
@@ -386,12 +562,13 @@ def test_no_dismissed_link_when_there_is_nothing_dismissed(logged_in, account, l
 
 
 def test_the_dismissed_view_does_not_clear_the_badge(
-    logged_in, company, user, account, lead_thread,
+    logged_in, company, account, lead_thread,
 ):
-    """Looking at what you triaged away shouldn't mark the waiting leads as
-    read."""
+    """Nothing about looking at a list clears the badge any more, but this is
+    the case that would be worst to get wrong: the dismissed view is where
+    someone goes precisely when they have *not* dealt with the inbox."""
     logged_in.get("/mail/leads?show=dismissed")
-    assert email_service.new_lead_count(company.id, user.id) == 1
+    assert email_service.pending_lead_count(company.id) == 1
 
 
 def test_the_dismissed_view_does_not_flag_threads_as_new(

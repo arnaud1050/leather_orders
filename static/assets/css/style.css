@@ -18,6 +18,12 @@
 
   --day-today: #c23b34;       /* brick red */
 
+  /* Medium grey for a count that is deliberately non-committal — the lead
+     badge. Darker than --ink-soft so white text on it stays legible at
+     badge size, and neutral because an unread enquiry might be a client,
+     a supplier or spam and the app has no business guessing which. */
+  --badge-neutral: #6b7075;
+
   --radius: 2px;
   --font-display: sans-serif;
   --font-body: "Inter", -apple-system, sans-serif;
@@ -2022,18 +2028,24 @@ dialog.modal::backdrop {
   border-radius: 999px;
 }
 
-/* A lead that arrived since you last opened the inbox. Filled rather than
-   outlined like the other pills, because it's the one thing on the row that
-   should catch the eye first. */
+/* A conversation nobody has opened yet. Filled rather than outlined like the
+   other pills, because it's the one thing on the row that should catch the
+   eye first. Purple, matching the badge that counts leads — the two are
+   about the same inbox, and red now means only "something is broken". */
 .pill--new {
-  --pill-color: var(--day-today);
+  --pill-color: var(--status-pending);
   color: var(--paper);
-  background: var(--day-today);
+  background: var(--status-pending);
 }
 
-/* Unread-count badge on a nav link. Red is reserved for exactly this and the
-   today marker — it's the app's only "look here now" colour, so nothing else
-   should start using it. */
+/* Count badge on a nav link. The base is the lead badge: **grey**, because a
+   lead is by definition undecided — nobody has established yet whether it's
+   a client, a supplier or spam, and a colour that shouted would be claiming
+   more than the app knows. The two modifiers below are the cases where
+   something *is* known. Three states, three weights:
+     grey   (.nav-badge)          — undecided, needs a person
+     purple (.nav-badge--new)     — something happened, worth knowing
+     red    (.nav-badge--alert)   — something is broken */
 .nav-badge {
   display: inline-flex;
   align-items: center;
@@ -2047,7 +2059,7 @@ dialog.modal::backdrop {
   font-weight: 600;
   line-height: 1;
   color: #fff;
-  background: var(--day-today);
+  background: var(--badge-neutral);
   border-radius: 999px;
   /* The count is decoration around a link that already says "Leads"; letting
      it be selected or dragged just gets in the way of clicking. */
@@ -2055,13 +2067,63 @@ dialog.modal::backdrop {
 }
 
 /* The same badge carrying "!" instead of a count — an integration has stopped
-   syncing. Deliberately the same red circle rather than a new shape or hue:
-   it means the same thing to the reader ("this nav item wants you"), and the
-   difference is only what it's counting. A single character doesn't need the
-   horizontal padding a two-digit count does, so it drops to a true circle. */
+   syncing. This one keeps the red: the two badges say different things, and
+   the difference is worth a colour. Purple is "there's work waiting", red is
+   "something is broken and nothing you do in the app will fix it". A single
+   character doesn't need the horizontal padding a two-digit count does, so it
+   drops to a true circle. */
 .nav-badge--alert {
   padding: 0;
   width: 17px;
+  background: var(--day-today);
+}
+
+/* A client the app created by itself from a sender rule. Purple, the app's
+   "something is waiting for your attention" colour — and deliberately not
+   the grey of the lead badge beside it on the same link: the lead is a
+   question, this is an answer that arrived without anyone being asked. */
+.nav-badge--new {
+  background: var(--status-pending);
+}
+
+/* A heading *inside* a settings section, for a section with two lists in it
+   (the sender rules). Smaller and quieter than the section's own <h2>, so it
+   reads as a division of that section rather than a new one — the 40px
+   section gap that separates real sections would be wrong here. */
+.settings-subheading {
+  margin: 24px 0 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* One "create a client" rule and its field mapping. A bordered block rather
+   than another .settings-source-list row, because a rule owns a list of its
+   own — without the outline it isn't clear which mappings belong to which
+   sender once there are two rules. */
+.rule-card {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+
+.rule-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* Spaced with margins, not padding inside the text, so the arrow doesn't
+   collapse against a long label at narrow widths. */
+.rule-card__arrow {
+  margin: 0 8px;
+  color: var(--ink-soft);
 }
 
 /* A status note sharing a .legend-row with the button it explains. The row is
@@ -2073,13 +2135,14 @@ dialog.modal::backdrop {
   max-width: 620px;
 }
 
-/* A new row in the thread list, marked with the same red as the badge so the
-   two obviously refer to the same thing. The edge and the padding that keeps
-   it clear of the text both live on .thread-list__item (transparent until a
-   row is new) — carrying them here instead made the line sit tight against
-   the subject and the triage buttons, and shifted every new row sideways. */
+/* An unopened row in the thread list, marked with the same purple as its
+   "New" pill so the two obviously refer to the same thing. The edge and the
+   padding that keeps it clear of the text both live on .thread-list__item
+   (transparent until a row is new) — carrying them here instead made the line
+   sit tight against the subject and the triage buttons, and shifted every new
+   row sideways. */
 .thread-list__item--new {
-  border-left-color: var(--day-today);
+  border-left-color: var(--status-pending);
 }
 
 /* The badge is a "look now" cue for someone at the screen; on paper it's

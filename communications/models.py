@@ -48,6 +48,46 @@ DIRECTION_OUTGOING = "outgoing"
 # Why a thread left the lead inbox. See EmailThread.dismissed_reason.
 DISMISSED_HIDDEN = "hidden"
 DISMISSED_TRASHED = "trashed"
+# Hidden by a sender rule rather than by a person. Kept distinct from
+# DISMISSED_HIDDEN for one reason that matters: a hidden thread comes back
+# when the sender writes again (following up is new signal), and a
+# newsletter that arrives every Tuesday would resurface every Tuesday —
+# a rule that appears not to work. See SenderRule.
+DISMISSED_AUTO = "auto_hidden"
+
+# What a SenderRule does with mail from an address.
+RULE_CONVERT = "convert"
+RULE_HIDE = "hide"
+RULE_LABELS = {
+    RULE_CONVERT: "Create a client automatically",
+    RULE_HIDE: "Hide from the lead inbox",
+}
+
+# Where a labelled line in a form email ends up on the Client.
+# `FIELD_IGNORE` stores nothing — it exists so a label the studio doesn't
+# care about ("File Upload:") still *terminates* the field above it, which
+# is otherwise the difference between a tidy enquiry and one whose message
+# has the rest of the form stapled to the end of it.
+FIELD_NAME = "name"
+FIELD_FIRST_NAME = "first_name"
+FIELD_LAST_NAME = "last_name"
+FIELD_EMAIL = "email"
+FIELD_PHONE = "phone"
+FIELD_INQUIRY = "inquiry_type"
+FIELD_MESSAGE = "first_message"
+FIELD_SOURCE = "source"
+FIELD_IGNORE = "ignore"
+FIELD_TARGET_LABELS = {
+    FIELD_NAME: "Full name (split into first and last)",
+    FIELD_FIRST_NAME: "First name",
+    FIELD_LAST_NAME: "Last name",
+    FIELD_EMAIL: "Email address",
+    FIELD_PHONE: "Phone",
+    FIELD_INQUIRY: "What it's about",
+    FIELD_MESSAGE: "Their message",
+    FIELD_SOURCE: "How they heard about us",
+    FIELD_IGNORE: "Ignore (but end the field above)",
+}
 
 
 class EmailAccount(db.Model):
@@ -245,6 +285,16 @@ class EmailThread(db.Model):
     # hidden can be restored from here, trashed has to be recovered in
     # Gmail, and the UI must not offer a button that silently does nothing.
     dismissed_reason = db.Column(db.String(20))
+    # When someone first opened this conversation. Backs the "New" pill,
+    # which is about *this thread* having been read — so it's stored per
+    # thread rather than derived from one "last looked at the inbox"
+    # timestamp, which marked everything read whether or not it was.
+    #
+    # Company-wide, not per user: a studio triages one shared inbox, and
+    # the badge beside it counts what's still waiting for anyone to deal
+    # with (see EmailThread.is_awaiting_triage). Two markers disagreeing
+    # about what's been handled is worse than either rule on its own.
+    opened_at = db.Column(db.DateTime)
 
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
@@ -267,9 +317,30 @@ class EmailThread(db.Model):
         return self.dismissed_at is not None
 
     @property
+    def is_unopened(self) -> bool:
+        """Nobody has read this conversation yet — what "New" means."""
+        return self.opened_at is None
+
+    @property
+    def is_awaiting_triage(self) -> bool:
+        """A lead nobody has dealt with yet — what the badge counts.
+
+        "Dealt with" is one of the three things that actually resolve a
+        lead: converted to a client, hidden, or trashed. Reading it isn't
+        one of them, which is the point — opening the inbox to see what's
+        there mustn't clear the reminder that it still needs doing.
+        """
+        return self.is_lead and not self.is_dismissed
+
+    @property
     def was_trashed(self) -> bool:
         """Dismissed by moving it to the provider's Trash, not just hidden."""
         return self.dismissed_reason == DISMISSED_TRASHED
+
+    @property
+    def was_auto_hidden(self) -> bool:
+        """Hidden by a sender rule rather than by a person."""
+        return self.dismissed_reason == DISMISSED_AUTO
 
     def dismiss(self, reason: str = "hidden") -> None:
         self.dismissed_at = utcnow()
@@ -565,39 +636,150 @@ class CalendarEvent(db.Model):
         return self.status == "cancelled"
 
 
-class LeadReadState(db.Model):
-    """When a given user last looked at the lead inbox.
+class SenderRule(db.Model):
+    """What to do, automatically, with mail from a given address.
 
-    Backs the "new leads" badge. One timestamp per (company, user) rather
-    than a per-thread `seen` flag: the question the badge answers is "has
-    anything arrived since I last looked", which one marker answers in a
-    single comparison instead of a write per thread per visit.
+    Two actions, and they exist for opposite reasons. **Hide** is for the
+    senders that make the lead inbox useless — newsletters, suppliers,
+    receipts — where the work is deciding once instead of every week.
+    **Convert** is for a sender that is only ever a genuine enquiry, the
+    website's contact form being the case this was built for: a form
+    submission is already a lead by construction, so making someone confirm
+    that by hand adds nothing.
 
-    **Per user, not per company** — "unseen by me" is personal, and a second
-    user clearing the badge for everyone would make it useless. It lives in
-    this module's own table rather than as a column on `users` so the module
-    stays liftable (and so it needs no entry in `_ADDED_COLUMNS`; see
-    "Migrations" in CLAUDE.md — new tables are created by `create_all`).
+    Matched on the **sender address of an incoming message**, exactly, or by
+    domain when the pattern starts with `@` (`@squarespace.info`) — a form
+    relay and a newsletter provider both send from a whole domain, and
+    listing every individual address they use is a losing game.
 
-    Compared against `EmailThread.created_at`, which is when *we* downloaded
-    the thread, not when the mail was sent. That distinction matters on a
-    first sync: a 90-day backfill is all old mail, but every thread in it is
-    new to the person looking at it.
+    Rules apply to **new threads only**. Adding a rule doesn't retroactively
+    hide or convert history someone may be reading, the same reasoning as
+    `EmailSyncSettings.keep_unmatched`.
     """
 
-    __tablename__ = "lead_read_states"
+    __tablename__ = "sender_rules"
     __table_args__ = (
-        db.UniqueConstraint("company_id", "user_id", name="uq_lead_read_state_company_user"),
+        db.UniqueConstraint("company_id", "pattern", name="uq_sender_rule_company_pattern"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    # Null means "never looked", so everything counts as new.
+    # Stored lowercased; either "someone@example.com" or "@example.com".
+    pattern = db.Column(db.String(255), nullable=False)
+    action = db.Column(db.String(20), nullable=False)
+    # Free text, so a rule someone added six months ago still explains itself.
+    note = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    company = db.relationship("Company")
+    fields = db.relationship(
+        "SenderRuleField", back_populates="rule",
+        cascade="all, delete-orphan", order_by="SenderRuleField.id",
+    )
+
+    @property
+    def is_domain_rule(self) -> bool:
+        return self.pattern.startswith("@")
+
+    @property
+    def action_label(self) -> str:
+        return RULE_LABELS.get(self.action, self.action)
+
+    def matches(self, address: str | None) -> bool:
+        address = (address or "").strip().lower()
+        if not address:
+            return False
+        if self.is_domain_rule:
+            return address.endswith(self.pattern)
+        return address == self.pattern
+
+
+class SenderRuleField(db.Model):
+    """One "this label in the body means this" mapping, for one rule.
+
+    A contact form arrives as a labelled block, and only the studio knows
+    what its own form calls things:
+
+        Name: Haejung Kim
+        Email: dayanee1004@gmail.com
+        About: Touch-ups for Luxury Leather Bags
+        Message: Hi Joe, …
+        How did you hear about BY MONSIEUR | Leather Atelier?: Google Search
+
+    So the labels are **data, not code**. Hardcoding this one form's would
+    work exactly once — the next site, or a rewording of the same site,
+    would silently produce clients named after the relay again.
+
+    A row per mapping rather than a JSON blob on the rule: these are edited
+    one at a time in the UI, and a malformed blob would take the whole rule
+    down rather than one line of it.
+
+    **The mapped labels are also the parser's entire vocabulary.** Nothing
+    else in the body is treated as a label, so a message containing
+    "Delivery: end of March" doesn't get chopped in half. See
+    `sender_rules.parse_fields`.
+    """
+
+    __tablename__ = "sender_rule_fields"
+    __table_args__ = (
+        db.UniqueConstraint("rule_id", "label", name="uq_sender_rule_field_label"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    rule_id = db.Column(
+        db.Integer, db.ForeignKey("sender_rules.id"), nullable=False,
+    )
+    # As it appears in the email, minus the colon. Matched case-insensitively.
+    label = db.Column(db.String(200), nullable=False)
+    target = db.Column(db.String(30), nullable=False)
+
+    rule = db.relationship("SenderRule", back_populates="fields")
+
+    @property
+    def target_label(self) -> str:
+        return FIELD_TARGET_LABELS.get(self.target, self.target)
+
+
+class AutoCreatedClient(db.Model):
+    """A client the app created by itself, and whether anyone has seen it.
+
+    Backs the purple badge on Clients. A person converting a lead by hand
+    already knows the client exists; one created while nobody was looking
+    needs saying, because it landed in the roster without a decision.
+
+    A row per client rather than one "last looked" timestamp per company:
+    the badge has to survive someone visiting the client list for an
+    unrelated reason five minutes before the sync ran, and a marker
+    compared against "now" can't tell those apart.
+
+    **Acknowledged, not deleted**, when someone opens the client list — the
+    row is the record that this client arrived automatically, which is worth
+    keeping once the badge is gone.
+    """
+
+    __tablename__ = "auto_created_clients"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey("clients.id"), nullable=False)
+    thread_id = db.Column(db.Integer, db.ForeignKey("email_threads.id"))
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    # Null until someone has looked at the client list since it appeared.
     seen_at = db.Column(db.DateTime)
 
     company = db.relationship("Company")
-    user = db.relationship("User")
+    client = db.relationship("Client")
+    thread = db.relationship("EmailThread")
+
+
+# `LeadReadState` used to live here: one "when did this user last look at
+# the inbox" timestamp per (company, user), backing both the badge and the
+# "New" pill. Both questions turned out to be about the *thread*, not about
+# the visit — a badge that cleared on arrival reminded you of nothing, and a
+# marker moved by opening the list marked every thread in it read. Both now
+# read off EmailThread (`is_awaiting_triage`, `opened_at`). Existing
+# databases keep an unused `lead_read_states` table; nothing reads it, and
+# dropping a table is not something a boot-time migration should do.
 
 
 class AuditLog(db.Model):
@@ -635,6 +817,11 @@ AUDIT_SYNC_RUN = "sync_run"
 AUDIT_SYNC_FAILED = "sync_failed"
 AUDIT_CLIENT_CREATED_FROM_EMAIL = "client_created_from_email"
 AUDIT_THREAD_TRASHED = "thread_trashed"
+# Kept distinct from AUDIT_CLIENT_CREATED_FROM_EMAIL: "the app did this on
+# its own" is a different thing to answer for than "someone clicked it", and
+# an audit log that can't tell them apart can't answer either question.
+AUDIT_CLIENT_AUTO_CREATED = "client_auto_created"
+AUDIT_SENDER_RULE_CHANGED = "sender_rule_changed"
 
 AUDIT_EVENT_LABELS = {
     AUDIT_INTEGRATION_CONNECTED: "Integration connected",
@@ -644,4 +831,6 @@ AUDIT_EVENT_LABELS = {
     AUDIT_SYNC_FAILED: "Sync failed",
     AUDIT_CLIENT_CREATED_FROM_EMAIL: "Client created from email",
     AUDIT_THREAD_TRASHED: "Conversation moved to Trash",
+    AUDIT_CLIENT_AUTO_CREATED: "Client created automatically",
+    AUDIT_SENDER_RULE_CHANGED: "Automatic mail rule changed",
 }

@@ -163,6 +163,23 @@ class EmailProvider(ABC):
         studio's correspondence for good.
         """
 
+    @abstractmethod
+    def is_trashed(self, thread_id: str) -> bool | None:
+        """Whether a thread is *currently* in the provider's Trash.
+
+        Asked about threads this app trashed, to notice when someone put one
+        back by hand. Three answers, and the difference matters:
+
+        - ``True``  — still in Trash, leave it dismissed here.
+        - ``False`` — recovered in the mailbox, so bring it back here too.
+        - ``None``  — no longer knowable (purged, or the id is gone). Not
+          the same as False: "I can't tell" must not resurrect a row.
+
+        A separate call rather than something ``fetch_threads`` reports,
+        because every sync query excludes Trash — a trashed thread is
+        invisible to the normal flow by design.
+        """
+
 
 class CalendarProvider(ABC):
     """What every calendar backend must be able to do."""

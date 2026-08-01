@@ -156,6 +156,142 @@
   </section>
 
   <section class="detail-orders">
+    <h2>Automatic handling</h2>
+    <p class="detail-note">
+      Rules for senders whose mail never needs a decision. They apply to
+      <strong>new conversations only</strong> — adding one doesn't reach back
+      through mail already in
+      <a href="{{ url_for('communications.leads') }}">Leads</a>. Enter a full
+      address, or a domain (<code>@example.com</code>) to cover everything
+      from it; an exact address wins over a domain rule.
+    </p>
+
+    <h3 class="settings-subheading">Always hide</h3>
+    <p class="detail-note">
+      Newsletters, suppliers, receipts — anything that would otherwise pile up
+      in the lead inbox. Hidden conversations are kept and can be restored
+      from the dismissed view; unlike hiding one by hand, a sender covered by
+      a rule stays hidden when they write again.
+    </p>
+    {% if hide_rules %}
+    <ul class="settings-source-list">
+      {% for rule in hide_rules %}
+      <li class="settings-source-list__item">
+        <span class="settings-source-list__label">
+          {{ rule.pattern }}
+          {% if rule.note %}<span class="checkbox-group__hidden-tag">{{ rule.note }}</span>{% endif %}
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-secondary">Remove</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="detail-note">Nothing is hidden automatically.</p>
+    {% endif %}
+
+    <h3 class="settings-subheading">Always create a client</h3>
+    <p class="detail-note">
+      For an address that only ever carries a genuine enquiry — a website
+      contact form, for instance. The conversation is turned into a client the
+      moment it arrives, and a badge on
+      <a href="{{ url_for('clients_list') }}">Clients</a> says so until
+      someone looks.
+    </p>
+    {% if convert_rules %}
+    {% for rule in convert_rules %}
+    <div class="rule-card">
+      <div class="rule-card__head">
+        <span class="settings-source-list__label">
+          {{ rule.pattern }}
+          {% if rule.note %}<span class="checkbox-group__hidden-tag">{{ rule.note }}</span>{% endif %}
+        </span>
+        <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-secondary">Remove</button>
+        </form>
+      </div>
+
+      {# The labels are the studio's own form's wording, so they're data,
+         not code — every form words them differently, and hardcoding one
+         site's would work exactly once. #}
+      <p class="detail-note">
+        What the labels in this sender's emails mean. Copy each one exactly as
+        it appears before the colon, e.g. <code>Name</code> or
+        <code>How did you hear about us?</code>
+        {% if not rule.fields %}
+        <strong>Nothing is mapped yet</strong>, so a client from this sender is
+        built from the sending address — which for a relay like Squarespace is
+        the relay, not the person who wrote in.
+        {% endif %}
+      </p>
+
+      {% if rule.fields %}
+      <ul class="settings-source-list">
+        {% for field in rule.fields %}
+        <li class="settings-source-list__item">
+          <span class="settings-source-list__label">
+            {{ field.label }}<span class="rule-card__arrow">→</span>{{ field.target_label }}
+          </span>
+          <div class="settings-source-list__actions">
+            <form method="post" action="{{ url_for('communications.delete_rule_field', field_id=field.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-secondary">Remove</button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('communications.add_rule_field', rule_id=rule.id) }}" class="detail-form settings-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Label in the email
+          <input type="text" name="label" placeholder="e.g. Name" required>
+        </label>
+        <label>Fills
+          <select name="target">
+            {% for value, label in field_targets.items() %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div>
+          <button type="submit" class="btn-secondary">Add field</button>
+        </div>
+      </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="detail-note">No senders are converted automatically.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('communications.add_sender_rule') }}" class="detail-form settings-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Address or domain
+        <input type="text" name="pattern" placeholder="e.g. @squarespace.info" required>
+      </label>
+      <label>What to do
+        <select name="action">
+          {% for value, label in rule_labels.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Note (optional)
+        <input type="text" name="note" placeholder="e.g. website contact form">
+      </label>
+      <div>
+        <button type="submit" class="btn-primary">Add rule</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
     <h2>Security</h2>
     <p class="detail-note">
       Access tokens are encrypted before they're written to the database, and

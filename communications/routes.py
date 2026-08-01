@@ -26,14 +26,15 @@ from models import Client, DEFAULT_TIMEZONE, db
 
 from communications import config, jobs
 from communications.models import (
-    AUDIT_EVENT_LABELS, EmailMessage, EmailSyncSettings, EmailThread,
+    AUDIT_EVENT_LABELS, FIELD_TARGET_LABELS, RULE_CONVERT, RULE_HIDE,
+    RULE_LABELS, EmailMessage, EmailSyncSettings, EmailThread,
 )
 from communications.oauth import google_oauth
 from communications.providers.base import ProviderError
 from communications.providers.registry import PROVIDER_LABELS
 from communications.security import csrf_token, validate_csrf
 from communications.services import (
-    account_service, audit, calendar_service, email_service,
+    account_service, audit, calendar_service, email_service, sender_rules,
 )
 
 bp = Blueprint(
@@ -92,6 +93,10 @@ def integrations():
         section="integrations",
         accounts=accounts,
         sync_settings=EmailSyncSettings.for_company(company_id),
+        hide_rules=sender_rules.rules_by_action(company_id, RULE_HIDE),
+        convert_rules=sender_rules.rules_by_action(company_id, RULE_CONVERT),
+        rule_labels=RULE_LABELS,
+        field_targets=FIELD_TARGET_LABELS,
         scope_summary=account_service.scope_summary,
         available_providers=PROVIDER_LABELS,
         configuration_problem=config.configuration_problem(),
@@ -223,6 +228,65 @@ def update_sync_settings():
     return redirect(url_for("communications.integrations"))
 
 
+@bp.route("/integrations/rules", methods=["POST"])
+@login_required
+def add_sender_rule():
+    """Add an "always hide" / "always convert" rule for a sender."""
+    try:
+        rule = sender_rules.add_rule(
+            current_user.company_id,
+            request.form.get("pattern", ""),
+            request.form.get("action", ""),
+            request.form.get("note", ""),
+        )
+    except sender_rules.SenderRuleError as exc:
+        _flash(str(exc), "error")
+    else:
+        _flash(f"Mail from {rule.pattern} will now {rule.action_label.lower()}.", "success")
+    return redirect(url_for("communications.integrations"))
+
+
+@bp.route("/integrations/rules/<int:rule_id>/delete", methods=["POST"])
+@login_required
+def delete_sender_rule(rule_id: int):
+    """Remove a rule. Conversations it already handled are left alone."""
+    try:
+        rule = sender_rules.delete_rule(current_user.company_id, rule_id)
+    except sender_rules.SenderRuleError as exc:
+        _flash(str(exc), "error")
+    else:
+        _flash(f"Rule for {rule.pattern} removed.", "success")
+    return redirect(url_for("communications.integrations"))
+
+
+@bp.route("/integrations/rules/<int:rule_id>/fields", methods=["POST"])
+@login_required
+def add_rule_field(rule_id: int):
+    """Map a label in the form email to a field on the client."""
+    try:
+        field = sender_rules.add_field(
+            current_user.company_id, rule_id,
+            request.form.get("label", ""), request.form.get("target", ""),
+        )
+    except sender_rules.SenderRuleError as exc:
+        _flash(str(exc), "error")
+    else:
+        _flash(f'"{field.label}" now fills {field.target_label.lower()}.', "success")
+    return redirect(url_for("communications.integrations"))
+
+
+@bp.route("/integrations/rules/fields/<int:field_id>/delete", methods=["POST"])
+@login_required
+def delete_rule_field(field_id: int):
+    try:
+        field = sender_rules.delete_field(current_user.company_id, field_id)
+    except sender_rules.SenderRuleError as exc:
+        _flash(str(exc), "error")
+    else:
+        _flash(f'"{field.label}" is no longer mapped.', "success")
+    return redirect(url_for("communications.integrations"))
+
+
 def _clamp(raw: str | None, low: int, high: int, default: int) -> int:
     try:
         return max(low, min(high, int(raw)))
@@ -282,6 +346,9 @@ def thread_page(thread_id: int):
     thread = email_service.get_thread(current_user.company_id, thread_id)
     if thread is None:
         abort(404)
+    # Reading it is what stops it being new. Only ever the first open, and
+    # only this conversation — see mark_thread_opened.
+    email_service.mark_thread_opened(current_user.company_id, thread_id)
     return_to = request.args.get("return_to") or url_for("communications.leads")
     return render_template(
         "thread_page.html",
@@ -302,33 +369,22 @@ def leads():
     senders, and a "client" record per inbound email would make the roster
     meaningless. Converting one is a deliberate click (see convert_lead).
 
-    Opening this page clears the "new leads" badge. That's a write on a GET,
-    which is normally worth avoiding — but it's idempotent, destroys
-    nothing, and "mark as read on open" is the only place the marker could
-    honestly move. The cutoff is read *before* marking, so this render still
-    flags which threads were new; the next one won't.
+    **Opening this page changes nothing.** The badge counts leads still
+    awaiting triage, and reading the list isn't triage — it clears when a
+    lead is converted, hidden or trashed. Each row keeps its own "New" pill
+    until that conversation itself is opened.
     """
     company_id = current_user.company_id
     showing_dismissed = request.args.get("show") == "dismissed"
 
     dismissed = email_service.dismissed_lead_threads(company_id)
-    if showing_dismissed:
-        # Looking at what you triaged away shouldn't clear the badge for
-        # leads still waiting in the actual inbox.
-        threads = dismissed
-        seen_at = None
-    else:
-        seen_at = email_service.leads_seen_at(company_id, current_user.id)
-        threads = email_service.lead_threads(company_id)
-        email_service.mark_leads_seen(company_id, current_user.id)
+    threads = dismissed if showing_dismissed else email_service.lead_threads(company_id)
 
     return render_template(
         "leads.html",
         threads=threads,
         showing_dismissed=showing_dismissed,
         dismissed_count=len(dismissed),
-        # Threads created after this are the ones flagged "New" in the list.
-        new_since=seen_at,
         scheduler_enabled=jobs.scheduler_enabled(),
         has_accounts=bool(account_service.accounts_for(company_id)),
         notice=_take_notice(),
@@ -613,7 +669,8 @@ def _client_id(raw):
 def _inject_nav_badges():
     """Make the two nav badges available to every template.
 
-    `new_lead_count` — enquiries that arrived since this user last looked.
+    `pending_lead_count` — enquiries still waiting to be dealt with.
+    `new_client_count` — clients the app created by itself, unseen so far.
     `integration_alert_count` — integrations whose last sync failed.
 
     An `app_context_processor` (not a plain blueprint one) because both badges
@@ -638,9 +695,27 @@ def _inject_nav_badges():
             current_app.logger.debug("Could not compute the %s badge", what, exc_info=True)
             return 0
 
-    def new_lead_count() -> int:
-        return _count("new-lead", lambda: email_service.new_lead_count(
-            current_user.company_id, current_user.id,
+    def pending_lead_count() -> int:
+        """How many leads nobody has acted on yet.
+
+        Not per user, and not "since you last looked": one studio triages
+        one inbox, and an enquiry stays outstanding until someone converts,
+        hides or trashes it — regardless of who has glanced at the list.
+        """
+        return _count("pending-lead", lambda: email_service.pending_lead_count(
+            current_user.company_id,
+        ))
+
+    def new_client_count() -> int:
+        """Clients a sender rule created that nobody has seen yet.
+
+        Unlike the lead badge this one *does* clear on a page view — and
+        that's the right rule for it, because it isn't a to-do. Nothing is
+        outstanding: the client already exists. It's a "this appeared while
+        you weren't looking" notice, and looking is exactly what settles it.
+        """
+        return _count("new-client", lambda: sender_rules.unseen_client_count(
+            current_user.company_id,
         ))
 
     def integration_alert_count() -> int:
@@ -656,7 +731,8 @@ def _inject_nav_badges():
         ))
 
     return {
-        "new_lead_count": new_lead_count,
+        "pending_lead_count": pending_lead_count,
+        "new_client_count": new_client_count,
         "integration_alert_count": integration_alert_count,
     }
 

@@ -4,17 +4,15 @@
 {% if threads %}
 <ul class="thread-list">
   {% for thread in threads %}
-  {# `flag_new` opts a page into new/seen decoration; `new_since` is the
-     caller's last-looked timestamp (null meaning "never looked", so
-     everything is new). Compared against created_at — when we downloaded the
-     thread — not the message date, since a first sync is all old mail but
-     every thread in it is new to the person reading.
+  {# `flag_new` opts a page into new/seen decoration — the lead inbox does,
+     the dismissed view and a client's Emails tab don't.
 
-     An explicit flag rather than testing whether new_since is defined: the
-     dismissed view passes a null timestamp *and* wants no flagging, which
-     "is defined" can't distinguish from "never looked". #}
-  {% set is_new = flag_new|default(false)
-        and (new_since is none or thread.created_at > new_since) %}
+     "New" means nobody has opened this conversation yet, which is a fact
+     about the thread rather than about the visit: reading the list doesn't
+     clear it, opening the thread does. Deliberately not tied to the badge
+     beside it — a lead can be read and still be waiting to be dealt with,
+     and that's exactly the state worth being able to see. #}
+  {% set is_new = flag_new|default(false) and thread.is_unopened %}
   <li class="thread-list__item {% if is_new %}thread-list__item--new{% endif %}">
     <span class="thread-list__heading">
       <a class="thread-list__subject" href="{{ url_for('communications.thread_page', thread_id=thread.id, return_to=return_to) }}">

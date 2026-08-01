@@ -18,8 +18,12 @@
        so it's available on every page without each route passing it. #}
     <a href="{{ url_for('clients_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'clients' else '' }}">
       Clients
-      {% set pending_leads = new_lead_count() %}
-      {% if pending_leads %}<span class="nav-badge" title="{{ pending_leads }} new lead{{ 's' if pending_leads != 1 }} in the inbox">{{ pending_leads }}</span>{% endif %}
+      {% set pending_leads = pending_lead_count() %}
+      {% if pending_leads %}<span class="nav-badge" title="{{ pending_leads }} lead{{ 's' if pending_leads != 1 }} waiting — convert, hide or trash to clear this">{{ pending_leads }}</span>{% endif %}
+      {# Purple, and separate from the grey one above: a lead is undecided,
+         a client already exists. Different facts, different colours. #}
+      {% set new_clients = new_client_count() %}
+      {% if new_clients %}<span class="nav-badge nav-badge--new" title="{{ new_clients }} client{{ 's' if new_clients != 1 }} added automatically from email">{{ new_clients }}</span>{% endif %}
     </a>
     <a href="{{ url_for('billing.invoice_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'invoices' else '' }}">Invoices</a>
     <a href="{{ url_for('analytics') }}" class="view-switch__link {{ 'is-active' if active_view == 'analytics' else '' }}">Analytics</a>

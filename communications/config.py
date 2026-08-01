@@ -79,6 +79,12 @@ DEFAULT_INITIAL_SYNC_DAYS = 90
 # busy mailbox can't hold a request (or a job) open indefinitely. A run that
 # hits the cap just picks up where it left off next time.
 MAX_MESSAGES_PER_SYNC = 200
+# How long after trashing a conversation we keep asking the provider whether
+# it's been recovered by hand (see email_sync._recover_untrashed). Gmail
+# purges its own Trash after 30 days, so a few days past that is the point
+# where "still recoverable" stops being true and the checks become one
+# pointless API call per trashed thread, forever.
+TRASH_RECOVERY_WINDOW_DAYS = 35
 
 
 def dependencies_ok() -> tuple[bool, str | None]:

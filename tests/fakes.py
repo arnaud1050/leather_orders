@@ -29,6 +29,11 @@ class FakeEmailProvider(base.EmailProvider):
     threads: list = []
     #: Raise this instead of returning, to exercise failure paths.
     fail_with: Exception | None = None
+    #: provider_thread_id -> what is_trashed() reports (True still in Trash,
+    #: False recovered by hand, None gone for good). Unlisted ids read True.
+    trash_state: dict = {}
+    #: Raise this from is_trashed() only, leaving fetching/sending working.
+    trash_check_error: Exception | None = None
 
     def __init__(self, account):
         super().__init__(account)
@@ -68,6 +73,22 @@ class FakeEmailProvider(base.EmailProvider):
         TRASH_LOG.append(thread_id)
         if type(self).fail_with:
             raise type(self).fail_with
+
+    def is_trashed(self, thread_id):
+        """Answers from `trash_state`, defaulting to "still in Trash".
+
+        The default is what leaves every other test alone: a sync that says
+        nothing about Trash shouldn't quietly un-dismiss things.
+
+        Fails independently of `fail_with`, since the interesting case is a
+        Trash check that breaks while fetching mail worked fine.
+        """
+        TRASH_CHECK_LOG.append(thread_id)
+        if type(self).trash_check_error:
+            raise type(self).trash_check_error
+        if type(self).fail_with:
+            raise type(self).fail_with
+        return type(self).trash_state.get(thread_id, True)
 
     def send_email(self, to, subject, body_text, cc=None, bcc=None,
                    reply_to_message_id=None, thread_id=None):
@@ -139,10 +160,12 @@ SENT_LOG: list = []
 CALENDAR_LOG: list = []
 FETCH_LOG: list = []
 TRASH_LOG: list = []
+TRASH_CHECK_LOG: list = []
 
 
 @contextmanager
-def fake_providers(threads=None, events=None, email_error=None, calendar_error=None):
+def fake_providers(threads=None, events=None, email_error=None, calendar_error=None,
+                   trash_state=None, trash_check_error=None):
     """Point the provider registry at the fakes for the duration of a block.
 
     Patches `registry.email_provider_for` *and* the names already imported
@@ -157,12 +180,15 @@ def fake_providers(threads=None, events=None, email_error=None, calendar_error=N
 
     FakeEmailProvider.threads = list(threads or [])
     FakeEmailProvider.fail_with = email_error
+    FakeEmailProvider.trash_state = dict(trash_state or {})
+    FakeEmailProvider.trash_check_error = trash_check_error
     FakeCalendarProvider.events = list(events or [])
     FakeCalendarProvider.fail_with = calendar_error
     SENT_LOG.clear()
     CALENDAR_LOG.clear()
     FETCH_LOG.clear()
     TRASH_LOG.clear()
+    TRASH_CHECK_LOG.clear()
 
     email_factory = FakeEmailProvider
     calendar_factory = FakeCalendarProvider
@@ -183,6 +209,8 @@ def fake_providers(threads=None, events=None, email_error=None, calendar_error=N
             setattr(module, name, original)
         FakeEmailProvider.threads = []
         FakeEmailProvider.fail_with = None
+        FakeEmailProvider.trash_state = {}
+        FakeEmailProvider.trash_check_error = None
         FakeCalendarProvider.events = []
         FakeCalendarProvider.fail_with = None
 

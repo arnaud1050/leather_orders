@@ -27,12 +27,13 @@ from models import Client, db
 
 from communications import config
 from communications.models import (
-    AUDIT_SYNC_FAILED, DIRECTION_INCOMING, EmailAccount, EmailAttachment,
-    EmailMessage, EmailSyncSettings, EmailThread, utcnow,
+    AUDIT_SYNC_FAILED, DIRECTION_INCOMING, DISMISSED_AUTO, DISMISSED_TRASHED,
+    RULE_CONVERT, RULE_HIDE, EmailAccount, EmailAttachment, EmailMessage,
+    EmailSyncSettings, EmailThread, utcnow,
 )
 from communications.providers import email_provider_for
 from communications.providers.base import ProviderError
-from communications.services import audit
+from communications.services import audit, sender_rules
 from communications.storage import attachment_storage
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,9 @@ class SyncResult:
     threads_matched: int = 0
     threads_skipped: int = 0
     threads_resurfaced: int = 0
+    threads_recovered: int = 0
+    threads_auto_hidden: int = 0
+    clients_auto_created: int = 0
     attachments_saved: int = 0
     error: str | None = None
     errors: list[str] = field(default_factory=list)
@@ -68,6 +72,12 @@ class SyncResult:
             + (f", {self.threads_skipped} unmatched discarded" if self.threads_skipped else "")
             + (f", {self.threads_resurfaced} dismissed reopened"
                if self.threads_resurfaced else "")
+            + (f", {self.threads_recovered} recovered from Trash"
+               if self.threads_recovered else "")
+            + (f", {self.threads_auto_hidden} hidden by a rule"
+               if self.threads_auto_hidden else "")
+            + (f", {self.clients_auto_created} client(s) created by a rule"
+               if self.clients_auto_created else "")
         )
 
 
@@ -102,11 +112,15 @@ def sync_account(account, since: datetime | None = None) -> SyncResult:
     # One lookup table per run rather than a query per thread: a mailbox
     # sync touches every client, and the client list is small.
     clients_by_email = _client_index(account.company_id)
+    rules = sender_rules.rules_for(account.company_id)
 
     try:
         for fetched in threads:
             result.threads_seen += 1
-            _store_thread(account, settings, fetched, clients_by_email, result, provider)
+            _store_thread(
+                account, settings, fetched, clients_by_email, result, provider, rules,
+            )
+        _recover_untrashed(account, result, provider)
         account.last_sync_at = utcnow()
         account.last_sync_error = None
         db.session.commit()
@@ -172,7 +186,9 @@ def match_client(participants, clients_by_email: dict[str, Client], own_addresse
     return None
 
 
-def _store_thread(account, settings, fetched, clients_by_email, result, provider) -> None:
+def _store_thread(
+    account, settings, fetched, clients_by_email, result, provider, rules=(),
+) -> None:
     """Upsert one thread and its messages."""
     own_addresses = {(account.email_address or "").lower()}
     participants = [
@@ -184,7 +200,8 @@ def _store_thread(account, settings, fetched, clients_by_email, result, provider
         email_account_id=account.id, provider_thread_id=fetched.provider_thread_id,
     ).first()
 
-    if thread is None:
+    is_new = thread is None
+    if is_new:
         # Nothing on file for anyone in this conversation, and the company
         # opted out of keeping unknown senders — don't store it at all.
         # Note this is checked only for *new* threads: a thread already
@@ -214,6 +231,45 @@ def _store_thread(account, settings, fetched, clients_by_email, result, provider
 
     for message in fetched.messages:
         _store_message(account, settings, thread, message, result, provider)
+
+    if is_new and rules:
+        _apply_sender_rules(account, thread, fetched, rules, result)
+
+
+def _apply_sender_rules(account, thread, fetched, rules, result) -> None:
+    """Hide or convert a brand-new thread, if a rule covers its sender.
+
+    **New threads only.** Adding a rule is an instruction about future mail,
+    not a licence to reach back through history someone may be reading —
+    the same rule as `keep_unmatched`. It also keeps this idempotent: a
+    re-synced window finds the thread already stored and doesn't ask again,
+    so a lead converted and then edited by hand can't be re-converted.
+
+    Matched on **incoming** senders only. Our own outgoing address never
+    triggers a rule, and a rule on a domain we mail wouldn't otherwise be
+    able to tell "they wrote to us" from "we wrote to them".
+    """
+    # Deferred: email_service imports this module at load time, so a
+    # top-level import back would be circular.
+    from communications.services import email_service
+
+    for message in fetched.messages:
+        if message.direction != DIRECTION_INCOMING:
+            continue
+        rule = sender_rules.match(rules, message.sender)
+        if rule is None:
+            continue
+
+        if rule.action == RULE_HIDE:
+            # Reason "auto_hidden", not "hidden": a hidden thread resurfaces
+            # when the sender writes again, which for a weekly newsletter
+            # would be a rule that appears not to work.
+            thread.dismiss(DISMISSED_AUTO)
+            result.threads_auto_hidden += 1
+        elif rule.action == RULE_CONVERT:
+            if email_service.auto_create_client(account.company_id, thread, rule) is not None:
+                result.clients_auto_created += 1
+        return  # first matching sender decides; see sender_rules.match
 
 
 def _store_message(account, settings, thread, fetched, result, provider) -> None:
@@ -252,16 +308,74 @@ def _store_message(account, settings, thread, fetched, result, provider) -> None
     # query excludes it (-in:trash), so a new message here would mean someone
     # recovered it in Gmail — but if that ever changes, un-hiding something
     # the user explicitly threw away would be the wrong way to be wrong.
+    #
+    # Nor for threads a *rule* hid: "they wrote again" is exactly what a
+    # newsletter does every week, and resurfacing it every week is a rule
+    # that appears not to work. A person hiding a thread by hand is making a
+    # judgement about one conversation; a rule is a standing instruction
+    # about a sender, and only removing the rule should undo it.
     if (
         fetched.direction == DIRECTION_INCOMING
         and thread.is_dismissed
         and not thread.was_trashed
+        and not thread.was_auto_hidden
     ):
         thread.restore()
         result.threads_resurfaced += 1
 
     for attachment in fetched.attachments:
         _store_attachment(account, settings, message, attachment, result, provider)
+
+
+def _recover_untrashed(account, result: SyncResult, provider) -> None:
+    """Bring back threads that were pulled out of Trash in the mailbox.
+
+    Trashing a conversation from the lead inbox moves it to Gmail's Trash
+    and dismisses it here. Moving it back is done *in Gmail*, and it produces
+    no new message — so nothing in the normal flow would ever notice: every
+    sync query carries `-in:trash`, and the window is keyed on message dates
+    that recovering doesn't change. Hence an explicit reconciliation pass,
+    asking about the handful of threads we trashed ourselves.
+
+    It's what makes the promise the UI already makes ("recover it in Gmail
+    and it will come back on the next sync") actually true.
+
+    Only threads trashed inside `TRASH_RECOVERY_WINDOW_DAYS`: after Gmail
+    purges its Trash there is nothing left to recover, and without a cutoff
+    this would cost one API call per thread ever trashed, on every sync,
+    forever.
+
+    A thread comes back to the **lead inbox**, not to some earlier hidden
+    state — Trash is only offered on threads that were sitting in the inbox
+    (see _thread_list.html), so that's the state it left.
+    """
+    cutoff = utcnow() - timedelta(days=config.TRASH_RECOVERY_WINDOW_DAYS)
+    candidates = EmailThread.query.filter(
+        EmailThread.email_account_id == account.id,
+        EmailThread.dismissed_reason == DISMISSED_TRASHED,
+        EmailThread.dismissed_at > cutoff,
+    ).all()
+
+    for thread in candidates:
+        try:
+            still_trashed = provider.is_trashed(thread.provider_thread_id)
+        except Exception as exc:  # noqa: BLE001
+            # One unreadable thread must not fail a sync that has already
+            # stored mail successfully — the same rule as attachments.
+            logger.warning(
+                "Could not check Trash state of thread %s: %s",
+                thread.provider_thread_id, exc,
+            )
+            result.errors.append(f"Trash check for {thread.display_subject!r}: {exc}")
+            continue
+
+        # `None` is "can't tell" (purged, or the id is gone) and must not be
+        # read as "recovered" — that would put a permanently deleted
+        # conversation back in the lead inbox 30 days after it was binned.
+        if still_trashed is False:
+            thread.restore()
+            thread.updated_at = utcnow()
+            result.threads_recovered += 1
 
 
 def _store_attachment(account, settings, message, fetched, result, provider) -> None:

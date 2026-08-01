@@ -355,3 +355,111 @@ def test_fetched_thread_with_no_dates():
     from communications.providers.base import FetchedThread
 
     assert FetchedThread("t", "s", []).last_message_date is None
+
+
+# --- Trash state ----------------------------------------------------------
+#
+# What `is_trashed` reports decides whether a conversation the user threw
+# away comes back into the lead inbox, so the label reading is worth pinning
+# without going near the network. The `_gmail()` call is stubbed; everything
+# below it is the real method.
+
+class _FakeThreads:
+    def __init__(self, response=None, error=None):
+        self.response = response
+        self.error = error
+        self.asked = []
+
+    def get(self, userId, id, format=None):  # noqa: A002 — Google's own kwarg name
+        self.asked.append({"id": id, "format": format})
+        return self
+
+    def execute(self):
+        if self.error:
+            raise self.error
+        return self.response
+
+
+def trash_provider(response=None, error=None):
+    provider = gp.GmailProvider.__new__(gp.GmailProvider)
+    provider.account = _Account()
+    threads = _FakeThreads(response, error)
+
+    class _Users:
+        def threads(inner):
+            return threads
+
+    class _Service:
+        def users(inner):
+            return _Users()
+
+    provider._gmail = lambda: _Service()
+    provider._threads_stub = threads
+    return provider
+
+
+def http_error(status):
+    """A googleapiclient HttpError with the status the method branches on."""
+    from googleapiclient.errors import HttpError
+
+    class _Resp:
+        def __init__(self, code):
+            self.status = code
+            self.reason = "nope"
+
+    return HttpError(_Resp(status), b"{}")
+
+
+def test_a_thread_still_in_trash_reads_as_trashed():
+    provider = trash_provider({"messages": [{"labelIds": ["TRASH"]}]})
+    assert provider.is_trashed("t-1") is True
+
+
+def test_a_thread_back_in_the_inbox_reads_as_recovered():
+    provider = trash_provider({"messages": [{"labelIds": ["INBOX", "UNREAD"]}]})
+    assert provider.is_trashed("t-1") is False
+
+
+def test_any_message_out_of_trash_means_the_conversation_is_back():
+    """Messages in a thread can disagree — a reply arriving after the rest
+    was trashed lands in the inbox."""
+    provider = trash_provider({"messages": [
+        {"labelIds": ["TRASH"]}, {"labelIds": ["INBOX"]},
+    ]})
+    assert provider.is_trashed("t-1") is False
+
+
+def test_a_missing_thread_reads_as_unknown():
+    """404 is "purged or deleted outright" — nothing to recover, which is
+    None rather than False so the sync leaves it dismissed."""
+    provider = trash_provider(error=http_error(404))
+    assert provider.is_trashed("t-1") is None
+
+
+def test_a_thread_with_no_messages_reads_as_unknown():
+    provider = trash_provider({"messages": []})
+    assert provider.is_trashed("t-1") is None
+
+
+def test_other_http_errors_are_raised_as_provider_errors():
+    from communications.providers.base import ProviderError
+
+    provider = trash_provider(error=http_error(500))
+    with pytest.raises(ProviderError):
+        provider.is_trashed("t-1")
+
+
+def test_a_revoked_grant_still_asks_for_reconnection():
+    from communications.providers.base import ReauthorizationRequired
+
+    provider = trash_provider(error=http_error(401))
+    with pytest.raises(ReauthorizationRequired):
+        provider.is_trashed("t-1")
+
+
+def test_the_trash_check_does_not_download_message_bodies():
+    """It runs once per trashed thread per sync — fetching mail nobody asked
+    for would make a cheap reconciliation an expensive one."""
+    provider = trash_provider({"messages": [{"labelIds": ["TRASH"]}]})
+    provider.is_trashed("t-1")
+    assert provider._threads_stub.asked == [{"id": "t-1", "format": "minimal"}]

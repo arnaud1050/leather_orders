@@ -189,6 +189,10 @@ class Order(db.Model):
     item = db.Column(db.String(200), nullable=False)
     start = db.Column(db.Date, nullable=False)
     due = db.Column(db.Date, nullable=False)
+    # Optional — when the client actually collects the finished piece, which
+    # can slip past the due date. Distinct from `due` (when it's promised
+    # done by) rather than reusing it.
+    pickup_date = db.Column(db.Date)
     status = db.Column(db.String(20), nullable=False)
     notes = db.Column(db.Text)
     # Optional — a company with no OrderTypes defined never shows the
@@ -367,6 +371,7 @@ _ADDED_COLUMNS = [
     ("payments", "method", "VARCHAR(20) NOT NULL DEFAULT 'cash'"),
     ("payments", "reference", "VARCHAR(120)"),
     ("orders", "order_type_id", "INTEGER"),
+    ("orders", "pickup_date", "DATE"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.

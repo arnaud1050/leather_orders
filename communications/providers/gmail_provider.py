@@ -264,6 +264,38 @@ class GmailProvider(_GoogleBase, EmailProvider):
         except Exception as exc:  # noqa: BLE001
             raise self._wrap(exc, "moving a conversation to Trash") from exc
 
+    def is_trashed(self, thread_id: str) -> bool | None:
+        """Whether the thread still carries Gmail's TRASH label.
+
+        `format="minimal"` fetches label ids without message bodies — this
+        runs once per locally-trashed thread per sync, so it has no business
+        downloading mail nobody asked for.
+
+        A 404 means the thread is gone for good (Gmail purges Trash after
+        ~30 days, and the user may have deleted it there outright), which is
+        `None`, not `False`: nothing to recover.
+        """
+        from googleapiclient.errors import HttpError
+
+        try:
+            thread = self._gmail().users().threads().get(
+                userId="me", id=thread_id, format="minimal",
+            ).execute()
+        except HttpError as exc:
+            if exc.resp.status == 404:
+                return None
+            raise self._wrap(exc, "checking a conversation in Trash") from exc
+        except Exception as exc:  # noqa: BLE001 — normalised by _wrap
+            raise self._wrap(exc, "checking a conversation in Trash") from exc
+
+        messages = thread.get("messages") or []
+        if not messages:
+            return None  # nothing left to read a label off
+        # Messages in a thread can disagree (a reply arriving after the rest
+        # was trashed). Any one of them out of Trash means the conversation
+        # is back in the mailbox.
+        return all("TRASH" in (message.get("labelIds") or []) for message in messages)
+
     def rfc822_message_id(self, provider_message_id: str) -> str | None:
         """The `Message-ID:` header for a stored message.
 

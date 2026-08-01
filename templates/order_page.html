@@ -25,6 +25,7 @@
     <label>Item<input type="text" name="item" value="{{ order.item }}" required></label>
     <label>Start date<input type="date" name="start" value="{{ order.start.isoformat() }}" required></label>
     <label>Due date<input type="date" name="due" value="{{ order.due.isoformat() }}" required></label>
+    <label>Pickup date<input type="date" name="pickup_date" value="{{ order.pickup_date.isoformat() if order.pickup_date else '' }}"></label>
     {% if order_types %}
     <label>Order type
       <select name="order_type_id">
@@ -42,7 +43,7 @@
         {% endfor %}
       </select>
     </label>
-    <label>Notes<textarea name="notes" rows="3">{{ order.notes }}</textarea></label>
+    <label>Notes<textarea name="notes" rows="14">{{ order.notes }}</textarea></label>
     <div>
       <button type="submit" class="btn-primary">Save changes</button>
     </div>

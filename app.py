@@ -55,7 +55,7 @@ from billing.tax import PROVINCES  # noqa: E402
 import communications.jobs as communications_jobs  # noqa: E402
 import communications.migrations as communications_migrations  # noqa: E402
 import communications.routes as communications_routes  # noqa: E402
-from communications.services import calendar_service  # noqa: E402
+from communications.services import calendar_service, sender_rules  # noqa: E402
 # Self-contained module: its own table, storage, migrations, blueprint and
 # templates (see documents/__init__.py). Real files attached to an order —
 # resolve_order is handed in below rather than this module importing
@@ -590,6 +590,10 @@ def orders_list():
 @app.route("/clients")
 @login_required
 def clients_list():
+    # Seeing the roster is what settles the "a client appeared by itself"
+    # badge — the client is already there, so looking at it is the whole of
+    # the response required. (Unlike the lead badge, which counts work.)
+    sender_rules.acknowledge_all(current_user.company_id)
     clients = Client.query.filter_by(company_id=current_user.company_id).all()
     sort_by, sort_dir = _sort_args(CLIENT_SORT_KEYS, "name")
     clients.sort(key=CLIENT_SORT_KEYS[sort_by], reverse=(sort_dir == "desc"))
@@ -887,6 +891,10 @@ def edit_order(order_id: int):
         order.start = date.fromisoformat(start_str)
     if due_str:
         order.due = date.fromisoformat(due_str)
+
+    if "pickup_date" in request.form:
+        pickup_str = request.form.get("pickup_date", "")
+        order.pickup_date = date.fromisoformat(pickup_str) if pickup_str else None
 
     status = request.form.get("status")
     if status in STATUS_LABELS:

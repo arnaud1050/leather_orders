@@ -20,10 +20,10 @@ import re
 from models import Client, db
 
 from communications.models import (
-    AUDIT_CLIENT_CREATED_FROM_EMAIL, AUDIT_EMAIL_SENT, AUDIT_SYNC_RUN,
-    AUDIT_THREAD_TRASHED, DIRECTION_INCOMING, DIRECTION_OUTGOING,
-    DISMISSED_HIDDEN, DISMISSED_TRASHED, EmailMessage, EmailThread,
-    LeadReadState, utcnow,
+    AUDIT_CLIENT_AUTO_CREATED, AUDIT_CLIENT_CREATED_FROM_EMAIL,
+    AUDIT_EMAIL_SENT, AUDIT_SYNC_RUN, AUDIT_THREAD_TRASHED, DIRECTION_INCOMING,
+    DIRECTION_OUTGOING, DISMISSED_HIDDEN, DISMISSED_TRASHED, AutoCreatedClient,
+    EmailMessage, EmailThread, utcnow,
 )
 from communications.providers import email_provider_for
 from communications.providers.base import ProviderError
@@ -92,16 +92,23 @@ def get_thread(company_id: int, thread_id: int) -> EmailThread | None:
 
 
 # ---------------------------------------------------------------------------
-# The "new leads" badge.
+# The lead badge, and the "New" pill.
 #
-# Counted rather than stored, from one timestamp per user (LeadReadState) —
-# so it can't drift out of sync with the threads it describes, the same
-# reasoning as Order.total and Invoice.display_status elsewhere in the app.
+# The badge counts leads **awaiting triage** — not leads that arrived since
+# someone last looked. Looking is not doing: a badge that cleared the moment
+# you opened the inbox stopped reminding you about the enquiry you hadn't
+# answered yet, which is the only thing it was there for. It falls to zero
+# exactly when the work is done: a lead converted to a client (it has a
+# client, so it isn't a lead), hidden, or trashed.
 #
-# It falls to zero on its own in both the ways it should: a sync that brings
-# nothing new leaves the count alone, converting a lead attaches a client so
-# the thread stops being a lead at all, and opening the page moves the
-# marker.
+# Derived, never stored — the same query the list itself runs, so the number
+# beside the link and the rows behind it can't disagree. Same reasoning as
+# Order.total and Invoice.display_status elsewhere in the app.
+#
+# The "New" pill is a separate question — has *this conversation* been read —
+# and so it reads a per-thread `opened_at` rather than the badge's rule. A
+# lead can be read and still be waiting (pill gone, badge still counting),
+# which is exactly the state the old single-timestamp design couldn't express.
 # ---------------------------------------------------------------------------
 
 def _lead_thread_query(company_id: int, dismissed: bool = False):
@@ -125,38 +132,32 @@ def _lead_thread_query(company_id: int, dismissed: bool = False):
     return query.filter(EmailThread.dismissed_at.is_(None))
 
 
-def leads_seen_at(company_id: int, user_id: int):
-    """When this user last opened the lead inbox, or None if never.
+def pending_lead_count(company_id: int) -> int:
+    """How many leads are still waiting to be dealt with.
 
-    Read-only: deliberately does not create the row, because this is called
-    on every page render and a GET should not write.
+    Literally the length of the lead inbox: same query, so the badge and
+    the list it points at can never disagree about what's outstanding.
     """
-    state = LeadReadState.query.filter_by(company_id=company_id, user_id=user_id).first()
-    return state.seen_at if state else None
+    return _lead_thread_query(company_id).count()
 
 
-def new_lead_count(company_id: int, user_id: int) -> int:
-    """How many lead threads have arrived since this user last looked."""
-    query = _lead_thread_query(company_id)
-    seen_at = leads_seen_at(company_id, user_id)
-    if seen_at is not None:
-        query = query.filter(EmailThread.created_at > seen_at)
-    return query.count()
+def mark_thread_opened(company_id: int, thread_id: int) -> None:
+    """Record that a conversation has been read, clearing its "New" pill.
 
+    Only the *first* open is stamped — the pill answers "has anyone looked
+    at this yet", so re-reading a thread shouldn't rewrite when it stopped
+    being new.
 
-def mark_leads_seen(company_id: int, user_id: int) -> None:
-    """Move this user's marker to now, clearing the badge. Commits.
-
-    Committing here rather than leaving it to the caller because the caller
-    is a GET route rendering a page — there's no wider transaction for it to
-    join, and a marker that didn't persist would show the same "new" leads
-    on every visit.
+    Called from a GET route, and commits for the same reason: there's no
+    wider transaction to join, and a marker that didn't persist would show
+    the same threads as new forever. Writing on a GET is normally worth
+    avoiding, but this one is idempotent and destroys nothing — and opening
+    the conversation is the only place "read" could honestly be recorded.
     """
-    state = LeadReadState.query.filter_by(company_id=company_id, user_id=user_id).first()
-    if state is None:
-        state = LeadReadState(company_id=company_id, user_id=user_id)
-        db.session.add(state)
-    state.seen_at = utcnow()
+    thread = get_thread(company_id, thread_id)
+    if thread is None or thread.opened_at is not None:
+        return
+    thread.opened_at = utcnow()
     db.session.commit()
 
 
@@ -409,17 +410,23 @@ def trash_thread(company_id: int, thread_id: int) -> EmailThread:
     return thread
 
 
-def create_client_from_thread(company_id: int, thread_id: int, **overrides) -> Client:
+def create_client_from_thread(
+    company_id: int, thread_id: int, commit: bool = True, **overrides
+) -> Client:
     """Turn an unmatched conversation into a client, and attach it.
 
-    Deliberately explicit rather than automatic on sync: an inbox contains
-    newsletters, suppliers and spam, and silently minting a Client for each
-    would make the client list useless. §3 lists automatic creation as a
-    future capability — this is the manual half of it, and the same
-    function an automatic rule would call later.
+    Still not something sync does to any old sender: an inbox is full of
+    newsletters, suppliers and spam, and silently minting a Client per
+    address would make the roster useless. What changed is that a company
+    can now name the senders where the answer is never in doubt — see
+    `SenderRule` — and `auto_create_client()` below is what calls this for
+    them. Everything else stays a deliberate click.
 
     Also re-runs matching across the company's other orphan threads, since
     the new client's address may appear in more than one of them.
+
+    `commit=False` is for the sync, which owns a transaction covering every
+    thread in the run and must be able to roll the whole thing back.
     """
     thread = get_thread(company_id, thread_id)
     if thread is None:
@@ -450,11 +457,19 @@ def create_client_from_thread(company_id: int, thread_id: int, **overrides) -> C
             # first contact — the same field the contact-form webhook fills
             # (see Client.first_message in models.py), so both routes into
             # the app produce a client that reads the same.
-            first_message=_first_incoming_body(thread),
+            #
+            # An override wins: a sender rule that has mapped the form's
+            # "Message:" field knows what the person actually wrote, where
+            # the raw body is the whole form with its own footer attached.
+            first_message=(
+                (overrides.get("first_message") or "").strip()
+                or _first_incoming_body(thread)
+            ),
         )
         db.session.add(client)
         db.session.flush()
 
+    _apply_details(client, overrides)
     thread.client_id = client.id
     also_matched = email_sync.rematch_unassigned(company_id)
     audit.record(
@@ -462,7 +477,85 @@ def create_client_from_thread(company_id: int, thread_id: int, **overrides) -> C
         f"{client.name} <{email_address}> from thread {thread.display_subject!r}"
         + (f"; {also_matched} other conversation(s) matched" if also_matched else ""),
     )
-    db.session.commit()
+    if commit:
+        db.session.commit()
+    return client
+
+
+def _apply_details(client: Client, overrides: dict) -> None:
+    """Fill in phone / what-it's-about / message / source from a form.
+
+    **Only fills blanks.** These arrive from a sender rule's field mapping,
+    which runs unattended — so it may complete a record nobody has touched,
+    and must never overwrite something a person typed. A second enquiry from
+    an existing client is the common case, and their phone number on file
+    beats whatever they retyped into a web form.
+
+    `source` is matched against the company's existing `SourceOption`s and
+    ignored when nothing matches. Deliberately not created: an arbitrary
+    string from a public form should not be able to invent options that then
+    show up in everyone's client page and the analytics breakdown.
+    """
+    from models import SourceOption  # host model; see the note in CLAUDE.md
+
+    for field in ("phone", "inquiry_type", "first_message"):
+        value = (overrides.get(field) or "").strip()
+        if value and not (getattr(client, field) or "").strip():
+            setattr(client, field, value)
+
+    label = (overrides.get("source") or "").strip()
+    if not label:
+        return
+    option = SourceOption.query.filter(
+        SourceOption.company_id == client.company_id,
+        db.func.lower(SourceOption.label) == label.lower(),
+    ).first()
+    if option is not None and option not in client.sources:
+        client.sources.append(option)
+
+
+def auto_create_client(company_id: int, thread, rule) -> Client | None:
+    """Convert a thread because a sender rule said to. Does not commit.
+
+    Returns the client, or None if there was nothing to convert — an
+    address that's already on file, a thread with no readable sender. A
+    rule firing on mail the app can't turn into a client is not an error:
+    it's one thread left in the lead inbox for a person to look at, which
+    is where it would have been anyway.
+
+    Records an `AutoCreatedClient` row, which is what puts the badge on
+    Clients. Nobody chose this client, so somebody should be told it's
+    there.
+
+    If the rule carries a field mapping, the client is built from what the
+    **form said** rather than from who sent it — which is the difference
+    between "Haejung Kim <dayanee1004@gmail.com>" and a client named after
+    Squarespace. An unmapped rule behaves exactly as it did before mapping
+    existed.
+    """
+    from communications.services import sender_rules
+
+    if thread.client_id is not None:
+        return None
+    overrides = sender_rules.client_fields_from(rule, _first_incoming_body(thread))
+    try:
+        client = create_client_from_thread(
+            company_id, thread.id, commit=False, **overrides,
+        )
+    except EmailServiceError as exc:
+        # E.g. no sender address on the conversation. Worth a line in the
+        # log, not worth failing a sync that has already stored the mail.
+        logger.info("Sender rule %s could not convert a thread: %s", rule.pattern, exc)
+        return None
+
+    db.session.add(AutoCreatedClient(
+        company_id=company_id, client_id=client.id, thread_id=thread.id,
+    ))
+    audit.record(
+        company_id, AUDIT_CLIENT_AUTO_CREATED,
+        f"{client.name} <{client.email}> created by rule {rule.pattern} "
+        f"from {thread.display_subject!r}",
+    )
     return client
 
 
