@@ -13,17 +13,6 @@
   <nav class="view-switch">
     <a href="{{ url_for('timeline_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'timeline' else '' }}">Timeline</a>
     <a href="{{ url_for('calendar_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'calendar' else '' }}">Calendar</a>
-    <a href="{{ url_for('orders_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'orders' else '' }}">Orders</a>
-    {# Badge count comes from the inventory module's own context processor
-       (inventory/routes.py's _inject_nav_badge) — same "available on every
-       page without each route passing it" shape as the two badges below. #}
-    <a href="{{ url_for('inventory.inventory_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'inventory' else '' }}">
-      Inventory
-      {% set out_of_stock = out_of_stock_count() %}
-      {% if out_of_stock %}<span class="nav-badge nav-badge--stock-alert" title="{{ out_of_stock }} item{{ 's' if out_of_stock != 1 }} at zero or negative stock — restock from Inventory">{{ out_of_stock }}</span>{% endif %}
-    </a>
-    {# Badge count comes from the communications module's context processor,
-       so it's available on every page without each route passing it. #}
     <a href="{{ url_for('clients_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'clients' else '' }}">
       Clients
       {% set pending_leads = pending_lead_count() %}
@@ -38,6 +27,17 @@
       {% set client_mail = client_mail_count() %}
       {% if client_mail %}<span class="nav-badge nav-badge--mail" title="{{ client_mail }} unread email{{ 's' if client_mail != 1 }} from clients">{{ client_mail }}</span>{% endif %}
     </a>
+    <a href="{{ url_for('orders_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'orders' else '' }}">Orders</a>
+    {# Badge count comes from the inventory module's own context processor
+       (inventory/routes.py's _inject_nav_badge) — same "available on every
+       page without each route passing it" shape as the two badges below. #}
+    <a href="{{ url_for('inventory.inventory_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'inventory' else '' }}">
+      Inventory
+      {% set out_of_stock = out_of_stock_count() %}
+      {% if out_of_stock %}<span class="nav-badge nav-badge--stock-alert" title="{{ out_of_stock }} item{{ 's' if out_of_stock != 1 }} at zero or negative stock — restock from Inventory">{{ out_of_stock }}</span>{% endif %}
+    </a>
+    {# Badge count comes from the communications module's context processor,
+       so it's available on every page without each route passing it. #}
     <a href="{{ url_for('billing.invoice_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'invoices' else '' }}">Invoices</a>
     <a href="{{ url_for('analytics') }}" class="view-switch__link {{ 'is-active' if active_view == 'analytics' else '' }}">Analytics</a>
     {# Same context processor as the lead badge. "!" rather than a count: what
