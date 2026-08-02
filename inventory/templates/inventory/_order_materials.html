@@ -2,7 +2,9 @@
 {# Included from templates/order_page.html's "materials" section. Context
    expected: order, materials (OrderMaterial rows), others
    (OrderMaterialOther rows), selectable_items (InventoryItem, active ∪
-   already used on this order), total_material_cost, unit_labels, return_to.
+   already used on this order), total_material_cost, understocked_materials
+   (OrderMaterial rows whose live item is now at zero/negative stock),
+   unit_labels, return_to.
 
    This tab is cost-tracking only — nothing here touches order.total,
    OrderLine, or the invoice. See inventory/__init__.py. #}
@@ -14,6 +16,20 @@
     billed (see the Billing tab for that). Adding a material here decreases
     its remaining quantity on the <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a> page.
   </p>
+
+  {% if understocked_materials %}
+  {# Same warning-note the tax-status note on the Billing tab uses — this is
+     the order-scoped mirror of the company-wide nav badge above: that badge
+     says *something* is out of stock, this says *which of this order's own
+     materials* are affected, so this page doesn't just point at Inventory
+     and make someone go hunting for what ran out. #}
+  <p class="warning-note">
+    This order's materials aren't fully covered by what's on hand —
+    {% for material in understocked_materials %}{{ material.item_name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    {{ 'is' if understocked_materials|length == 1 else 'are' }} at zero or negative stock.
+    Restock from <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a>.
+  </p>
+  {% endif %}
 
   {% if materials %}
   <ul class="doc-list">

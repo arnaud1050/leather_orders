@@ -97,6 +97,7 @@ def integrations():
         convert_rules=sender_rules.rules_by_action(company_id, RULE_CONVERT),
         rule_labels=RULE_LABELS,
         field_targets=FIELD_TARGET_LABELS,
+        has_calendar=calendar_service.has_calendar(company_id),
         scope_summary=account_service.scope_summary,
         available_providers=PROVIDER_LABELS,
         configuration_problem=config.configuration_problem(),
@@ -209,23 +210,65 @@ def update_account_flags(account_id: int):
 @bp.route("/integrations/sync-settings", methods=["POST"])
 @login_required
 def update_sync_settings():
+    """Save one section of the sync settings.
+
+    Mail and calendar are two forms on the page, so each says which section
+    it is. That's not decoration: an unticked checkbox sends **nothing**, so
+    a calendar form processed wholesale would read every mail checkbox as
+    "off" and quietly turn them all off. Same rule as the client modal's
+    address field — a form that doesn't render a field means "not shown",
+    never "cleared" — just enforced by an explicit marker rather than by
+    `in request.form`, which checkboxes can't support.
+
+    No marker means "everything", so an older form (or a test) that posts
+    the whole lot still works.
+    """
+    section = request.form.get("section") or "all"
     settings = EmailSyncSettings.for_company(current_user.company_id)
-    settings.sync_enabled = request.form.get("sync_enabled") == "on"
-    settings.sync_sent_mail = request.form.get("sync_sent_mail") == "on"
-    settings.sync_attachments = request.form.get("sync_attachments") == "on"
-    settings.keep_unmatched = request.form.get("keep_unmatched") == "on"
 
     # Clamped rather than validated-and-rejected: these are dials, not
     # data. A 1-minute frequency is a good way to get rate-limited by
     # Google, and a 3650-day initial sync is a good way to hang the first
     # run — so the bounds are enforced here rather than trusted from a
     # number input that anyone can edit.
-    settings.sync_frequency = _clamp(request.form.get("sync_frequency"), 5, 1440, 15)
-    settings.initial_sync_days = _clamp(request.form.get("initial_sync_days"), 1, 730, 90)
+    if section in ("all", "email"):
+        settings.sync_enabled = request.form.get("sync_enabled") == "on"
+        settings.sync_sent_mail = request.form.get("sync_sent_mail") == "on"
+        settings.sync_attachments = request.form.get("sync_attachments") == "on"
+        settings.keep_unmatched = request.form.get("keep_unmatched") == "on"
+        settings.sync_frequency = _clamp(request.form.get("sync_frequency"), 5, 1440, 15)
+        settings.initial_sync_days = _clamp(
+            request.form.get("initial_sync_days"), 1, 730, 90,
+        )
+
+    if section in ("all", "calendar"):
+        settings.calendar_frequency = _clamp(
+            request.form.get("calendar_frequency"), 5, 1440, 30,
+        )
 
     db.session.commit()
     _flash("Sync settings saved.", "success")
     return redirect(url_for("communications.integrations"))
+
+
+@bp.route("/integrations/calendar/sync", methods=["POST"])
+@login_required
+def sync_calendar_now():
+    """Refresh calendars only — the button on the calendar page.
+
+    Separate from the combined "Sync now" on the integrations page because
+    of where it's pressed: someone on the month grid waiting for an
+    appointment to appear doesn't want to wait on a mailbox as well, and a
+    button labelled for the calendar should do what it says.
+    """
+    results = calendar_service.sync_now(current_user.company_id)
+    if not results:
+        _flash("No calendar is connected.", "error")
+    elif all(result.ok for result in results):
+        _flash(" ".join(result.summary() for result in results), "success")
+    else:
+        _flash(" ".join(r.summary() for r in results if not r.ok), "error")
+    return redirect(request.form.get("return_to") or url_for("calendar_view"))
 
 
 @bp.route("/integrations/rules", methods=["POST"])
@@ -302,6 +345,13 @@ def _clamp(raw: str | None, low: int, high: int, default: int) -> int:
 @bp.route("/integrations/sync", methods=["POST"])
 @login_required
 def sync_now():
+    """Fetch mail for this company, now.
+
+    Mail only. Every button that posts here sits under a mail heading — the
+    Email sync section, and the lead inbox — and a button that quietly did
+    more than its label says is worse than one that does less. The combined
+    one is `sync_all_now` below.
+    """
     results = email_service.sync_now(current_user.company_id)
     if not results:
         _flash("No mailbox is connected and enabled for syncing.", "error")
@@ -311,6 +361,34 @@ def sync_now():
         _flash(
             " ".join(result.summary() for result in results if not result.ok), "error",
         )
+    return redirect(request.form.get("return_to") or url_for("communications.integrations"))
+
+
+@bp.route("/integrations/sync-all", methods=["POST"])
+@login_required
+def sync_all_now():
+    """Fetch mail *and* calendars — the button beside the connected accounts.
+
+    It sits at the top of the page, above the split into Email sync and
+    Calendar sync, because that's where "refresh everything I've connected"
+    belongs. The per-section buttons below stay narrow so each does exactly
+    what its heading says.
+
+    Worth knowing: with `RUN_SCHEDULER` unset (the default) these buttons
+    are the *only* thing that ever syncs anything.
+    """
+    results = email_service.sync_now(current_user.company_id)
+    calendar_results = calendar_service.sync_now(current_user.company_id)
+
+    parts = [r.summary() for r in results + calendar_results if not r.ok]
+    if parts:
+        _flash(" ".join(parts), "error")
+    elif results or calendar_results:
+        _flash(
+            " ".join(r.summary() for r in results + calendar_results), "success",
+        )
+    else:
+        _flash("Nothing is connected and enabled for syncing.", "error")
     return redirect(request.form.get("return_to") or url_for("communications.integrations"))
 
 
@@ -671,6 +749,7 @@ def _inject_nav_badges():
 
     `pending_lead_count` — enquiries still waiting to be dealt with.
     `new_client_count` — clients the app created by itself, unseen so far.
+    `client_mail_count` — unread mail from clients already on file.
     `integration_alert_count` — integrations whose last sync failed.
 
     An `app_context_processor` (not a plain blueprint one) because both badges
@@ -706,6 +785,21 @@ def _inject_nav_badges():
             current_user.company_id,
         ))
 
+    def client_mail_count(client_id: int | None = None) -> int:
+        """Unread mail from people already on file — all of them, or one.
+
+        The optional argument is what lets the client page's Emails tab
+        show the same badge narrowed to that client, without a second
+        counter that could disagree with the nav.
+
+        Not per user, like every other badge here: one studio, one inbox.
+        It clears the only way it honestly can — by someone opening the
+        conversation and reading it.
+        """
+        return _count("client-mail", lambda: email_service.unread_client_mail_count(
+            current_user.company_id, client_id,
+        ))
+
     def new_client_count() -> int:
         """Clients a sender rule created that nobody has seen yet.
 
@@ -733,6 +827,7 @@ def _inject_nav_badges():
     return {
         "pending_lead_count": pending_lead_count,
         "new_client_count": new_client_count,
+        "client_mail_count": client_mail_count,
         "integration_alert_count": integration_alert_count,
     }
 

@@ -35,6 +35,12 @@ ADDED_COLUMNS = [
     ("email_threads", "dismissed_at", "DATETIME"),
     ("email_threads", "dismissed_reason", "VARCHAR(20)"),
     ("email_threads", "opened_at", "DATETIME"),
+    # The literal 30 is what the calendar job was hardcoded to before the
+    # interval was configurable — so an existing deployment keeps exactly
+    # the cadence it had. A migration records what shipped; it must not
+    # start tracking the model's default if that ever changes.
+    ("email_sync_settings", "calendar_frequency", "INTEGER NOT NULL DEFAULT 30"),
+    ("email_messages", "read_at", "DATETIME"),
 ]
 
 
@@ -51,3 +57,35 @@ def run_migrations() -> None:
     if applied:
         db.session.commit()
         logger.info("communications: applied %s column migration(s).", applied)
+
+    if "email_messages" in tables:
+        _backfill_read_messages()
+
+
+def _backfill_read_messages() -> None:
+    """Mark messages read in threads that were already opened.
+
+    Without this, adding per-message read state lights up an unread count
+    for every conversation on file — including ones somebody read months
+    ago — and the first thing the feature does is cry wolf.
+
+    A thread carries `opened_at` precisely because someone looked at it, so
+    its messages *were* seen; that timestamp is the honest answer to when.
+    Threads never opened stay unread, which is also correct.
+
+    Runs on every boot and is a no-op once applied: it only touches rows
+    that still have a null `read_at`, and after the first pass an opened
+    thread has none.
+    """
+    result = db.session.execute(sa.text("""
+        UPDATE email_messages
+           SET read_at = (
+                 SELECT opened_at FROM email_threads
+                  WHERE email_threads.id = email_messages.thread_id
+               )
+         WHERE read_at IS NULL
+           AND thread_id IN (SELECT id FROM email_threads WHERE opened_at IS NOT NULL)
+    """))
+    if result.rowcount:
+        db.session.commit()
+        logger.info("communications: marked %s message(s) read.", result.rowcount)

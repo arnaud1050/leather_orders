@@ -14,7 +14,7 @@ matches every other mutating route in `app.py`, relying on the app-wide
 touches a third-party account, unlike communications.
 """
 
-from flask import Blueprint, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
 from inventory import services
@@ -29,6 +29,30 @@ def register(app, *, resolve_order) -> None:
     global _resolve_order
     _resolve_order = resolve_order
     app.register_blueprint(bp)
+
+
+@bp.app_context_processor
+def _inject_nav_badge():
+    """The nav badge next to "Inventory" in base.html — how many active
+    items are at zero or negative stock, i.e. need restocking. Same shape as
+    communications' badges (see communications/routes.py's
+    `_inject_nav_badges`): an `app_context_processor` since base.html is
+    extended by every page, not just this module's own; the count comes
+    back as a callable so the query only runs on templates that actually
+    render it; and it's deliberately forgiving (no user, or a table that
+    doesn't exist yet on a partially-migrated database) since a decoration
+    isn't worth a 500.
+    """
+    def out_of_stock_count() -> int:
+        if not current_user.is_authenticated:
+            return 0
+        try:
+            return services.out_of_stock_count(current_user.company_id)
+        except Exception:  # noqa: BLE001 — see docstring
+            current_app.logger.debug("Could not compute the inventory stock badge", exc_info=True)
+            return 0
+
+    return {"out_of_stock_count": out_of_stock_count}
 
 
 def _get_order_or_404(order_id: int):

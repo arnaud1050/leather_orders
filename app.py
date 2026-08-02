@@ -56,7 +56,9 @@ from billing.tax import PROVINCES  # noqa: E402
 import communications.jobs as communications_jobs  # noqa: E402
 import communications.migrations as communications_migrations  # noqa: E402
 import communications.routes as communications_routes  # noqa: E402
-from communications.services import calendar_service, sender_rules  # noqa: E402
+from communications.services import (  # noqa: E402
+    calendar_service, email_service, sender_rules,
+)
 # Self-contained module: its own table, storage, migrations, blueprint and
 # templates (see documents/__init__.py). Real files attached to an order —
 # resolve_order is handed in below rather than this module importing
@@ -672,11 +674,14 @@ def clients_list():
     # the response required. (Unlike the lead badge, which counts work.)
     sender_rules.acknowledge_all(current_user.company_id)
     clients = Client.query.filter_by(company_id=current_user.company_id).all()
+    # One grouped query for the whole table, not a count per row.
+    unread_by_client = email_service.unread_counts_by_client(current_user.company_id)
     sort_by, sort_dir = _sort_args(CLIENT_SORT_KEYS, "name")
     clients.sort(key=CLIENT_SORT_KEYS[sort_by], reverse=(sort_dir == "desc"))
     return render_template(
         "clients_list.html",
         clients=clients,
+        unread_by_client=unread_by_client,
         sort_by=sort_by,
         sort_dir=sort_dir,
         active_view="clients",
@@ -981,6 +986,7 @@ def order_materials(order_id: int):
         others=inventory_service.list_others_for_order(order.id),
         total_material_cost=inventory_service.total_material_cost(order.id),
         selectable_items=inventory_service.selectable_items(current_user.company_id, order.id),
+        understocked_materials=inventory_service.understocked_materials_for_order(order.id),
         unit_labels=INVENTORY_UNIT_LABELS,
         return_to=return_to,
         back_label=back_label(return_to),

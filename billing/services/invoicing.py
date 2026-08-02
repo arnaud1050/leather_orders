@@ -63,10 +63,13 @@ def profile_for(company_id: int, display_name: str = "") -> BillingProfile:
     """
     profile = BillingProfile.query.filter_by(company_id=company_id).first()
     if profile is None:
-        profile = BillingProfile(company_id=company_id)
+        profile = BillingProfile(company_id=company_id, display_name=display_name)
         db.session.add(profile)
         db.session.flush()
-    profile.display_name = display_name
+    elif display_name:
+        # Only when the caller actually supplied one — a bare
+        # profile_for(company_id) must not blank the stored name.
+        profile.display_name = display_name
     return profile
 
 

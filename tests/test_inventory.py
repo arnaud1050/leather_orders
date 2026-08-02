@@ -738,6 +738,135 @@ def test_materials_tab_never_changes_order_total(logged_in, company, order):
     assert db.session.get(Order, order.id).total == total_before
 
 
+# --- stock alerts: out-of-stock nav badge + Materials-tab warning ----------
+
+def test_out_of_stock_count_counts_zero_and_negative_active_items(company):
+    services.add_item(
+        company.id, name="Plenty", unit="each",
+        inventory_type_id=None, quantity_on_hand=10, unit_price=1,
+    )
+    services.add_item(
+        company.id, name="Exactly out", unit="each",
+        inventory_type_id=None, quantity_on_hand=0, unit_price=1,
+    )
+    services.add_item(
+        company.id, name="Overdrawn", unit="each",
+        inventory_type_id=None, quantity_on_hand=-3, unit_price=1,
+    )
+    assert services.out_of_stock_count(company.id) == 2
+
+
+def test_out_of_stock_count_excludes_hidden_items(company):
+    item = services.add_item(
+        company.id, name="Retired", unit="each",
+        inventory_type_id=None, quantity_on_hand=-1, unit_price=1,
+    )
+    services.toggle_item(company.id, item.id)  # hide it
+    assert services.out_of_stock_count(company.id) == 0
+
+
+def test_out_of_stock_count_is_scoped_to_the_tenant(company, other_company):
+    services.add_item(
+        other_company.id, name="Theirs", unit="each",
+        inventory_type_id=None, quantity_on_hand=-1, unit_price=1,
+    )
+    assert services.out_of_stock_count(company.id) == 0
+
+
+def test_understocked_materials_for_order_reads_the_live_quantity(company, order):
+    item = services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=5, unit_price=12.5,
+    )
+    material = services.add_material(company.id, order.id, item.id, quantity_used=2)
+    assert services.understocked_materials_for_order(order.id) == []
+
+    # Draw the rest of the stock via a second order-less item edit (simulating
+    # another order/restock moving the same live item to zero or below) —
+    # the check must read the item's *current* quantity, not the material's
+    # own frozen snapshot.
+    services.edit_item(
+        company.id, item.id, name=item.name, unit=item.unit,
+        inventory_type_id=None, quantity_on_hand=0, unit_price=item.unit_price,
+    )
+    assert services.understocked_materials_for_order(order.id) == [material]
+
+
+def test_understocked_materials_for_order_excludes_fully_stocked_materials(company, order):
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=10, unit_price=1,
+    )
+    services.add_material(company.id, order.id, item.id, quantity_used=1)
+    assert services.understocked_materials_for_order(order.id) == []
+
+
+def test_understocked_materials_for_order_ignores_others(company, order):
+    """OrderMaterialOther has no inventory_item_id at all, so it can never
+    appear here regardless of how it's used."""
+    services.add_other(company.id, order.id, description="Rush courier fee", cost=15.0)
+    assert services.understocked_materials_for_order(order.id) == []
+
+
+def test_stock_alert_badge_appears_when_an_item_is_out_of_stock(logged_in, company):
+    services.add_item(
+        company.id, name="Overdrawn", unit="each",
+        inventory_type_id=None, quantity_on_hand=0, unit_price=1,
+    )
+    body = logged_in.get("/").get_data(as_text=True)
+    assert "nav-badge--stock-alert" in body
+
+
+def test_stock_alert_badge_absent_when_nothing_is_out_of_stock(logged_in, company):
+    services.add_item(
+        company.id, name="Plenty", unit="each",
+        inventory_type_id=None, quantity_on_hand=10, unit_price=1,
+    )
+    body = logged_in.get("/").get_data(as_text=True)
+    assert "nav-badge--stock-alert" not in body
+
+
+def test_stock_alert_badge_clears_after_restocking(logged_in, company):
+    item = services.add_item(
+        company.id, name="Overdrawn", unit="each",
+        inventory_type_id=None, quantity_on_hand=0, unit_price=1,
+    )
+    assert "nav-badge--stock-alert" in logged_in.get("/").get_data(as_text=True)
+
+    services.edit_item(
+        company.id, item.id, name=item.name, unit=item.unit,
+        inventory_type_id=None, quantity_on_hand=5, unit_price=item.unit_price,
+    )
+    assert "nav-badge--stock-alert" not in logged_in.get("/").get_data(as_text=True)
+
+
+def test_materials_tab_shows_warning_when_understocked(logged_in, company, order):
+    item = services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=2, unit_price=12.5,
+    )
+    logged_in.post(
+        f"/orders/{order.id}/materials/add",
+        data={"inventory_item_id": str(item.id), "quantity_used": "5"},
+    )
+    body = logged_in.get(f"/orders/{order.id}/materials").get_data(as_text=True)
+    assert "warning-note" in body
+    assert "Horween Chromexcel" in body
+
+
+def test_materials_tab_has_no_warning_when_fully_stocked(logged_in, company, order):
+    item = services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=50, unit_price=12.5,
+    )
+    logged_in.post(
+        f"/orders/{order.id}/materials/add",
+        data={"inventory_item_id": str(item.id), "quantity_used": "5"},
+    )
+    body = logged_in.get(f"/orders/{order.id}/materials").get_data(as_text=True)
+    assert "This order's materials aren't fully covered" not in body
+
+
 # --- routes: tenant isolation on order-scoped material routes --------------
 
 def _order_for(company_id: int) -> Order:

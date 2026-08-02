@@ -209,14 +209,56 @@ choices; this file is the checklist of *what must hold true*.
 - **U13.** The "Show hidden" toggle is absent entirely when no item is
   hidden — there being nothing for it to reveal.
 
-## 9. Explicit non-requirements
+## 9. Stock alerts (out-of-stock nav badge + Materials-tab warning)
+
+Two separate surfaces reading the same underlying fact — an item at zero or
+negative stock — at two different scopes: company-wide (the badge) and
+order-specific (the warning on that order's Materials tab).
+
+- **V1.** `out_of_stock_count(company_id)` counts every **active**
+  `InventoryItem` for that company with `quantity_on_hand <= 0`. Hidden
+  items are excluded — an item taken out of active use isn't something
+  anyone needs to restock.
+- **V2.** The count is scoped per company — an item belonging to another
+  company is never counted, same tenant boundary as every other query in
+  this module.
+- **V3.** The nav badge next to "Inventory" in `base.html` renders only when
+  the count is greater than zero, shows the **count itself** (not a static
+  symbol), and is styled red (`.nav-badge--stock-alert`) — the same red
+  `--day-today` token the integration-alert badge uses for "something needs
+  attention", not a new fourth badge meaning.
+- **V4.** The count is **derived on every page load, never stored** — there
+  is no separate "resolved"/"acknowledged" flag. It clears itself the moment
+  every affected item's `quantity_on_hand` is edited back above zero (a
+  restock) and reappears the moment a later material draw pushes another
+  item to zero or below, with no way to drift out of sync with the data and
+  nothing for a user to explicitly dismiss.
+- **V5.** `understocked_materials_for_order(order_id)` returns the
+  `OrderMaterial` rows on that order whose **live** linked item currently has
+  `quantity_on_hand <= 0` — reading the item's current quantity, never the
+  material's own frozen `item_name`/`unit`/`unit_price` snapshot (M2/M3),
+  since stock is a live, shared figure that every other order and restock
+  can move, unlike a price that's deliberately frozen at draw time.
+- **V6.** The Materials tab shows a warning banner listing each affected
+  material by name (`item_name`) whenever `understocked_materials_for_order`
+  returns at least one row; the banner is absent when it returns none.
+- **V7.** `OrderMaterialOther` rows are never considered here — they carry no
+  `inventory_item_id` at all (O1), so there is nothing live to check.
+- **V8.** Both surfaces are read-only signals with no independent state: they
+  say what's currently true, not what happened historically, so neither can
+  disagree with `/inventory`'s own per-row red-quantity flag (U6).
+
+## 10. Explicit non-requirements
 
 These are deliberate omissions, not oversights — listed so nobody "fixes"
 them without checking first. See CLAUDE.md's "Known gaps" for the reasoning.
 
 - **N1.** No bulk/CSV import for inventory items.
-- **N2.** No inventory-value or low-stock reporting/alerting beyond the
-  per-row red flag on `/inventory` (U6).
+- **N2.** No inventory-**value** reporting (total stock value in dollars),
+  and no *threshold*-based low-stock alerting (e.g. "warn under 5 units on
+  hand"). What exists is a hard zero-or-negative signal only — the per-row
+  red flag on `/inventory` (U6), the nav badge, and the Materials-tab
+  warning (both §9) — not a configurable reorder point.
 - **N3.** A material's item/unit/snapshotted price cannot be changed after
   creation — only `quantity_used` (M7). Changing the item means deleting
   and re-adding.
@@ -296,6 +338,14 @@ catch a regression of it; that's a to-do, not a shrug.
 | U11 | `test_inventory_list_marks_hidden_items_with_data_active_false` (asserts the data attribute the client-side default-hide reads — the actual hiding is JS, manually verified in browser only) |
 | U12 | `test_show_hidden_toggle_appears_when_a_hidden_item_exists` (presence only — the reveal-on-click behavior itself is JS, manually verified in browser only) |
 | U13 | `test_show_hidden_toggle_absent_when_nothing_is_hidden` |
+| V1 | `test_out_of_stock_count_counts_zero_and_negative_active_items`, `test_out_of_stock_count_excludes_hidden_items` |
+| V2 | `test_out_of_stock_count_is_scoped_to_the_tenant` |
+| V3 | `test_stock_alert_badge_appears_when_an_item_is_out_of_stock`, `test_stock_alert_badge_absent_when_nothing_is_out_of_stock` |
+| V4 | `test_stock_alert_badge_clears_after_restocking` |
+| V5 | `test_understocked_materials_for_order_reads_the_live_quantity` |
+| V6 | `test_materials_tab_shows_warning_when_understocked`, `test_materials_tab_has_no_warning_when_fully_stocked` |
+| V7 | — gap — (asserted by construction: `OrderMaterialOther` has no `inventory_item_id` to check against) |
+| V8 | — gap — (cross-surface consistency isn't separately asserted, only each surface's own test) |
 
 Everything marked "manually verified in browser only" was exercised by hand
 during development (see the session that built this module) but has no

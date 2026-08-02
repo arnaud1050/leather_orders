@@ -5,5 +5,11 @@
 <nav class="settings-nav">
   <a href="{{ url_for('client_page', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'info' else '' }}">Information</a>
   <a href="{{ url_for('client_orders', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
-  <a href="{{ url_for('communications.client_emails', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'emails' else '' }}">Emails</a>
+  <a href="{{ url_for('communications.client_emails', client_id=client.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'emails' else '' }}">
+    Emails
+    {# Same callable as the nav badges, narrowed to this client — so the
+       roster, the top nav and this tab are three views of one number. #}
+    {% set unread = client_mail_count(client.id) %}
+    {% if unread %}<span class="nav-badge nav-badge--mail" title="{{ unread }} unread email{{ 's' if unread != 1 }}">{{ unread }}</span>{% endif %}
+  </a>
 </nav>

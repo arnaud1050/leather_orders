@@ -78,18 +78,28 @@
     <p class="detail-note">No mailbox connected yet.</p>
     {% endif %}
 
-    <form method="post" action="{{ url_for('communications.google_connect') }}" class="detail-form settings-source-add">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div>
+    {# Connect, and refresh everything that's connected. This is the one
+       button that covers both halves of the page — the per-section ones
+       below stay narrow so each does exactly what its heading says. #}
+    <div class="settings-source-add integration-actions">
+      <form method="post" action="{{ url_for('communications.google_connect') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-primary" {% if configuration_problem %}disabled{% endif %}>
           Connect Gmail
         </button>
-      </div>
-    </form>
+      </form>
+      {% if accounts %}
+      <form method="post" action="{{ url_for('communications.sync_all_now') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_to" value="{{ url_for('communications.integrations') }}">
+        <button type="submit" class="btn-secondary">Sync mail and calendar now</button>
+      </form>
+      {% endif %}
+    </div>
   </section>
 
   <section class="detail-orders">
-    <h2>Synchronisation</h2>
+    <h2>Email sync</h2>
     <p class="detail-note">
       These apply to every mailbox this company has connected. "How far back
       to read" only affects a mailbox's <em>first</em> sync — after that each
@@ -97,6 +107,10 @@
     </p>
     <form method="post" action="{{ url_for('communications.update_sync_settings') }}" class="detail-form settings-form settings-form--sync">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# Says which half of the settings this form owns. An unticked checkbox
+         posts nothing, so without it the calendar form below would read every
+         box here as "off" and switch them all off on save. #}
+      <input type="hidden" name="section" value="email">
       <div class="checkbox-group">
         <label class="checkbox-group__item">
           <input type="checkbox" name="sync_enabled" {% if sync_settings.sync_enabled %}checked{% endif %}>
@@ -123,13 +137,18 @@
         can be turned into a client.
       </p>
       <div class="field-row field-row--sync">
-        <label>How often, in minutes
+        <label>Check every, in minutes
           <input type="number" name="sync_frequency" min="5" max="1440" value="{{ sync_settings.sync_frequency }}">
         </label>
         <label>How far back to read, in days
           <input type="number" name="initial_sync_days" min="1" max="730" value="{{ sync_settings.initial_sync_days }}">
         </label>
       </div>
+      <p class="detail-note">
+        "Sync mail automatically" is the master switch for both sections —
+        with it off, neither mail nor the calendar is fetched on a schedule,
+        whatever the intervals say.
+      </p>
       <div>
         <button type="submit" class="btn-primary">Save</button>
       </div>
@@ -139,8 +158,9 @@
     <p class="detail-note">
       Automatic syncing is not running in this process
       (RUN_SCHEDULER isn't set to
-      1). Use "Sync now" below, or set it on one
-      process — with more than one it would sync each mailbox twice over.
+      1), so the Sync now buttons on this page are the only thing that
+      fetches anything. Set it on exactly one process — with more than one it
+      would sync each mailbox twice over.
     </p>
     {% endif %}
 
@@ -149,9 +169,48 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ url_for('communications.integrations') }}">
       <div>
-        <button type="submit" class="btn-secondary">Sync now</button>
+        <button type="submit" class="btn-secondary">Sync mail now</button>
       </div>
     </form>
+    {% endif %}
+  </section>
+
+  <section class="detail-orders">
+    <h2>Calendar sync</h2>
+    <p class="detail-note">
+      {# Its own interval, not mail's: an appointment booked in Google an hour
+         ago is rarely as urgent here as an unanswered enquiry, and the two
+         cost against separate Google quotas. #}
+      Calendars have their own interval — appointments move on a different
+      timescale from mail, and the two count against separate Google quotas.
+      The master switch is "Sync mail automatically" above.
+    </p>
+    <form method="post" action="{{ url_for('communications.update_sync_settings') }}" class="detail-form settings-form settings-form--sync">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="section" value="calendar">
+      <div class="field-row field-row--sync">
+        <label>Check every, in minutes
+          <input type="number" name="calendar_frequency" min="5" max="1440" value="{{ sync_settings.calendar_frequency }}">
+        </label>
+      </div>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+
+    {% if has_calendar %}
+    <form method="post" action="{{ url_for('communications.sync_calendar_now') }}" class="detail-form settings-source-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ url_for('communications.integrations') }}">
+      <div>
+        <button type="submit" class="btn-secondary">Sync calendar now</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="detail-note">
+      No connected account has granted calendar access, so there's nothing to
+      sync yet.
+    </p>
     {% endif %}
   </section>
 

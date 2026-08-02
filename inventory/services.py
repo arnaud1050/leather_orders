@@ -192,12 +192,43 @@ def delete_item(company_id: int, item_id: int) -> None:
         db.session.commit()
 
 
+def out_of_stock_count(company_id: int) -> int:
+    """Active items currently at zero or negative stock — the count behind
+    the red nav badge next to "Inventory" (see inventory/routes.py's
+    `_inject_nav_badge`). Hidden items are excluded: an item taken out of
+    active use isn't something anyone needs to restock, same "don't alarm
+    about what's retired" reasoning `selectable_items` already applies.
+    Stays lit until a restock (editing quantity_on_hand back above zero)
+    changes what this query returns — not until anyone merely views
+    /inventory or an order, same "the fact resolves it, not looking at it"
+    rule the integration-alert badge already follows."""
+    return InventoryItem.query.filter_by(company_id=company_id, is_active=True).filter(
+        InventoryItem.quantity_on_hand <= 0,
+    ).count()
+
+
 # ---------------------------------------------------------------------------
 # Order materials + one-off "Others" — the Materials tab on an order page.
 # ---------------------------------------------------------------------------
 
 def list_materials_for_order(order_id: int) -> list[OrderMaterial]:
     return OrderMaterial.query.filter_by(order_id=order_id).order_by(OrderMaterial.id).all()
+
+
+def understocked_materials_for_order(order_id: int) -> list[OrderMaterial]:
+    """This order's materials whose live item is currently at zero or
+    negative stock — i.e. what the order drew isn't fully covered by what's
+    on hand. Reads the *live* item's quantity_on_hand, not the material's own
+    frozen item_name/unit/unit_price snapshot, since stock is a shared,
+    live figure (every other order and restock moves it), unlike a price
+    that's deliberately frozen at the moment it was drawn. Powers the
+    Materials tab's warning banner (see
+    inventory/templates/inventory/_order_materials.html)."""
+    return [
+        material
+        for material in list_materials_for_order(order_id)
+        if material.item is not None and material.item.quantity_on_hand <= 0
+    ]
 
 
 def list_others_for_order(order_id: int) -> list[OrderMaterialOther]:

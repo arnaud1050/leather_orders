@@ -7,6 +7,8 @@
     Clients
     {% set new_clients = new_client_count() %}
     {% if new_clients %}<span class="nav-badge nav-badge--new" title="{{ new_clients }} client{{ 's' if new_clients != 1 }} added automatically from email">{{ new_clients }}</span>{% endif %}
+    {% set client_mail = client_mail_count() %}
+    {% if client_mail %}<span class="nav-badge nav-badge--mail" title="{{ client_mail }} unread email{{ 's' if client_mail != 1 }} from clients">{{ client_mail }}</span>{% endif %}
   </a>
   <a href="{{ url_for('communications.leads') }}" class="settings-nav__link {{ 'is-active' if section == 'leads' else '' }}">
     Leads

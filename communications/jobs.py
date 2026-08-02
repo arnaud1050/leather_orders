@@ -23,7 +23,9 @@ set on exactly one process.
 
 Per-tenant frequency is honoured without a job per tenant: the scheduler
 ticks on a fixed short interval and each tick skips accounts whose
-company's `sync_frequency` hasn't elapsed yet.
+company's interval hasn't elapsed yet. Mail and calendar have **separate**
+intervals (`sync_frequency` / `calendar_frequency`) — they move on
+different timescales and cost against different quotas.
 """
 
 import logging
@@ -43,6 +45,12 @@ logger = logging.getLogger(__name__)
 # the smallest frequency a company can choose (5 minutes, clamped in
 # routes.update_sync_settings).
 TICK_MINUTES = 5
+
+# What a company with no settings row yet gets. Mirrors the column
+# defaults on EmailSyncSettings — a tenant that has never opened the
+# settings page still syncs sensibly rather than on every tick.
+DEFAULT_EMAIL_FREQUENCY = 15
+DEFAULT_CALENDAR_FREQUENCY = 30
 
 # Refresh tokens this far ahead of expiry. Long enough that a token is
 # never expired when a sync run needs it, short enough not to churn.
@@ -68,12 +76,15 @@ def sync_email_accounts(app) -> list:
 
 
 def sync_calendar_events(app) -> list:
-    """Mirror calendars for every account that granted calendar access."""
+    """Mirror calendars for every account that's due.
+
+    Honours the company's own `calendar_frequency`, the same tick-and-skip
+    way mail honours `sync_frequency` — this used to run on a fixed 30
+    minutes for everyone regardless of what the settings page said.
+    """
     results = []
     with app.app_context():
-        for account in account_service.sync_enabled_accounts():
-            if not _company_sync_enabled(account.company_id):
-                continue
+        for account in _accounts_due(calendar=True):
             try:
                 results.append(calendar_sync.sync_calendar(account))
             except Exception:  # noqa: BLE001
@@ -114,8 +125,21 @@ def refresh_oauth_tokens(app) -> int:
     return refreshed
 
 
-def _accounts_due() -> list:
-    """Accounts whose company has sync on and whose interval has elapsed."""
+def _accounts_due(calendar: bool = False) -> list:
+    """Accounts whose company has sync on and whose interval has elapsed.
+
+    One function for both jobs, because "is this tenant's interval up" is
+    the same question either way — only *which* interval and *which*
+    timestamp differ. Two copies would have drifted the first time one of
+    them learned something the other didn't.
+
+    A company with no settings row yet falls back to the model's own
+    defaults rather than syncing every tick.
+    """
+    field = "calendar_frequency" if calendar else "sync_frequency"
+    stamp = "last_calendar_sync_at" if calendar else "last_sync_at"
+    default = DEFAULT_CALENDAR_FREQUENCY if calendar else DEFAULT_EMAIL_FREQUENCY
+
     due = []
     settings_by_company = {
         settings.company_id: settings for settings in EmailSyncSettings.query.all()
@@ -123,18 +147,16 @@ def _accounts_due() -> list:
     now = utcnow()
     for account in account_service.sync_enabled_accounts():
         settings = settings_by_company.get(account.company_id)
+        # `sync_enabled` is the master switch for the tenant: off means no
+        # scheduled traffic of either kind, mail or calendar.
         if settings is not None and not settings.sync_enabled:
             continue
-        frequency = settings.sync_frequency if settings else 15
-        if account.last_sync_at and now - account.last_sync_at < timedelta(minutes=frequency):
+        frequency = getattr(settings, field) if settings else default
+        last = getattr(account, stamp)
+        if last and now - last < timedelta(minutes=frequency):
             continue
         due.append(account)
     return due
-
-
-def _company_sync_enabled(company_id: int) -> bool:
-    settings = EmailSyncSettings.query.filter_by(company_id=company_id).first()
-    return settings is None or settings.sync_enabled
 
 
 def scheduler_enabled() -> bool:
@@ -165,8 +187,11 @@ def start_scheduler(app):
         sync_email_accounts, "interval", minutes=TICK_MINUTES, args=[app],
         id="sync_email_accounts", coalesce=True, max_instances=1,
     )
+    # Ticks on the same short interval as mail, not on a fixed 30 minutes:
+    # the per-company frequency is enforced inside the job, and a job that
+    # only wakes every half hour can't honour a company that asked for 10.
     scheduler.add_job(
-        sync_calendar_events, "interval", minutes=30, args=[app],
+        sync_calendar_events, "interval", minutes=TICK_MINUTES, args=[app],
         id="sync_calendar_events", coalesce=True, max_instances=1,
     )
     scheduler.add_job(

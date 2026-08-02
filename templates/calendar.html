@@ -40,7 +40,18 @@
      button whose only possible outcome is an error isn't worth showing. #}
   {% if has_calendar %}
   <div class="legend-row">
-    <button type="button" class="btn-primary legend__new-order" data-open-modal="event-modal-new">+ New event</button>
+    {# Both pushed right as one group. "Sync now" is calendar-only, not the
+       combined sync on the integrations page: someone on the month grid
+       waiting for an appointment to show up shouldn't wait on a mailbox
+       too. #}
+    <div class="legend__actions">
+      <form method="post" action="{{ url_for('communications.sync_calendar_now') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_to" value="{{ request.path }}">
+        <button type="submit" class="btn-secondary">Sync now</button>
+      </form>
+      <button type="button" class="btn-primary" data-open-modal="event-modal-new">+ New event</button>
+    </div>
   </div>
   {% endif %}
 

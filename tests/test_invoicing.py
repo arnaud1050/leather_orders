@@ -18,6 +18,8 @@ from datetime import date
 import pytest
 import sqlalchemy as sa
 
+import billing.migrations as billing_migrations
+
 from billing.documents import Billable, LineItem, PartyDetails, PaymentRecord
 from billing.models import Invoice, InvoiceTaxLine, next_invoice_number
 from billing.services import invoicing
@@ -431,3 +433,132 @@ def test_the_module_never_needs_a_host_model(registered):
     assert [t.label for t in amounts.tax_lines] == ["GST", "QST"]
     assert amounts.total == pytest.approx(1149.75)
     assert amounts.balance_due == pytest.approx(649.75)
+
+
+# --- The blank-letterhead bug --------------------------------------------
+#
+# Symptom: the business address stopped appearing on one invoice. Cause: the
+# migration froze an issuer snapshot at a moment when the seller had no
+# letterhead on file, which marked the invoice frozen and left it printing
+# nothing forever, with no way to correct it from the UI.
+
+def test_the_profile_name_survives_a_plain_query(company):
+    """`display_name` is a column, not something only profile_for() sets.
+
+    It used to be a bare class attribute, so any other path — a raw query
+    in a migration — read it as "" and stamped a nameless invoice.
+    """
+    invoicing.update_profile(company.id, company.name, gst_number="1 RT0001")
+    db.session.commit()
+    db.session.expire_all()
+
+    from billing.models import BillingProfile
+
+    fetched = BillingProfile.query.filter_by(company_id=company.id).first()
+    assert fetched.issuer.name == "By Monsieur"
+
+
+def test_profile_for_does_not_blank_a_stored_name(registered):
+    """A bare profile_for(company_id) must not wipe the name."""
+    assert invoicing.profile_for(registered.id).display_name == "By Monsieur"
+
+
+def test_the_backfill_does_not_freeze_an_empty_letterhead(company, client_record):
+    """Nothing on file means nothing to preserve — freezing would only lock
+    the invoice out of ever showing details."""
+    invoicing.update_profile(
+        company.id, company.name, street=None, city=None, province=None,
+        postal_code=None, gst_number=None, pst_number=None, qst_number=None,
+        neq=None, payment_instructions=None)
+    order = make_order(client_record, 100.0)
+    invoice = draft(company, order)
+    invoice.status = "sent"
+    db.session.commit()
+
+    billing_migrations.run()
+    db.session.expire_all()
+
+    assert db.session.get(Invoice, invoice.id).issuer_name is None
+
+
+def test_a_contentless_snapshot_is_repaired_once_a_letterhead_exists(
+    company, client_record
+):
+    """The exact artifact: name stamped, everything else blank. Once real
+    details exist the invoice should show them rather than stay blank.
+
+    The migration's steps are ordered so this converges in one pass — the
+    repair clears the empty snapshot and the backfill immediately re-freezes
+    a complete one, rather than leaving it unfrozen until the next boot.
+    """
+    order = make_order(client_record, 100.0)
+    invoice = draft(company, order)
+    invoice.status = "sent"
+    invoice.issued_subtotal = 100.0
+    invoice.issuer_name = "By Monsieur"      # ...and nothing else
+    invoicing.update_profile(company.id, company.name,
+                             street="9 Real St", city="Vancouver", province="BC")
+    db.session.commit()
+
+    billing_migrations.run()
+    db.session.expire_all()
+
+    refreshed = db.session.get(Invoice, invoice.id)
+    assert "9 Real St" in refreshed.issuer_address
+    assert refreshed.issuer_name == "By Monsieur"
+    assert "9 Real St" in doc_for(company, refreshed).issuer.address
+
+
+def test_a_real_snapshot_is_never_repaired(registered, client_record):
+    """A snapshot with actual content is history and must survive, even
+    after the seller's details change."""
+    invoice = issue(registered, make_order(client_record, 100.0))
+    invoicing.update_profile(registered.id, registered.name, street="Somewhere new")
+    db.session.commit()
+
+    billing_migrations.run()
+    db.session.expire_all()
+
+    refreshed = db.session.get(Invoice, invoice.id)
+    assert refreshed.issuer_name == "By Monsieur"
+    assert "Sainte-Catherine" in refreshed.issuer_address
+
+
+def test_a_snapshot_with_a_blank_name_is_not_treated_as_frozen(registered, client_record):
+    """A document that prints no seller at all is useless, so an empty name
+    falls back to live details rather than honouring the snapshot."""
+    invoice = issue(registered, make_order(client_record, 100.0))
+    invoice.issuer_name = ""
+    db.session.flush()
+    assert invoice.frozen_issuer is None
+    assert doc_for(registered, invoice).issuer.name == "By Monsieur"
+
+
+def test_a_nameless_snapshot_gets_its_name_restored(registered, client_record):
+    """The rest of the letterhead is genuine, so the repair fills the name
+    back in rather than discarding the snapshot."""
+    invoice = issue(registered, make_order(client_record, 100.0))
+    invoice.issuer_name = ""
+    db.session.commit()
+
+    billing_migrations.run()
+    db.session.expire_all()
+
+    refreshed = db.session.get(Invoice, invoice.id)
+    assert refreshed.issuer_name == "By Monsieur"
+    assert "Sainte-Catherine" in refreshed.issuer_address
+
+
+def test_profile_names_are_backfilled_from_the_host(company, client_record):
+    """display_name became a column after profiles existed, so a migrated
+    database has it blank — anything freezing from such a profile would
+    stamp a nameless invoice."""
+    invoicing.update_profile(company.id, company.name, gst_number="1 RT0001")
+    db.session.flush()
+    invoicing.profile_for(company.id).display_name = ""
+    db.session.commit()
+
+    billing_migrations.run()
+    db.session.expire_all()
+
+    assert invoicing.profile_for(company.id).display_name == "By Monsieur"

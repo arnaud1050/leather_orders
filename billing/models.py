@@ -60,6 +60,13 @@ class BillingProfile(db.Model):
     # e-transfer have no hosted payment page to send anyone to.
     payment_instructions = db.Column(db.Text)
 
+    # The seller's name as it prints. A real column, not something the host
+    # passes in on every call: this used to be a plain class attribute set
+    # by profile_for(), which meant any other path — a raw query in a
+    # migration, say — read it as "" and stamped a nameless invoice.
+    # Kept in step with the host's tenant name by profile_for/update_profile.
+    display_name = db.Column(db.String(120), nullable=False, default="")
+
     @property
     def formatted_address(self) -> str | None:
         return format_address(self.street, self.city, self.province, self.postal_code)
@@ -67,7 +74,7 @@ class BillingProfile(db.Model):
     @property
     def issuer(self) -> IssuerDetails:
         return IssuerDetails(
-            name=self.display_name,
+            name=self.display_name or "",
             address=self.formatted_address,
             gst_number=self.gst_number,
             pst_number=self.pst_number,
@@ -76,10 +83,19 @@ class BillingProfile(db.Model):
             payment_instructions=self.payment_instructions,
         )
 
-    # The seller's name lives on the host's tenant model, not here — a
-    # company is called the same thing whether or not it invoices. The
-    # host sets this when it loads the profile; see services.profile_for.
-    display_name: str = ""
+    @property
+    def has_letterhead(self) -> bool:
+        """True once there's something worth printing beyond a name.
+
+        Freezing an issuer with nothing in it preserves no fact and leaves
+        the invoice permanently unable to show one, so callers check this
+        before stamping a snapshot — see migrations._backfill_issuers.
+        """
+        return any((
+            self.street, self.city, self.province, self.postal_code,
+            self.gst_number, self.pst_number, self.qst_number, self.neq,
+            self.payment_instructions,
+        ))
 
 
 class Invoice(db.Model):
@@ -141,8 +157,14 @@ class Invoice(db.Model):
 
     @property
     def frozen_issuer(self) -> IssuerDetails | None:
-        """The snapshot, or None if this invoice was never frozen."""
-        if self.issuer_name is None:
+        """The snapshot, or None if this invoice was never frozen.
+
+        An *empty* name counts as never frozen, not as "frozen with no
+        name": a document that prints no seller at all is useless, so it's
+        better to fall back to live details than to honour a snapshot that
+        can only have come from a bug.
+        """
+        if not self.issuer_name:
             return None
         return IssuerDetails(
             name=self.issuer_name,

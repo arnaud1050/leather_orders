@@ -142,23 +142,100 @@ def pending_lead_count(company_id: int) -> int:
 
 
 def mark_thread_opened(company_id: int, thread_id: int) -> None:
-    """Record that a conversation has been read, clearing its "New" pill.
+    """Record that a conversation has been read. Commits.
 
-    Only the *first* open is stamped — the pill answers "has anyone looked
-    at this yet", so re-reading a thread shouldn't rewrite when it stopped
-    being new.
+    Stamps two things, and they are not the same thing:
 
-    Called from a GET route, and commits for the same reason: there's no
-    wider transaction to join, and a marker that didn't persist would show
-    the same threads as new forever. Writing on a GET is normally worth
-    avoiding, but this one is idempotent and destroys nothing — and opening
-    the conversation is the only place "read" could honestly be recorded.
+    - `EmailThread.opened_at`, **only on the first open** — the "New" pill
+      answers "has anyone looked at this yet", so re-reading a thread
+      shouldn't rewrite when it stopped being new.
+    - `read_at` on every unread **incoming** message, **every time** — which
+      is what makes a later reply count as unread mail until someone opens
+      the thread again. That's the whole point for a client conversation,
+      which unlike a lead stays alive for years.
+
+    Called from a GET route. Writing on a GET is normally worth avoiding,
+    but this is idempotent, destroys nothing, and opening the conversation
+    is the only place "read" could honestly be recorded.
     """
     thread = get_thread(company_id, thread_id)
-    if thread is None or thread.opened_at is not None:
+    if thread is None:
         return
-    thread.opened_at = utcnow()
-    db.session.commit()
+
+    now = utcnow()
+    changed = False
+    if thread.opened_at is None:
+        thread.opened_at = now
+        changed = True
+    for message in thread.messages:
+        if message.is_unread:
+            message.read_at = now
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Unread mail from clients.
+#
+# A separate question from the lead badge, and the gap this fills: a lead
+# arriving is loud (it's in the lead inbox, it's counted, it has a pill),
+# but a client — someone already on file, i.e. someone the studio has real
+# work with — could write and nothing anywhere said so. Their thread just
+# quietly updated on a page nobody had reason to open.
+#
+# Counted per *message*, not per thread, because the interesting event is
+# "they wrote again", and a client thread is long-lived: replies land in a
+# conversation that has been opened many times before.
+# ---------------------------------------------------------------------------
+
+def _unread_client_query(company_id: int):
+    """Unread incoming messages on threads belonging to a client.
+
+    Dismissed threads are excluded: hiding a conversation — by hand or by a
+    sender rule — means "don't tell me about this", and a rule on a domain
+    that happens to also be a client shouldn't leak back in as a count.
+    """
+    return (
+        db.session.query(EmailThread.client_id, db.func.count(EmailMessage.id))
+        .join(EmailMessage, EmailMessage.thread_id == EmailThread.id)
+        .filter(
+            EmailThread.company_id == company_id,
+            EmailThread.client_id.isnot(None),
+            EmailThread.dismissed_at.is_(None),
+            EmailMessage.direction == DIRECTION_INCOMING,
+            EmailMessage.read_at.is_(None),
+        )
+        .group_by(EmailThread.client_id)
+    )
+
+
+def unread_counts_by_client(company_id: int) -> dict[int, int]:
+    """{client_id: unread messages}, for the client roster.
+
+    One grouped query rather than a count per row: the clients page renders
+    every client, and a query each would be the classic N+1 that only shows
+    up once someone has a few hundred of them.
+    """
+    return dict(_unread_client_query(company_id).all())
+
+
+def unread_client_mail_count(company_id: int, client_id: int | None = None) -> int:
+    """Unread mail from clients — all of them, or one.
+
+    Built from the same query as the per-client counts, so the nav badge,
+    the roster and a single client's Emails tab are three views of one
+    number rather than three tallies that can disagree — the same reasoning
+    as the lead badge sharing `_lead_thread_query` with the lead list.
+
+    `client_id` is filtered inside the tenant-scoped query, so an id from
+    another company yields zero rather than someone else's mail.
+    """
+    query = _unread_client_query(company_id)
+    if client_id is not None:
+        query = query.filter(EmailThread.client_id == client_id)
+    return sum(count for _, count in query.all())
 
 
 # ---------------------------------------------------------------------------

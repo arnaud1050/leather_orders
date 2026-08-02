@@ -215,6 +215,14 @@ class EmailSyncSettings(db.Model):
     )
     sync_enabled = db.Column(db.Boolean, nullable=False, default=True)
     sync_frequency = db.Column(db.Integer, nullable=False, default=15)  # minutes
+    # Calendars get their own interval rather than sharing the mail one.
+    # They move on different timescales: mail is the thing someone is
+    # waiting on, while an appointment booked in Google an hour ago is
+    # rarely urgent here — and the quotas are separate too, so tying them
+    # together would mean paying for calendar calls at mail's cadence.
+    # Defaults to 30, which is what the schedule was hardcoded to before
+    # this was configurable, so no existing deployment changes behaviour.
+    calendar_frequency = db.Column(db.Integer, nullable=False, default=30)  # minutes
     sync_sent_mail = db.Column(db.Boolean, nullable=False, default=True)
     sync_attachments = db.Column(db.Boolean, nullable=False, default=False)
     # How far back the *first* sync of a new account reaches. Later syncs
@@ -451,6 +459,18 @@ class EmailMessage(db.Model):
     received_date = db.Column(db.DateTime)
     direction = db.Column(db.String(10), nullable=False, default=DIRECTION_INCOMING)
     has_attachments = db.Column(db.Boolean, nullable=False, default=False)
+    # When this message was read, i.e. when its thread was opened. Null on an
+    # outgoing message too — nothing ever asks, since you can't have unread
+    # mail you sent yourself (see is_unread).
+    #
+    # Per *message*, deliberately, where EmailThread.opened_at is per thread.
+    # They answer different questions and both are needed: "has anyone ever
+    # looked at this conversation" is a triage question, asked once about a
+    # lead, while "is there mail here I haven't read" keeps being asked of a
+    # client thread that stays alive for years. Deriving the first from the
+    # second would make a reply re-flag a lead as never-looked-at, which it
+    # plainly has been.
+    read_at = db.Column(db.DateTime)
 
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
@@ -462,6 +482,11 @@ class EmailMessage(db.Model):
     @property
     def is_incoming(self) -> bool:
         return self.direction == DIRECTION_INCOMING
+
+    @property
+    def is_unread(self) -> bool:
+        """Mail that arrived and nobody has opened. Never true of our own."""
+        return self.is_incoming and self.read_at is None
 
     @property
     def recipient_list(self) -> list[str]:

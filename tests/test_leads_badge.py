@@ -236,8 +236,13 @@ def test_the_badge_counts_several_leads(logged_in, company, account, lead_thread
 
 
 def test_no_badge_is_rendered_at_zero(logged_in, account, thread):
-    """Nothing waiting means no decoration at all, not a grey "0"."""
-    assert "nav-badge" not in logged_in.get("/").get_data(as_text=True)
+    """Nothing waiting means no lead decoration at all, not a grey "0".
+
+    Asserted on the unmodified `class="nav-badge"` rather than on the
+    substring: the Clients link carries other badges (unread client mail,
+    here — the fixture thread belongs to a client), and this test is about
+    the lead one."""
+    assert 'class="nav-badge"' not in logged_in.get("/").get_data(as_text=True)
 
 
 def test_opening_the_leads_page_does_not_clear_the_badge(logged_in, account, lead_thread):
@@ -258,9 +263,12 @@ def test_hiding_a_lead_clears_the_badge(logged_in, csrf, account, lead_thread):
 
 
 def test_converting_a_lead_clears_the_badge(logged_in, csrf, company, account, lead_thread):
+    """The lead badge, specifically. Converting hands the thread to a client,
+    so its unread message legitimately starts counting as client mail
+    instead — one kind of "deal with this" becoming another."""
     logged_in.post(f"/mail/threads/{lead_thread.id}/create-client",
                    data={"csrf_token": csrf})
-    assert "nav-badge" not in logged_in.get("/").get_data(as_text=True)
+    assert 'class="nav-badge"' not in logged_in.get("/").get_data(as_text=True)
 
 
 def test_the_badge_survives_a_logged_out_page(app, account, lead_thread):

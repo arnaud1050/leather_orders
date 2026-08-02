@@ -59,6 +59,16 @@
             {% if client.is_returning %}
             <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor" title="Returning client"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
             {% endif %}
+            {# Same badge as the nav, same number broken down per person —
+               they come from one query, so the roster and the nav can't
+               disagree. A plain <span>, like every other badge: the client's
+               name beside it is already the link to their page, and two
+               targets a few pixels apart is a worse row to click. #}
+            {% set unread = unread_by_client.get(client.id) %}
+            {% if unread %}
+            <span class="nav-badge nav-badge--mail"
+                  title="{{ unread }} unread email{{ 's' if unread != 1 }} from {{ client.name }}">{{ unread }}</span>
+            {% endif %}
           </td>
           <td>{{ client.email or '—' }}</td>
           <td>{{ client.phone|phone or '—' }}</td>

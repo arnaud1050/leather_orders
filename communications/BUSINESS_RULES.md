@@ -13,7 +13,7 @@ Scope: `communications/` only (Gmail + Google Calendar, the lead inbox,
 sender rules). Tax, invoicing and inventory rules live elsewhere. Design
 and structural notes are in `CLAUDE.md`; this file is behaviour.
 
-**594 of the suite's 828 tests cover this module.**
+**667 of the suite's 1039 tests cover this module.**
 
 Rule ids are stable — cite them in commit messages and in review. Sections
 are grouped by what a rule protects, not by which file implements it.
@@ -91,7 +91,14 @@ The isolation story, and the one no other rule can compensate for.
 | **SY-13** | Outgoing mail is stored **immediately on send**, keyed on the provider's ids so the next sync recognises it. | It appears in the client's history at once and isn't duplicated later. | `test_email_service.py` |
 | **SY-14** | The scheduler runs only when `RUN_SCHEDULER=1`; jobs are plain callables. | Both Docker deployments run gunicorn with 2 workers and `--preload`; an unguarded scheduler starts in every worker and races itself. Cron, Celery or a shell can call the same functions. | `test_storage_and_jobs.py` |
 | **SY-15** | "Sync now" calls the **same** `sync_now()` the scheduled job calls. | The manual and automatic paths can't drift. | `test_leads_badge.py`, `test_storage_and_jobs.py` |
-| **SY-16** | Per-tenant `sync_frequency` is honoured by one 5-minute tick that skips accounts whose interval hasn't elapsed. | No job per tenant. | `test_storage_and_jobs.py` |
+| **SY-16** | Per-tenant intervals are honoured by one 5-minute tick that skips accounts whose interval hasn't elapsed. | No job per tenant. | `test_storage_and_jobs.py` |
+| **SY-17** | **Mail and calendar have separate intervals** (`sync_frequency` / `calendar_frequency`), each read against its own timestamp. | Appointments move on a different timescale from mail and cost against a different quota. Previously the calendar ran on a hardcoded 30 minutes while the settings page offered only a mail frequency — so a company asking for 10-minute syncing got it for mail and silently not for appointments. | `test_storage_and_jobs.py` |
+| **SY-18** | Both jobs tick at `TICK_MINUTES`; the per-company interval is enforced **inside** the job. | A job that wakes every 30 minutes cannot honour a company that asked for 10. | `test_storage_and_jobs.py` |
+| **SY-19** | `sync_enabled` is the **master switch for both** kinds of sync. | One "is this tenant syncing at all" answer; two would eventually disagree. | `test_storage_and_jobs.py` |
+| **SY-20** | A company with no settings row falls back to the model's defaults, **not** to syncing on every tick. | A tenant that has never opened the page must not hammer the API. | `test_storage_and_jobs.py` |
+| **SY-21** | Each **Sync now** button does exactly what its label says: mail-only under Email sync (and in the lead inbox), calendar-only on the calendar page and under Calendar sync, both only under the combined button beside *Connect Gmail*. | A button that quietly does more than it claims is worse than one that does less — and with the scheduler off these are the *only* things that fetch anything. | `test_storage_and_jobs.py` |
+| **SY-22** | Each settings form carries a hidden `section` marker, and a POST updates only that section. | An unticked checkbox posts **nothing**, so a calendar save processed wholesale would read every mail checkbox as "off" and switch them all off. Same rule as the client modal's address field, enforced explicitly because `in request.form` can't express it for checkboxes. | `test_storage_and_jobs.py` |
+| **SY-23** | Intervals are **clamped** (5–1440 min), not validated-and-rejected. | They're dials, not data; a 1-minute frequency is a good way to get rate-limited by a number input anyone can edit. | `test_storage_and_jobs.py` |
 
 ---
 
@@ -146,7 +153,7 @@ answered none of them correctly.
 | **N-4** | The lead badge is **medium grey**. | A lead is undecided by definition — client, supplier or spam, nobody has looked — and a louder colour claims more than the app knows. | `test_leads_badge.py` (markup), visual |
 | **N-5** | **The "New" pill means nobody has opened that conversation**, and clears when *that thread* is opened. | A per-thread fact, not a per-visit one. | `test_leads_badge.py` |
 | **N-6** | Only the **first** open is stamped, and opening one thread leaves the others flagged. | Re-reading shouldn't rewrite when it stopped being new; and the old design marked every thread read on arrival at the list. | `test_leads_badge.py` |
-| **N-7** | A new reply does **not** re-flag a thread that's been read. | "New" is about the conversation, not unread messages. Per-message read state needs Gmail labels written back — see §12. | `test_leads_badge.py` |
+| **N-7** | A new reply does **not** re-flag a thread that's been read — the *pill* stays gone. | "New" is about the conversation ever having been opened, not about unread messages. A reply does raise the unread-mail count (N-22); the two markers are separate on purpose, see N-27. | `test_leads_badge.py`, `test_client_mail_badge.py` |
 | **N-8** | A lead can be **read but still waiting** — pill gone, badge counting. | That state is the point: it's the enquiry you've seen and haven't answered. | `test_leads_badge.py` |
 | **N-9** | The dismissed view and a client's Emails tab render **no** new/seen decoration. | Something already triaged away isn't new, however unread; and a client's whole history isn't either. | `test_leads_badge.py` |
 | **N-10** | **The "new clients" badge** counts clients a rule created that nobody has seen, and **clears on a page view** of `/clients`. | The opposite of N-1 and right for the opposite reason: nothing is outstanding, the client already exists. It's a notice, and looking is the whole response. | `test_sender_rules.py` |
@@ -160,6 +167,15 @@ answered none of them correctly.
 | **N-18** | Every badge is **derived, never stored**. | It cannot drift out of step with what it describes. Same reasoning as `Order.total` and `Invoice.display_status`. | all of the above |
 | **N-19** | A badge must **never 500 a page**: no logged-in user (the login page) or missing tables both yield zero. | A decoration taking down the only route back in is indefensible. | `test_leads_badge.py`, `test_integration_alert.py` |
 | **N-20** | Badge counts are injected as **callables**, so the query only runs where the badge is drawn. | A template showing neither costs nothing. | ⚠ none — see §13 |
+| **N-21** | **Unread mail from an existing client is counted and shown** — on the Clients top-nav link, the Clients sub-nav link, beside each client's name on `/clients`, and on that client's own **Emails tab**. | A lead arriving was loud (inbox, badge, pill); a *client* writing in was silent, their thread quietly updating on a page nobody had reason to open. | `test_client_mail_badge.py` |
+| **N-21a** | Every badge is a plain `<span>`, never a link, and always renders white on its colour. | The client's name beside it is already the link; two targets a few pixels apart makes a worse row to click. The colour is restated per badge because table cells and nav links colour their descendants — that inheritance is what made the roster badge black. | `test_client_mail_badge.py` |
+| **N-22** | Counted per **message**, not per thread: new conversations *and* replies in existing ones. | A client conversation stays alive for years. Per-thread state would go silent after the first open, which is precisely when the client is most likely to write again. | `test_client_mail_badge.py` |
+| **N-23** | It clears **only** by opening the conversation. Viewing the client list or the client's page does not. | Seeing that someone wrote is not reading what they said. The opposite of N-10, and for the opposite reason: this one is work. | `test_client_mail_badge.py` |
+| **N-24** | Outgoing messages never count; leads never count here; **dismissed threads never count**. | You can't have unread mail you sent. Leads have their own badge. And hiding a thread — by hand or by a sender rule on a domain that's also a client — means "don't tell me about this". | `test_client_mail_badge.py` |
+| **N-25** | The nav total and the per-client numbers come from **one query**; the per-client breakdown is a single grouped query, not one per row. | They must add up; and the roster renders every client, so a count each is the N+1 that only bites at a few hundred. | `test_client_mail_badge.py` |
+| **N-26** | A waiting lead and unread client mail show as **two badges at once**, grey and purple, never merged. | Triaging a stranger and replying to a client are different work with different answers. | `test_client_mail_badge.py` |
+| **N-27** | `EmailMessage.read_at` and `EmailThread.opened_at` are **both** kept, written by the same `mark_thread_opened()`. | Two questions: "has anyone ever looked at this" (once, per thread, drives the pill) and "is there mail here I haven't read" (forever, per message). Deriving the first from the second would make a reply re-flag a lead as never-looked-at — see N-7. | `test_client_mail_badge.py` |
+| **N-28** | Adding `read_at` **backfills** from `opened_at` for already-opened threads, and is a no-op on every boot after. | Otherwise the feature's first act is to declare months-old mail unread, and nobody trusts it again. | `test_client_mail_badge.py` |
 
 ---
 
@@ -237,7 +253,7 @@ chrome, repeated per message, drowns the conversation.
 | **CAL-1** | The month grid renders **only** synced events; orders live on the Timeline. | Two different things on one grid read as one thing. | `test_calendar.py` |
 | **CAL-2** | Events are **overwritten** on each sync; a cancelled event is kept with `status="cancelled"`, not deleted. | A meeting that moved should move here, and a sync must not make a row vanish from under someone. The month view filters cancelled out. | `test_calendar.py` |
 | **CAL-3** | Form times are the **company's local wall clock**, converted to UTC on the way in. | Getting this wrong doesn't *look* wrong — it books the appointment a few hours out — so the test asserts the stored UTC value. | `test_calendar.py`, `test_timezone.py` |
-| **CAL-4** | **No event UI at all** when no calendar is connected. | Better than a button whose only outcome is an error. | `test_calendar.py` |
+| **CAL-4** | **No event UI at all** when no calendar is connected — and no calendar Sync now button either. | Better than a button whose only outcome is an error. | `test_calendar.py`, `test_storage_and_jobs.py` |
 | **CAL-5** | Guests are set at creation and **not editable**. | Google's `patch` replaces the whole attendee list and attendees aren't mirrored locally, so a form built without them would uninvite everyone. | `test_calendar.py` |
 | **CAL-6** | The client link is applied **locally** and never forwarded to the provider, using a sentinel so "don't touch" stays distinct from "clear it". | It's our concept, not Google's. | `test_calendar.py` |
 | **CAL-7** | Event chips use `--status-pending`, deliberately not a fifth order-status colour. | An appointment isn't an order status and the four hues are spoken for. | visual |
@@ -255,7 +271,7 @@ Not omissions — decisions. Each needs the stated question answered *first*.
 | Thing | Why not, and what to settle first |
 |---|---|
 | **Permanent delete** | Needs the unrestricted `https://mail.google.com/` scope (S-12). A scope and Google-verification decision before a code one. |
-| **Per-message read/unread** | Would mean writing Gmail labels back. `gmail.modify` was requested partly for it; nothing does it yet. See N-7. |
+| **Read state shared with Gmail** | Read state now exists *locally* (`EmailMessage.read_at`, N-22) but is never written back: marking a thread read here leaves it bold in Gmail, and reading it in Gmail leaves it counted here. `gmail.modify` permits the label change; nothing does it. Worth deciding deliberately — two-way read state is a sync problem, not a checkbox, and the app being wrong about what you've read is worse than it not knowing. |
 | **Deleting a calendar event** | Nobody asked, and the same trash-vs-delete question as email needs answering first. |
 | **Editing an existing event's guests** | See CAL-5. |
 | **Creating an order from an enquiry** | `communications/` must not import `Order`. The honest shape is a host-registered hook (as `billing/` takes `resolve_billable`) or an app-side listener over `AutoCreatedClient` rows. Naming the order from the message is a Claude API job. **Settle the boundary before writing any of it.** |

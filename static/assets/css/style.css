@@ -226,6 +226,33 @@ body {
   margin-left: auto;
 }
 
+/* Connect + "sync everything", side by side under the account list. Its own
+   class rather than reusing .settings-source-add's layout alone, which
+   stacks a single form's fields rather than sitting two forms in a row. */
+.integration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Two or more controls at the right-hand end of a .legend-row. The push
+   lives on the group rather than on .legend__new-order, so the buttons stay
+   together instead of the first one being shoved right and the rest
+   trailing after it. */
+.legend__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.legend__actions .btn-primary,
+.legend__actions .btn-secondary {
+  font-size: 0.72rem;
+  padding: 7px 14px;
+}
+
 /* Precedes the status filter buttons in .legend-row — plain text, same
    weight as "Sort by", so it reads as a caption rather than another
    clickable filter. */
@@ -1989,16 +2016,23 @@ dialog.modal::backdrop {
   flex: 2 1 150px;
 }
 
-/* Sync frequency / lookback window — two fields of equal weight, wide
-   enough that neither uppercase caption wraps onto a second line. */
+/* Sync intervals — fields of equal weight, wide enough that a caption
+   doesn't wrap awkwardly.
+
+   `white-space: nowrap` used to be paired with `flex-basis: 0` here, which
+   holds only while the captions happen to fit: a third field made every
+   label wider than the track it was given, and since they couldn't wrap
+   they overlapped each other instead. The basis is now the caption's real
+   minimum, so a row that runs out of room wraps to the next line — which is
+   what `.field-row` was already set up to do. */
 .settings-form--sync {
   max-width: 520px;
 }
 
 .settings-form--sync .field-row--sync label,
 .settings-form--sync .field-row--sync label:first-child {
-  flex: 1 1 0;
-  white-space: nowrap;
+  flex: 1 1 190px;
+  min-width: 0;
 }
 
 /* ---------------------------------------------------------------------
@@ -2148,11 +2182,35 @@ dialog.modal::backdrop {
   background: var(--day-today);
 }
 
+/* Same red as .nav-badge--alert — "something needs attention" — but sized
+   like the base .nav-badge (min-width, horizontal padding) rather than the
+   fixed 17px circle, since this one carries a count (how many inventory
+   items are at zero/negative stock), not a single "!" glyph. Not a fourth
+   badge colour: still red, still "broken/needs attention", just a number
+   instead of a symbol. */
+.nav-badge--stock-alert {
+  background: var(--day-today);
+}
+
 /* A client the app created by itself from a sender rule. Purple, the app's
    "something is waiting for your attention" colour — and deliberately not
    the grey of the lead badge beside it on the same link: the lead is a
    question, this is an answer that arrived without anyone being asked. */
 .nav-badge--new {
+  background: var(--status-pending);
+}
+
+/* Unread mail from a client. Purple like the badge above for now, but its
+   own class on purpose: the two say different things ("someone new is on
+   your roster" vs "someone on it is waiting for a reply") and one of them
+   will want to look different first.
+
+   The `color` is repeated here rather than left to .nav-badge because this
+   badge also renders inside a table cell and a nav link, both of which set
+   their own text colour on descendants — a badge that came out black in
+   the client table is exactly what that inheritance does. */
+.nav-badge--mail {
+  color: #fff;
   background: var(--status-pending);
 }
 
