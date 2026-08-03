@@ -367,6 +367,20 @@ class EmailThread(db.Model):
         return self.messages[-1] if self.messages else None
 
     @property
+    def unread_count(self) -> int:
+        """Incoming messages here that nobody has read.
+
+        The per-thread share of the client badge's total, and deliberately
+        *not* `is_unopened`: a client conversation is long-lived and has
+        been opened many times, so "never opened" goes permanently quiet
+        the moment someone reads it once — while a reply arriving next year
+        is exactly what wants pointing at. Counted off the loaded messages
+        rather than a query per row, since every caller is already
+        rendering `message_count` and `latest_message` from the same list.
+        """
+        return sum(1 for message in self.messages if message.is_unread)
+
+    @property
     def display_subject(self) -> str:
         return self.subject or "(no subject)"
 
