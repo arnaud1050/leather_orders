@@ -38,9 +38,14 @@
     <form method="post" action="{{ url_for('communications.convert_lead', thread_id=thread.id) }}" class="detail-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ return_to }}">
+      {# Prefilled with what the server would have derived anyway (see
+         EmailThread.suggested_name), rather than left blank with a note
+         promising it. Same reason the email box is prefilled: the guess is
+         worth showing while it can still be corrected. #}
+      {% set suggested_first, suggested_last = thread.suggested_name %}
       <div class="field-row">
-        <label>First name<input type="text" name="first_name" placeholder="From the sender's name if blank"></label>
-        <label>Last name<input type="text" name="last_name"></label>
+        <label>First name<input type="text" name="first_name" value="{{ suggested_first }}"></label>
+        <label>Last name<input type="text" name="last_name" value="{{ suggested_last }}"></label>
       </div>
       <label>Email<input type="email" name="email" value="{{ thread.counterparty or '' }}" required></label>
       <div>

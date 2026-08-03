@@ -407,6 +407,38 @@ class EmailThread(db.Model):
                 return message.recipient_list[0] if message.recipient_list else None
         return None
 
+    @property
+    def suggested_name(self) -> tuple[str, str]:
+        """(first, last) to offer for a client made from this conversation.
+
+        The sender's display name if they had one, otherwise the local part of
+        their address made readable ("marie.alarie@…" -> "Marie Alarie").
+
+        Lives here rather than in the service because **both** the form that
+        offers it and the code that falls back to it read this one property.
+        They used to disagree by construction: the form left the name boxes
+        empty and the server filled them in on submit, so the only way to find
+        out what you were about to create was to create it. Duplicating the
+        rule in the template would have restored that gap the first time
+        either side changed.
+
+        Both halves are non-empty because Client requires them — a visible
+        placeholder someone can correct beats refusing to create the client,
+        and now it's visible *before* the click rather than after.
+        """
+        display = ""
+        for message in self.messages:
+            if message.is_incoming and message.sender_name:
+                display = message.sender_name.strip()
+                break
+        if not display:
+            display = (self.counterparty or "").split("@")[0].replace(".", " ").title()
+
+        parts = display.split()
+        if len(parts) >= 2:
+            return parts[0], " ".join(parts[1:])
+        return display or "Unknown", "(from email)"
+
 
 def _address_only(value: str | None) -> str:
     """The bare address out of a possibly `Name <addr>` string, lowercased.

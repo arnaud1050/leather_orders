@@ -117,13 +117,22 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   unchecking it clears the detail rather than leaving orphaned text nobody
   can see.
 - **CL11.** The client modal's edit form omits the billing address entirely;
-  `edit_client()` only writes `address`-related fields (street/city/
-  province/postal) when `"address" in request.form` — a form that doesn't
-  render a field must leave it untouched, not clear it. The same rule
-  applies to any future field present on one edit surface but not the other.
+  `edit_client()` only writes the address fields (street/city/province/
+  postal) when `"street" in request.form` — a form that doesn't render a
+  field must leave it untouched, not clear it. The same rule applies to any
+  future field present on one edit surface but not the other.
 - **CL12.** A `Client` with no `province` is charged **no tax** on any of
   their orders (delegated to `billing.tax`, but the trigger — "does this
   client have a province" — is a core-app fact read off `Client`).
+- **CL15.** `Client.notes` is a free-text, staff-facing field (never shown
+  to the client) with no relation to an order's own `notes`. It's editable
+  only on the full client page's Information tab — the timeline's quick-edit
+  client modal omits it, same as the address fields — and `edit_client()`
+  only writes it when `"notes" in request.form`, following the same "absent
+  means untouched" rule as CL11.
+- **CL16.** A `Client` whose `notes` column is `None` (never edited) must
+  render as an **empty** textarea, not the literal text "None" — the
+  template renders `client.notes or ''`, not a bare `client.notes`.
 
 ## 4. OrderType
 
@@ -454,6 +463,8 @@ has no regression test.
 | CL9–CL10 | `test_set_other_marks_the_option`, `test_set_other_toggles_off_on_a_second_click`, `test_only_one_option_can_be_other_at_a_time`, `test_set_other_is_tenant_scoped`, `test_saving_the_other_detail`, `test_the_detail_is_cleared_when_other_is_unchecked` (`tests/test_other_source.py`) |
 | CL11 | `test_edit_client_without_address_field_leaves_address_untouched`, `test_edit_client_with_address_field_updates_it`, `test_edit_client_with_an_invalid_province_clears_it` |
 | CL12 | covered indirectly by `tests/test_tax.py`'s client-province gating tests (billing side); `test_order_total_with_no_tax_is_the_sum_of_its_lines` covers the core-app trigger (no province ⇒ no tax) from `Order`'s side |
+| CL15 | `test_edit_client_without_notes_field_leaves_notes_untouched`, `test_edit_client_with_notes_field_updates_it` |
+| CL16 | `test_client_page_renders_blank_notes_not_the_word_none` |
 | OT1–OT3 | `test_add_order_type_rejects_a_case_insensitive_duplicate`, `test_add_order_type_rejects_a_duplicate_of_a_hidden_type`, `test_add_order_type_allows_the_same_label_in_another_company` (`tests/test_settings_options.py`) |
 | OT4 | `test_new_order_form_omits_type_dropdown_without_any_order_type`, `test_new_order_form_shows_type_dropdown_once_a_type_exists` |
 | OT5 | `test_new_order_only_offers_active_types`, `test_order_page_offers_a_hidden_type_the_order_already_has` |

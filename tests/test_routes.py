@@ -376,6 +376,28 @@ def test_converting_a_lead_creates_a_client_and_redirects_to_them(
     assert f"/clients/{created.id}" in response.headers["Location"]
 
 
+def test_the_create_client_form_arrives_with_the_name_filled_in(
+    logged_in, lead_thread,
+):
+    """It was blank, with a note promising the name would be worked out on
+    submit — so the only way to see the guess was to commit to it."""
+    body = logged_in.get(f"/mail/threads/{lead_thread.id}").get_data(as_text=True)
+    assert 'name="first_name" value="Jean"' in body
+    assert 'name="last_name" value="Tremblay"' in body
+
+
+def test_the_filled_in_name_is_what_submitting_unchanged_creates(
+    logged_in, csrf, lead_thread,
+):
+    """The form and the fallback read one property; this is what that buys."""
+    logged_in.post(f"/mail/threads/{lead_thread.id}/create-client", data={
+        "csrf_token": csrf, "first_name": "Jean", "last_name": "Tremblay",
+        "email": "stranger@example.com",
+    })
+    created = Client.query.filter_by(email="stranger@example.com").one()
+    assert (created.first_name, created.last_name) == ("Jean", "Tremblay")
+
+
 def test_converting_an_already_linked_thread_shows_an_error(logged_in, csrf, thread):
     logged_in.post(f"/mail/threads/{thread.id}/create-client", data={"csrf_token": csrf})
     body = logged_in.get("/mail/leads").get_data(as_text=True)

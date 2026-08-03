@@ -336,6 +336,27 @@ def test_split_name_falls_back_to_the_address_local_part(company, account):
     assert email_service._split_name(None, None, row) == ("Marie", "Alarie")
 
 
+def test_the_suggested_name_is_what_a_blank_submission_produces(company, lead_thread):
+    """The form prefills `suggested_name` and the server falls back to it, so
+    the box has to say exactly what leaving it alone would create.
+
+    Two copies of this rule — one in the template, one in the service — would
+    drift the first time either changed, and the symptom would be a form that
+    quietly creates something other than what it showed.
+    """
+    assert lead_thread.suggested_name == email_service._split_name(
+        None, None, lead_thread,
+    )
+
+
+def test_a_submitted_name_still_beats_the_suggestion(company, lead_thread):
+    """The prefill is a starting point, not a lock."""
+    client = email_service.create_client_from_thread(
+        company.id, lead_thread.id, first_name="Jean-Luc", last_name="Picard",
+    )
+    assert (client.first_name, client.last_name) == ("Jean-Luc", "Picard")
+
+
 # --- sync_now -------------------------------------------------------------
 
 def test_sync_now_runs_every_enabled_account(company, account, client_record):

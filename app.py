@@ -813,10 +813,12 @@ def edit_client(client_id: int):
     client.last_name = request.form.get("last_name", "").strip() or client.last_name
     client.email = request.form.get("email", "").strip()
     client.phone = format_phone(request.form.get("phone", ""))
-    # Address fields are only on the full client page, not the timeline's
+    # Notes and address are only on the full client page, not the timeline's
     # quick-edit modal — absent from the form means "not shown", not
     # "cleared". The province gate matters more than it looks: it decides
     # what tax this client is charged (see taxes_for in models.py).
+    if "notes" in request.form:
+        client.notes = request.form.get("notes", "").strip()
     if "street" in request.form:
         client.street = request.form.get("street", "").strip() or None
         client.city = request.form.get("city", "").strip() or None

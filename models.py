@@ -177,6 +177,12 @@ class Client(db.Model):
     # cleared automatically if the option later loses its text box, so
     # nothing already on file is lost, it just stops rendering anywhere.
     other_source_detail = db.Column(db.String(200))
+    # Free-form staff notes about the client (not shown to the client, no
+    # relation to an order's own notes) — same free-text Text column and
+    # "quick edit -> modal, more room -> page" absence as Order.notes; there's
+    # no timeline modal for clients to omit it from in the first place, so
+    # it's just on the one edit form the client page already has.
+    notes = db.Column(db.Text)
 
     company = db.relationship("Company", back_populates="clients")
     orders = db.relationship("Order", back_populates="client")
@@ -394,6 +400,7 @@ _ADDED_COLUMNS = [
     ("companies", "order_columns", "TEXT"),
     ("source_options", "is_other", "BOOLEAN NOT NULL DEFAULT 0"),
     ("clients", "other_source_detail", "VARCHAR(200)"),
+    ("clients", "notes", "TEXT"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.

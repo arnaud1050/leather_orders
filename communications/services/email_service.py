@@ -699,30 +699,21 @@ def auto_create_client(company_id: int, thread, rule) -> tuple[Client | None, bo
 
 
 def _split_name(first_name, last_name, thread: EmailThread) -> tuple[str, str]:
-    """A name for the new client.
+    """A name for the new client: whatever was submitted, else the suggestion.
 
-    Falls back to the sender's display name, then to the local part of the
-    address. Both halves are required by the Client model, so something has
-    to be there — a placeholder someone can correct beats refusing to
-    create the client.
+    The fallback is `EmailThread.suggested_name`, which is also what the form
+    prefills its name boxes with — deliberately one property rather than two
+    copies of the rule, so what you see in the box is what you get if you
+    leave it alone. This still has to fall back at all, because the automatic
+    sender-rule path submits no form.
     """
     first_name = (first_name or "").strip()
     last_name = (last_name or "").strip()
     if first_name and last_name:
         return first_name, last_name
 
-    display = ""
-    for message in thread.messages:
-        if message.is_incoming and message.sender_name:
-            display = message.sender_name.strip()
-            break
-    if not display:
-        display = (thread.counterparty or "").split("@")[0].replace(".", " ").title()
-
-    parts = display.split()
-    if len(parts) >= 2:
-        return first_name or parts[0], last_name or " ".join(parts[1:])
-    return first_name or (display or "Unknown"), last_name or "(from email)"
+    suggested_first, suggested_last = thread.suggested_name
+    return first_name or suggested_first, last_name or suggested_last
 
 
 def _first_incoming_body(thread: EmailThread) -> str | None:

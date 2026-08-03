@@ -13,7 +13,7 @@ Scope: `communications/` only (Gmail + Google Calendar, the lead inbox,
 sender rules). Tax, invoicing and inventory rules live elsewhere. Design
 and structural notes are in `CLAUDE.md`; this file is behaviour.
 
-**686 of the suite's 1133 tests cover this module.**
+**709 of the suite's 1194 tests cover this module.**
 
 Rule ids are stable — cite them in commit messages and in review. Sections
 are grouped by what a rule protects, not by which file implements it.
@@ -136,6 +136,9 @@ The isolation story, and the one no other rule can compensate for.
 | **L-15** | A **hand-hidden** sender who writes again resurfaces the thread. | Following up is new signal; an enquiry hidden by mistake shouldn't go silent forever. | `test_lead_triage.py` |
 | **L-16** | Resurfacing applies to genuinely new **incoming** mail only, and never to trashed or rule-hidden threads. | Us mailing them isn't them writing back; and see R-6. | `test_lead_triage.py`, `test_sender_rules.py` |
 | **L-17** | Converting a lead by hand also re-runs matching across the company's other orphan threads. | The new client's address may appear in more than one. | `test_email_service.py` |
+| **L-18** | A new client's name is derived from the sender's display name, falling back to the readable local part of the address ("marie.alarie@…" → "Marie Alarie"). Both halves are always non-empty. | `Client` requires both, and a placeholder someone can correct beats refusing to create the client. | `test_email_service.py` |
+| **L-19** | The conversion form arrives with that name **already in the boxes**, and the form and the server-side fallback read **one property** (`EmailThread.suggested_name`). | The boxes were blank with a note promising the name would be worked out on submit, so the only way to see the guess was to commit to it. Two copies of the rule — one in the template, one in the service — drift the first time either changes, and the symptom is a form that creates something other than what it showed. | `test_email_service.py`, `test_routes.py` |
+| **L-20** | A submitted name still beats the suggestion. | It's a starting point, not a lock. | `test_email_service.py` |
 
 ---
 

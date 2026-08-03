@@ -174,6 +174,39 @@ def test_edit_client_with_an_invalid_province_clears_it(logged_in, client_record
     assert db.session.get(Client, client_record.id).province is None
 
 
+def test_edit_client_without_notes_field_leaves_notes_untouched(logged_in, client_record):
+    client_record.notes = "Prefers matte black hardware."
+    db.session.commit()
+
+    # Mirrors the timeline's quick-edit client modal, which never sends this field.
+    logged_in.post(
+        f"/clients/{client_record.id}/edit",
+        data={"first_name": "Marie", "last_name": "Alarie", "email": "", "phone": ""},
+    )
+
+    assert db.session.get(Client, client_record.id).notes == "Prefers matte black hardware."
+
+
+def test_edit_client_with_notes_field_updates_it(logged_in, client_record):
+    logged_in.post(
+        f"/clients/{client_record.id}/edit",
+        data={
+            "first_name": "Marie", "last_name": "Alarie", "email": "", "phone": "",
+            "notes": "Allergic to nickel.",
+        },
+    )
+
+    assert db.session.get(Client, client_record.id).notes == "Allergic to nickel."
+
+
+def test_client_page_renders_blank_notes_not_the_word_none(logged_in, client_record):
+    assert client_record.notes is None
+
+    response = logged_in.get(f"/clients/{client_record.id}")
+
+    assert b'<textarea name="notes" rows="14"></textarea>' in response.data
+
+
 # ---------------------------------------------------------------------------
 # OrderType (OT4, OT5, OT6)
 # ---------------------------------------------------------------------------
