@@ -126,22 +126,30 @@
 
       <label class="modal__field">Location<input type="text" name="location"></label>
       <label class="modal__field">Notes<textarea name="description" rows="3"></textarea></label>
+      {# data-email is what lets the invite go to the client without anyone
+         retyping it; the script below reads it to say who will be invited. #}
       <label class="modal__field">Client
-        <select name="client_id">
+        <select name="client_id" data-client-select>
           <option value="">No client</option>
           {% for client in clients %}
-          <option value="{{ client.id }}">{{ client.name }}</option>
+          <option value="{{ client.id }}" data-email="{{ client.email or '' }}">{{ client.name }}</option>
           {% endfor %}
         </select>
       </label>
-      <label class="modal__field">Invite
-        <input type="text" name="attendees" placeholder="Optional, comma separated">
+      <p class="modal__hint" data-guest-hint hidden></p>
+      <label class="modal__field">Also invite
+        <input type="text" name="attendees" placeholder="Optional, comma separated" data-extra-guests>
       </label>
 
       <div class="modal__actions">
+        {# "Add event" first on purpose: Enter submits the first submit button
+           in a form, so the keyboard falls on the one that sends no mail.
+           The invite button is hidden until there's somebody to invite. #}
         <div class="modal__buttons">
           <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
           <button type="submit" class="btn-primary">Add event</button>
+          <button type="submit" class="btn-primary" name="send_invite" value="1"
+                  data-invite-button hidden>Add event &amp; send invite</button>
         </div>
       </div>
     </form>
@@ -174,22 +182,31 @@
       <label class="modal__field">Location<input type="text" name="location" value="{{ event.location or '' }}"></label>
       <label class="modal__field">Notes<textarea name="description" rows="3">{{ event.description or '' }}</textarea></label>
       <label class="modal__field">Client
-        <select name="client_id">
+        <select name="client_id" data-client-select>
           <option value="">No client</option>
           {% for client in clients %}
-          <option value="{{ client.id }}" {% if event.client_id == client.id %}selected{% endif %}>{{ client.name }}</option>
+          <option value="{{ client.id }}" data-email="{{ client.email or '' }}"
+                  {% if event.client_id == client.id %}selected{% endif %}>{{ client.name }}</option>
           {% endfor %}
         </select>
       </label>
-      {# No guest field here on purpose. Attendees aren't mirrored locally (sync
-         only reads them to match a client), and Google's patch replaces the
-         whole list — so a form built without them would uninvite everyone.
-         Invite when creating, or manage guests in Google Calendar. #}
+      <p class="modal__hint" data-guest-hint hidden></p>
+      {# Guests are editable now that they're mirrored locally: this field is
+         rendered *from* the stored list, so what it posts back is the complete
+         list the event should keep — which is what Google's replace-not-merge
+         patch needs. The client's own address is left out (they're invited by
+         being the linked client) and the organiser is restored server-side. #}
+      <label class="modal__field">Also invite
+        <input type="text" name="attendees" placeholder="Optional, comma separated"
+               value="{{ event.extra_guests|join(', ') }}" data-extra-guests>
+      </label>
 
       <div class="modal__actions">
         <div class="modal__buttons">
           <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
           <button type="submit" class="btn-primary">Save</button>
+          <button type="submit" class="btn-primary" name="send_invite" value="1"
+                  data-invite-button hidden>Save &amp; notify guests</button>
         </div>
       </div>
     </form>
@@ -230,6 +247,48 @@
       });
     };
     checkbox.addEventListener('change', apply);
+    apply();
+  });
+
+  // Who gets invited, said out loud before anyone commits to it.
+  //
+  // Two jobs. It names the address the invitation would go to, since the whole
+  // point is that nobody retypes it — and if the chosen client has no email on
+  // file it says *that*, rather than leaving a button whose only outcome is
+  // silence. And it hides the invite button when there is nobody to invite, so
+  // "send invite" is never an offer the form can't keep.
+  document.querySelectorAll('dialog.modal form').forEach(function (form) {
+    var select = form.querySelector('[data-client-select]');
+    var extra = form.querySelector('[data-extra-guests]');
+    var hint = form.querySelector('[data-guest-hint]');
+    var button = form.querySelector('[data-invite-button]');
+    if (!select || !button) return;
+
+    var apply = function () {
+      var option = select.options[select.selectedIndex];
+      var email = (option && option.dataset.email || '').trim();
+      var named = option && option.value ? option.text : '';
+      var others = (extra ? extra.value : '').split(',').filter(function (part) {
+        return part.trim() !== '';
+      }).length;
+
+      button.hidden = !email && others === 0;
+
+      if (named && email) {
+        hint.textContent = 'Invitation goes to ' + named + ' — ' + email;
+        hint.hidden = false;
+      } else if (named) {
+        // Deliberately not an error: the event is still worth creating, it
+        // just can't invite them until the address is on their record.
+        hint.textContent = named + ' has no email on file, so they can’t be invited.';
+        hint.hidden = false;
+      } else {
+        hint.hidden = true;
+      }
+    };
+
+    select.addEventListener('change', apply);
+    if (extra) extra.addEventListener('input', apply);
     apply();
   });
 </script>

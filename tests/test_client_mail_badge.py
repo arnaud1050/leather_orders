@@ -479,3 +479,116 @@ def test_both_badges_survive_on_the_clients_sub_nav(logged_in, company, account,
     body = logged_in.get("/clients").get_data(as_text=True)
     assert "lead waiting" in body
     assert "unread email from clients" in body
+
+
+# --- which conversation ---------------------------------------------------
+#
+# The badge on the Emails tab says a client wrote; with several threads open
+# it doesn't say *which*. So each row carries its own count — the same
+# purple, cleared the same way, and adding up to the badge above it.
+
+def test_a_thread_reports_its_own_unread_count(app, company, account, client_record):
+    thread = client_thread(company, account, client_record, messages=3)
+    assert thread.unread_count == 3
+
+
+def test_read_messages_leave_a_thread_at_zero(app, company, account, client_record):
+    thread = client_thread(company, account, client_record, messages=0)
+    add_message(thread, read=True)
+    assert thread.unread_count == 0
+
+
+def test_our_own_replies_do_not_mark_a_thread(app, company, account, client_record):
+    thread = client_thread(company, account, client_record, messages=0)
+    add_message(thread, message_id="m-out", direction="outgoing",
+                sender="studio@example.com")
+    assert thread.unread_count == 0
+
+
+def test_a_dismissed_thread_reports_zero(app, company, account, client_record):
+    """It has to agree with the badge, which excludes dismissed threads — a
+    row marked unread while the nav says nothing would be worse than no row
+    marker at all."""
+    thread = client_thread(company, account, client_record)
+    thread.dismiss(DISMISSED_HIDDEN)
+    db.session.flush()
+    assert thread.unread_count == 0
+
+
+def test_the_rows_add_up_to_the_tab_badge(app, company, account, client_record):
+    first = client_thread(company, account, client_record, thread_id="t-1", messages=2)
+    second = client_thread(company, account, client_record, thread_id="t-2", messages=1)
+
+    assert first.unread_count + second.unread_count == \
+        email_service.unread_client_mail_count(company.id, client_record.id)
+
+
+def test_the_emails_tab_marks_the_thread_that_has_unread_mail(
+    logged_in, company, account, client_record,
+):
+    client_thread(company, account, client_record, thread_id="t-1", messages=2)
+    quiet = client_thread(company, account, client_record, thread_id="t-2", messages=0)
+    add_message(quiet, message_id="m-old", read=True)
+    db.session.commit()
+
+    body = logged_in.get(f"/clients/{client_record.id}/emails").get_data(as_text=True)
+    # One row marked, not both — the whole point of a per-thread marker.
+    assert body.count("thread-list__item--new") == 1
+    assert "2 new" in body
+
+
+def test_the_count_is_shown_not_just_the_word_new(logged_in, company, account,
+                                                   client_record):
+    """Four unread replies is a different amount of reading from one."""
+    client_thread(company, account, client_record, messages=4)
+    db.session.commit()
+
+    body = logged_in.get(f"/clients/{client_record.id}/emails").get_data(as_text=True)
+    assert "4 new" in body
+
+
+def test_opening_the_conversation_clears_its_marker(logged_in, company, account,
+                                                     client_record):
+    thread = client_thread(company, account, client_record)
+    db.session.commit()
+
+    logged_in.get(f"/mail/threads/{thread.id}")
+
+    body = logged_in.get(f"/clients/{client_record.id}/emails").get_data(as_text=True)
+    assert "thread-list__item--new" not in body
+
+
+def test_a_reply_marks_a_thread_that_was_already_read(logged_in, company, account,
+                                                       client_record):
+    """The case the tab's own "New" pill could never cover: this
+    conversation has plainly been opened, and they wrote again anyway."""
+    thread = client_thread(company, account, client_record)
+    db.session.commit()
+    logged_in.get(f"/mail/threads/{thread.id}")
+
+    add_message(thread, message_id="m-later")
+    db.session.commit()
+
+    body = logged_in.get(f"/clients/{client_record.id}/emails").get_data(as_text=True)
+    assert "1 new" in body
+
+
+def test_a_client_with_nothing_unread_gets_no_row_markers(logged_in, company, account,
+                                                           client_record):
+    thread = client_thread(company, account, client_record, messages=0)
+    add_message(thread, read=True)
+    db.session.commit()
+
+    body = logged_in.get(f"/clients/{client_record.id}/emails").get_data(as_text=True)
+    assert "thread-list__item--new" not in body
+    assert "pill--new" not in body
+
+
+def test_the_lead_inbox_still_says_new_not_a_count(logged_in, company, lead_thread):
+    """Two questions, two markers (N-7). The lead inbox asks whether anyone
+    has ever opened the conversation, and answers it with a word."""
+    db.session.commit()
+
+    body = logged_in.get("/mail/leads").get_data(as_text=True)
+    assert ">New</span>" in body
+    assert "1 new" not in body

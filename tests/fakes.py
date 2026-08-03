@@ -129,8 +129,12 @@ class FakeCalendarProvider(base.CalendarProvider):
         return list(type(self).events)
 
     def create_event(self, title, start, end, description=None, location=None,
-                     attendees=None, all_day=False):
-        CALENDAR_LOG.append(("create_event", title, start, end, attendees, all_day))
+                     attendees=None, all_day=False, notify=False):
+        # `notify` is appended rather than slotted in, so the existing
+        # positional assertions on this record keep meaning what they did.
+        CALENDAR_LOG.append(
+            ("create_event", title, start, end, attendees, all_day, notify),
+        )
         if type(self).fail_with:
             raise type(self).fail_with
         return FetchedEvent(
@@ -150,6 +154,10 @@ class FakeCalendarProvider(base.CalendarProvider):
             end_time=fields.get("end", utcnow() + timedelta(hours=1)),
             description=fields.get("description"),
             location=fields.get("location"),
+            # Echoed so the local mirror ends up holding what was patched —
+            # the real provider returns the stored event, and a fake that
+            # dropped the guests would hide exactly the bug worth catching.
+            attendees=list(fields.get("attendees") or []),
         )
 
 

@@ -29,7 +29,9 @@
 
   <section class="detail-orders">
     <h2>Conversations</h2>
-    {% include "_thread_list.html" %}
+    {# Per-thread unread counts, so the badge on the Emails tab above points
+       at *which* conversation it means. #}
+    {% with flag_unread = true %}{% include "_thread_list.html" %}{% endwith %}
   </section>
 
   <section class="detail-orders">

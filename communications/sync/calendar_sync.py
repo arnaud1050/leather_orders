@@ -131,6 +131,11 @@ def store_event(account, fetched, clients_by_email, result) -> CalendarEvent:
     event.end_time = fetched.end_time
     event.all_day = fetched.all_day
     event.status = fetched.status
+    # Overwritten like every other field: the provider is the authority on who
+    # is invited, and a guest added in Google Calendar should show up here.
+    # Storing them is what lets the edit form rebuild the list rather than
+    # blanking it — see the column's own note.
+    event.attendees = ", ".join(fetched.attendees)
     event.updated_at = utcnow()
 
     # Same exact-address matching as threads, and the same "only ever add"

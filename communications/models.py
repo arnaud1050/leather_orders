@@ -377,7 +377,14 @@ class EmailThread(db.Model):
         is exactly what wants pointing at. Counted off the loaded messages
         rather than a query per row, since every caller is already
         rendering `message_count` and `latest_message` from the same list.
+
+        A dismissed thread reports zero, matching the badge's own query
+        (see `_unread_client_query`): hiding a conversation means "don't
+        tell me about this", and a row that disagreed with the number in
+        the nav would be worse than no row marker at all.
         """
+        if self.is_dismissed:
+            return 0
         return sum(1 for message in self.messages if message.is_unread)
 
     @property
@@ -658,6 +665,17 @@ class CalendarEvent(db.Model):
     # rather than inferred from a midnight start, which a real 00:00 event
     # would also look like.
     all_day = db.Column(db.Boolean, nullable=False, default=False)
+    # Comma-separated guest addresses, same shape as EmailMessage.recipients
+    # and for the same reason: it's display data, nothing queries by it.
+    #
+    # Mirroring these at all is what makes the guest list editable. Google's
+    # `patch` replaces the whole attendee array, so a form that doesn't know
+    # who is currently invited can only ever uninvite them — which is why the
+    # sync read attendees and threw them away until now, and why the edit
+    # dialog refused to show guests. Holding a copy turns that into an
+    # ordinary edit: the form is built *from* this list, so saving sends back
+    # everyone who should still be there.
+    attendees = db.Column(db.Text)
     # Google's own state: "confirmed" / "tentative" / "cancelled". A
     # cancelled event is kept rather than deleted so a sync can't lose an
     # event the user is still looking at; the UI filters them out.
@@ -673,6 +691,36 @@ class CalendarEvent(db.Model):
     @property
     def is_cancelled(self) -> bool:
         return self.status == "cancelled"
+
+    @property
+    def attendee_list(self) -> list[str]:
+        return [part.strip() for part in (self.attendees or "").split(",") if part.strip()]
+
+    @property
+    def guest_list(self) -> list[str]:
+        """Guests other than the studio's own mailbox.
+
+        Google lists the organiser among the attendees, so the raw list shown
+        in a guest field would invite the studio to its own appointment and
+        read as though somebody had added it by hand.
+        """
+        own = (self.account.email_address or "").strip().lower() if self.account else ""
+        return [address for address in self.attendee_list if address.lower() != own]
+
+    @property
+    def extra_guests(self) -> list[str]:
+        """Guests the edit form should show, i.e. everyone bar the client.
+
+        The client is invited by *being* the linked client, so listing their
+        address in a box labelled "also invite" would say the same thing twice
+        — and worse, unlinking the client while leaving it there would keep
+        them invited through a field that no longer explains why.
+        """
+        linked = (self.client.email or "").strip().lower() if self.client else ""
+        return [
+            address for address in self.guest_list
+            if not linked or address.lower() != linked
+        ]
 
 
 class SenderRule(db.Model):
@@ -860,6 +908,11 @@ AUDIT_THREAD_TRASHED = "thread_trashed"
 # its own" is a different thing to answer for than "someone clicked it", and
 # an audit log that can't tell them apart can't answer either question.
 AUDIT_CLIENT_AUTO_CREATED = "client_auto_created"
+# A repeat enquiry from somebody already on file: the conversation was
+# attached to an existing client and nobody was added to the roster. Its own
+# event because "created" would be a false claim, and the question someone
+# asks later — "why is this thread on this client" — is a different one.
+AUDIT_CLIENT_MAIL_LINKED = "client_mail_linked"
 AUDIT_SENDER_RULE_CHANGED = "sender_rule_changed"
 
 AUDIT_EVENT_LABELS = {
@@ -871,5 +924,6 @@ AUDIT_EVENT_LABELS = {
     AUDIT_CLIENT_CREATED_FROM_EMAIL: "Client created from email",
     AUDIT_THREAD_TRASHED: "Conversation moved to Trash",
     AUDIT_CLIENT_AUTO_CREATED: "Client created automatically",
+    AUDIT_CLIENT_MAIL_LINKED: "Conversation linked to an existing client",
     AUDIT_SENDER_RULE_CHANGED: "Automatic mail rule changed",
 }

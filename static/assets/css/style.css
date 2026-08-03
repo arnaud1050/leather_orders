@@ -27,7 +27,6 @@
   --radius: 2px;
   --font-display: sans-serif;
   --font-body: "Inter", -apple-system, sans-serif;
-  --font-mono: "Roboto Mono", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -710,6 +709,14 @@ dialog.modal::backdrop {
 .modal__subtitle {
   margin: -8px 0 0;
   font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+/* Says who an invitation would reach, under the client select. Sits tight to
+   the field above it so it reads as that field's own note, not a new row. */
+.modal__hint {
+  margin: -10px 0 0;
+  font-size: 0.78rem;
   color: var(--ink-soft);
 }
 
@@ -1451,7 +1458,6 @@ dialog.modal::backdrop {
 
 .invoice-table .is-numeric {
   text-align: right;
-  font-family: var(--font-mono);
 }
 
 .invoice-table th.is-numeric {
@@ -1549,7 +1555,6 @@ dialog.modal::backdrop {
 }
 
 .invoice-ref {
-  font-family: var(--font-mono);
   font-size: 0.74rem;
   color: var(--ink-soft);
   text-decoration: none;
@@ -2158,7 +2163,6 @@ dialog.modal::backdrop {
   height: 17px;
   margin-left: 5px;
   padding: 0 5px;
-  font-family: var(--font-mono);
   font-size: 0.62rem;
   font-weight: 600;
   line-height: 1;

@@ -15,7 +15,7 @@ a created event shows up without waiting for the next sync.
 import logging
 from datetime import date, datetime, time
 
-from models import db
+from models import Client, db
 
 from communications.models import CalendarEvent, utcnow
 from communications.providers import calendar_provider_for
@@ -94,17 +94,24 @@ def has_calendar(company_id: int) -> bool:
 def create_event(
     company_id: int, title: str, start: datetime, end: datetime,
     description=None, location=None, attendees=None, all_day=False,
-    client_id=None, account_id=None,
+    client_id=None, account_id=None, notify=False,
 ) -> CalendarEvent:
     """Create an event in Google and mirror it locally.
 
     Commits, for the same reason send_email does: once Google has the
     event, the local row must not be lost by a caller rolling back.
+
+    The linked client is invited automatically — see `guests_for`. `notify`
+    decides whether any of them are emailed, and is never inferred from the
+    guest list: an appointment noted against a client is not the same act as
+    telling them about it.
     """
     account = _calendar_account(company_id, account_id)
+    guests = guests_for(company_id, client_id, attendees)
     fetched = calendar_provider_for(account).create_event(
         title=title, start=start, end=end, description=description,
-        location=location, attendees=attendees, all_day=all_day,
+        location=location, attendees=guests, all_day=all_day,
+        notify=bool(notify) and bool(guests),
     )
     event = calendar_sync.store_event(
         account, fetched, {}, calendar_sync.CalendarSyncResult(account_id=account.id),
@@ -115,6 +122,37 @@ def create_event(
     return event
 
 
+def guests_for(company_id: int, client_id, extra=None) -> list[str]:
+    """The full guest list for an event: the linked client, plus anyone else.
+
+    The client's address comes from their record rather than being retyped,
+    which is the whole point — the studio picks a name, not an email. A client
+    with no address on file simply contributes nobody; that has to be visible
+    in the form rather than discovered when no invitation arrives.
+
+    Deduplicated **case-insensitively while keeping what was typed**: Google
+    would reject the same address twice, and the client is usually also the
+    obvious thing to type into the extra-guests box. Order is the client
+    first, since they're the reason the appointment exists.
+    """
+    guests: list[str] = []
+    seen: set[str] = set()
+
+    def add(address):
+        cleaned = (address or "").strip()
+        if cleaned and cleaned.lower() not in seen:
+            seen.add(cleaned.lower())
+            guests.append(cleaned)
+
+    if client_id:
+        client = Client.query.filter_by(id=client_id, company_id=company_id).first()
+        if client is not None:
+            add(client.email)
+    for address in extra or []:
+        add(address)
+    return guests
+
+
 def update_event(company_id: int, event_id: int, **fields) -> CalendarEvent:
     """Patch a mirrored event through to Google, then re-mirror it.
 
@@ -122,6 +160,13 @@ def update_event(company_id: int, event_id: int, **fields) -> CalendarEvent:
     appointment belongs to is ours, not something Google stores. Popped rather
     than left in `fields` so the provider isn't handed a key it would silently
     ignore.
+
+    **Guests**: pass `attendees` to change them, or leave the key out to leave
+    them alone. Given, it's resolved through `guests_for` exactly as it is at
+    creation — so the client link still supplies the client's address, and
+    re-pointing an appointment at a different client moves the invitation with
+    it. Left out, nothing about the guest list is sent, which is what keeps an
+    ordinary title edit from touching who is invited.
     """
     event = CalendarEvent.query.filter_by(id=event_id, company_id=company_id).first()
     if event is None:
@@ -132,6 +177,27 @@ def update_event(company_id: int, event_id: int, **fields) -> CalendarEvent:
         raise CalendarServiceError("The account this event came from is no longer connected.")
 
     client_id = fields.pop("client_id", _UNSET)
+
+    if "attendees" in fields:
+        # The client whose address should be on the list is the one the event
+        # is about to have, not the one it had a moment ago.
+        linked = event.client_id if client_id is _UNSET else client_id
+        fields["attendees"] = guests_for(company_id, linked, fields["attendees"])
+        # Never quietly drop the organiser. Google puts the studio's own
+        # mailbox on the attendee list of anything it hosts, and the form is
+        # built from `guest_list`, which hides it — so without this, saving any
+        # edit would remove the organiser from their own appointment. Restored
+        # only if it was actually there: adding it to an event that never
+        # carried it would be inviting ourselves to our own reminder.
+        own = (account.email_address or "").strip()
+        was_listed = any(
+            address.lower() == own.lower() for address in event.attendee_list
+        )
+        already = any(
+            address.lower() == own.lower() for address in fields["attendees"]
+        )
+        if own and was_listed and not already:
+            fields["attendees"].append(own)
 
     fetched = calendar_provider_for(account).update_event(event.provider_event_id, **fields)
     calendar_sync.store_event(

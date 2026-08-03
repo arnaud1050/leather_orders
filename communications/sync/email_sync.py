@@ -267,8 +267,17 @@ def _apply_sender_rules(account, thread, fetched, rules, result) -> None:
             thread.dismiss(DISMISSED_AUTO)
             result.threads_auto_hidden += 1
         elif rule.action == RULE_CONVERT:
-            if email_service.auto_create_client(account.company_id, thread, rule) is not None:
+            client, created = email_service.auto_create_client(
+                account.company_id, thread, rule,
+            )
+            if created:
                 result.clients_auto_created += 1
+            elif client is not None:
+                # A repeat enquiry from somebody already on file. The
+                # conversation is now on their record, which is all that
+                # happened — counting it as a client created would report a
+                # roster addition that didn't occur.
+                result.threads_matched += 1
         return  # first matching sender decides; see sender_rules.match
 
 

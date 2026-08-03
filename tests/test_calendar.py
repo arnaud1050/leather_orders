@@ -498,3 +498,322 @@ def test_the_month_view_hides_event_ui_without_a_calendar(logged_in, company):
 def test_the_month_view_offers_event_ui_with_a_calendar(logged_in, account):
     body = logged_in.get("/calendar").get_data(as_text=True)
     assert "+ New event" in body
+
+
+# --- guests and invitations -----------------------------------------------
+#
+# The rule underneath all of these: attaching somebody to an event and
+# emailing them about it are two separate acts. Adding an attendee used to
+# imply neither — Google's insert defaults to notifying nobody, so the old
+# "Invite" field attached an address and sent no mail at all. Sending is now
+# explicit, which means it has to be tested explicitly in both directions:
+# that it happens when asked, and that it never happens when it wasn't.
+
+def _create_calls():
+    return [row for row in fakes.CALENDAR_LOG if row[0] == "create_event"]
+
+
+def _last_patch():
+    return [row for row in fakes.CALENDAR_LOG if row[0] == "update_event"][-1][2]
+
+
+def test_the_linked_client_is_invited_without_anyone_typing_their_address(
+    logged_in, csrf, account, client_record,
+):
+    """The whole point: the studio picks a name, not an email."""
+    with fakes.fake_providers():
+        logged_in.post(
+            "/calendar/events/new",
+            data=_event_form(csrf, client_id=client_record.id, send_invite="1"),
+        )
+
+    assert _create_calls()[0][4] == ["marie@example.com"]
+
+
+def test_adding_an_event_without_the_invite_button_sends_no_mail(
+    logged_in, csrf, account, client_record,
+):
+    """A reminder to yourself with the client attached must not mail them.
+
+    This is the regression that matters most: the guest is on the event either
+    way, so nothing about the payload distinguishes the two cases except the
+    notify flag.
+    """
+    with fakes.fake_providers():
+        logged_in.post(
+            "/calendar/events/new", data=_event_form(csrf, client_id=client_record.id),
+        )
+
+    call = _create_calls()[0]
+    assert call[4] == ["marie@example.com"]   # attached
+    assert call[6] is False                   # but not told
+
+
+def test_the_invite_button_is_what_sends(logged_in, csrf, account, client_record):
+    with fakes.fake_providers():
+        logged_in.post(
+            "/calendar/events/new",
+            data=_event_form(csrf, client_id=client_record.id, send_invite="1"),
+        )
+
+    assert _create_calls()[0][6] is True
+
+
+def test_asking_to_invite_nobody_notifies_nobody(logged_in, csrf, account):
+    """No client, no extra guests — "send invite" can't mean anything, and
+    Google is told not to notify rather than asked to mail an empty list."""
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(csrf, send_invite="1"))
+
+    call = _create_calls()[0]
+    assert call[4] == []
+    assert call[6] is False
+
+
+def test_extra_guests_join_the_client(logged_in, csrf, account, client_record):
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(
+            csrf, client_id=client_record.id,
+            attendees="cutter@example.com, courier@example.com",
+        ))
+
+    assert _create_calls()[0][4] == [
+        "marie@example.com", "cutter@example.com", "courier@example.com",
+    ]
+
+
+def test_the_client_is_not_invited_twice_when_also_typed(
+    logged_in, csrf, account, client_record,
+):
+    """Google rejects a duplicate address, and the client's own is the
+    obvious thing to type into the extra-guests box."""
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(
+            csrf, client_id=client_record.id, attendees="MARIE@example.com",
+        ))
+
+    assert _create_calls()[0][4] == ["marie@example.com"]
+
+
+def test_a_client_with_no_email_contributes_no_guest(logged_in, csrf, account, company):
+    """Linking them is still legitimate — it files the appointment against
+    their record. There's just nobody to invite, and the form says so."""
+    silent = Client(company_id=company.id, first_name="No", last_name="Address")
+    db.session.add(silent)
+    db.session.flush()
+
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(
+            csrf, client_id=silent.id, send_invite="1",
+        ))
+
+    call = _create_calls()[0]
+    assert call[4] == []
+    assert call[6] is False
+    assert CalendarEvent.query.one().client_id == silent.id
+
+
+def test_another_tenants_client_contributes_no_guest(
+    logged_in, csrf, account, other_company,
+):
+    """The id arrives in a form field anyone can edit — it must not be a way
+    to read an address off another studio's roster by having us mail it."""
+    theirs = Client(
+        company_id=other_company.id, first_name="Not", last_name="Ours",
+        email="not-ours@example.com",
+    )
+    db.session.add(theirs)
+    db.session.flush()
+
+    with fakes.fake_providers():
+        logged_in.post("/calendar/events/new", data=_event_form(
+            csrf, client_id=theirs.id, send_invite="1",
+        ))
+
+    assert _create_calls()[0][4] == []
+
+
+def test_the_confirmation_says_whether_mail_went_out(
+    logged_in, csrf, account, client_record,
+):
+    """A confirmation that doesn't mention the mail is one you have to open
+    Gmail to verify — which was the old message's whole problem."""
+    with fakes.fake_providers():
+        quiet = logged_in.post(
+            "/calendar/events/new",
+            data=_event_form(csrf, client_id=client_record.id),
+            follow_redirects=True,
+        ).get_data(as_text=True)
+    assert "No invitations sent." in quiet
+
+    with fakes.fake_providers():
+        loud = logged_in.post(
+            "/calendar/events/new",
+            data=_event_form(csrf, client_id=client_record.id, send_invite="1"),
+            follow_redirects=True,
+        ).get_data(as_text=True)
+    assert "Invitation sent to marie@example.com." in loud
+
+
+# --- guests, mirrored and editable ----------------------------------------
+
+def test_sync_mirrors_the_guest_list(account):
+    """Storing attendees is what makes the guest list editable at all."""
+    with fakes.fake_providers(events=[fakes.event(attendees=["marie@example.com"])]):
+        calendar_sync.sync_calendar(account)
+
+    assert CalendarEvent.query.one().attendee_list == ["marie@example.com"]
+
+
+def test_a_guest_added_in_google_shows_up_here(account):
+    """The provider is the authority on who is invited."""
+    with fakes.fake_providers(events=[fakes.event(attendees=["marie@example.com"])]):
+        calendar_sync.sync_calendar(account)
+    with fakes.fake_providers(events=[fakes.event(
+        attendees=["marie@example.com", "cutter@example.com"],
+    )]):
+        calendar_sync.sync_calendar(account)
+
+    assert CalendarEvent.query.one().attendee_list == [
+        "marie@example.com", "cutter@example.com",
+    ]
+
+
+def test_the_studios_own_mailbox_is_not_shown_as_a_guest(account):
+    """Google lists the organiser among the attendees; showing it in a guest
+    field reads as though somebody had added it by hand."""
+    with fakes.fake_providers(events=[fakes.event(
+        attendees=["studio@example.com", "marie@example.com"],
+    )]):
+        calendar_sync.sync_calendar(account)
+
+    assert CalendarEvent.query.one().guest_list == ["marie@example.com"]
+
+
+def test_the_edit_form_does_not_repeat_the_client_in_the_guest_box(
+    account, client_record,
+):
+    """They're invited by *being* the linked client; listing the address too
+    would say it twice, and keep them invited after an unlink."""
+    with fakes.fake_providers(events=[fakes.event(
+        attendees=["studio@example.com", "marie@example.com", "cutter@example.com"],
+    )]):
+        calendar_sync.sync_calendar(account)
+
+    assert CalendarEvent.query.one().extra_guests == ["cutter@example.com"]
+
+
+def test_editing_a_title_leaves_the_guest_list_alone(logged_in, csrf, account, company):
+    """Patching attendees *replaces* them, so a call that doesn't mean to
+    change guests must not send the key at all."""
+    with fakes.fake_providers(events=[fakes.event(attendees=["marie@example.com"])]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+
+    with fakes.fake_providers():
+        calendar_service.update_event(company.id, stored.id, title="Renamed")
+
+    assert "attendees" not in _last_patch()
+
+
+def test_saving_the_edit_form_does_not_uninvite_the_existing_guests(
+    logged_in, csrf, account, client_record,
+):
+    """The regression the old "no guest field" rule existed to prevent — now
+    prevented by the form knowing the list instead of by refusing to show it.
+    """
+    with fakes.fake_providers(events=[fakes.event(
+        attendees=["studio@example.com", "marie@example.com", "cutter@example.com"],
+    )]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+    stored.client_id = client_record.id
+    db.session.commit()
+
+    with fakes.fake_providers():
+        logged_in.post(f"/calendar/events/{stored.id}", data=_event_form(
+            csrf, title="Renamed", client_id=client_record.id,
+            attendees="cutter@example.com",
+        ))
+
+    patched = _last_patch()["attendees"]
+    assert sorted(patched) == [
+        "cutter@example.com", "marie@example.com", "studio@example.com",
+    ]
+
+
+def test_a_guest_can_actually_be_removed(logged_in, csrf, account, client_record):
+    """The other half: if the form can only ever add, it isn't an editor."""
+    with fakes.fake_providers(events=[fakes.event(
+        attendees=["studio@example.com", "cutter@example.com"],
+    )]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+
+    with fakes.fake_providers():
+        logged_in.post(f"/calendar/events/{stored.id}", data=_event_form(
+            csrf, title="Fitting", attendees="",
+        ))
+
+    assert _last_patch()["attendees"] == ["studio@example.com"]
+
+
+def test_the_organiser_is_not_restored_onto_an_event_that_never_had_them(
+    logged_in, csrf, account,
+):
+    """Keeping the organiser is about not dropping them, not about adding
+    ourselves to our own reminder."""
+    with fakes.fake_providers(events=[fakes.event(attendees=[])]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+
+    with fakes.fake_providers():
+        logged_in.post(f"/calendar/events/{stored.id}", data=_event_form(
+            csrf, title="Fitting", attendees="cutter@example.com",
+        ))
+
+    assert _last_patch()["attendees"] == ["cutter@example.com"]
+
+
+def test_repointing_an_event_at_another_client_moves_the_invitation(
+    logged_in, csrf, account, company, client_record,
+):
+    """The guest list is resolved against the client the event is about to
+    have, not the one it had a moment ago."""
+    other = Client(
+        company_id=company.id, first_name="Luc", last_name="Bertrand",
+        email="luc@example.com",
+    )
+    db.session.add(other)
+    db.session.flush()
+
+    with fakes.fake_providers(events=[fakes.event(attendees=["marie@example.com"])]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+    stored.client_id = client_record.id
+    db.session.commit()
+
+    with fakes.fake_providers():
+        logged_in.post(f"/calendar/events/{stored.id}", data=_event_form(
+            csrf, title="Fitting", client_id=other.id, attendees="",
+        ))
+
+    assert _last_patch()["attendees"] == ["luc@example.com"]
+
+
+def test_editing_notifies_only_when_asked(logged_in, csrf, account, client_record):
+    with fakes.fake_providers(events=[fakes.event(attendees=["marie@example.com"])]):
+        calendar_sync.sync_calendar(account)
+    stored = CalendarEvent.query.one()
+
+    with fakes.fake_providers():
+        logged_in.post(f"/calendar/events/{stored.id}", data=_event_form(
+            csrf, title="Moved", client_id=client_record.id,
+        ))
+    assert _last_patch().get("notify") is False
+
+    with fakes.fake_providers():
+        logged_in.post(f"/calendar/events/{stored.id}", data=_event_form(
+            csrf, title="Moved again", client_id=client_record.id, send_invite="1",
+        ))
+    assert _last_patch().get("notify") is True

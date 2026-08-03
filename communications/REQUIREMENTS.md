@@ -1,4 +1,4 @@
-# Communications module — business rules
+# Communications module — business requirements & rules
 
 Every rule this module is meant to obey, in one place, with **why** it exists
 and **where it's tested**. Two audiences:
@@ -13,7 +13,7 @@ Scope: `communications/` only (Gmail + Google Calendar, the lead inbox,
 sender rules). Tax, invoicing and inventory rules live elsewhere. Design
 and structural notes are in `CLAUDE.md`; this file is behaviour.
 
-**667 of the suite's 1039 tests cover this module.**
+**686 of the suite's 1133 tests cover this module.**
 
 Rule ids are stable — cite them in commit messages and in review. Sections
 are grouped by what a rule protects, not by which file implements it.
@@ -155,7 +155,7 @@ answered none of them correctly.
 | **N-6** | Only the **first** open is stamped, and opening one thread leaves the others flagged. | Re-reading shouldn't rewrite when it stopped being new; and the old design marked every thread read on arrival at the list. | `test_leads_badge.py` |
 | **N-7** | A new reply does **not** re-flag a thread that's been read — the *pill* stays gone. | "New" is about the conversation ever having been opened, not about unread messages. A reply does raise the unread-mail count (N-22); the two markers are separate on purpose, see N-27. | `test_leads_badge.py`, `test_client_mail_badge.py` |
 | **N-8** | A lead can be **read but still waiting** — pill gone, badge counting. | That state is the point: it's the enquiry you've seen and haven't answered. | `test_leads_badge.py` |
-| **N-9** | The dismissed view and a client's Emails tab render **no** new/seen decoration. | Something already triaged away isn't new, however unread; and a client's whole history isn't either. | `test_leads_badge.py` |
+| **N-9** | The dismissed view renders **no** new/seen decoration, and the word **"New" never appears on a client's Emails tab**. | Something already triaged away isn't new, however unread; and a client's whole history isn't either. The tab carries the *other* marker instead — see N-29. | `test_leads_badge.py` |
 | **N-10** | **The "new clients" badge** counts clients a rule created that nobody has seen, and **clears on a page view** of `/clients`. | The opposite of N-1 and right for the opposite reason: nothing is outstanding, the client already exists. It's a notice, and looking is the whole response. | `test_sender_rules.py` |
 | **N-11** | One record per auto-created client, not one "last looked" timestamp. | A visit to the roster five minutes before the sync ran must not swallow the notice. | `test_sender_rules.py` |
 | **N-12** | Those records are **acknowledged, not deleted**. | "This client arrived automatically" stays true after the badge is gone. | `test_sender_rules.py` |
@@ -176,6 +176,9 @@ answered none of them correctly.
 | **N-26** | A waiting lead and unread client mail show as **two badges at once**, grey and purple, never merged. | Triaging a stranger and replying to a client are different work with different answers. | `test_client_mail_badge.py` |
 | **N-27** | `EmailMessage.read_at` and `EmailThread.opened_at` are **both** kept, written by the same `mark_thread_opened()`. | Two questions: "has anyone ever looked at this" (once, per thread, drives the pill) and "is there mail here I haven't read" (forever, per message). Deriving the first from the second would make a reply re-flag a lead as never-looked-at — see N-7. | `test_client_mail_badge.py` |
 | **N-28** | Adding `read_at` **backfills** from `opened_at` for already-opened threads, and is a no-op on every boot after. | Otherwise the feature's first act is to declare months-old mail unread, and nobody trusts it again. | `test_client_mail_badge.py` |
+| **N-29** | On a client's Emails tab **each conversation carries its own unread count** (`EmailThread.unread_count`), marking the row and showing "N new". | The tab badge says a client wrote; with several conversations open it doesn't say which. The lead inbox's rule can't answer it either — a client thread has been opened many times, so "never opened" is permanently false exactly when a reply lands. | `test_client_mail_badge.py` |
+| **N-30** | The row counts **add up to the tab badge**, and a dismissed thread reports **zero** — same exclusions as N-24. | A row claiming unread mail while the nav says nothing is worse than no row marker at all. | `test_client_mail_badge.py` |
+| **N-31** | A row marker clears by **opening that conversation**, same as N-23 — and reappears when they reply again. | It's a view of the same `read_at` state, not a second one that could disagree. | `test_client_mail_badge.py` |
 
 ---
 
@@ -198,6 +201,11 @@ answered none of them correctly.
 | **R-13** | A rule firing on mail that can't be converted is **not an error** — the thread stays in the lead inbox. | That's where it would have been anyway. | `test_sender_rules.py` |
 | **R-14** | Rules are **hard-deleted**, and deleting one unwinds nothing it already did. | A rule is an instruction, not a historical answer other records reference (contrast `SourceOption`, which is hide-don't-delete). | `test_sender_rules.py` |
 | **R-15** | Rule changes are audit-logged. | See S-14. | `test_sender_rules.py` |
+| **R-16** | An address **already on file is reused, never duplicated**: the conversation is attached to that client and the form fills blanks only. | A returning customer filling in the contact form again is the normal case, not an error. It arrives from the same relay, so it's unmatched and the rule fires exactly as it did the first time — and what should happen is what a person would do: put the thread on the record that exists. | `test_form_mapping.py`, `test_sender_rules.py` |
+| **R-17** | That case raises **no "new clients" badge** and writes **no `AutoCreatedClient` row**. | The badge means "somebody appeared on your roster while you weren't looking". Nobody did. The unread-client-mail badge (N-21) is what covers it, and already does. | `test_form_mapping.py` |
+| **R-18** | It's audited as **linked**, not created, under its own event — naming the rule that did it. | "Created" would be a false claim, and "why is this conversation on this client" is a different question from "who added this client". | `test_form_mapping.py` |
+| **R-19** | The sync summary counts it as a thread **matched**, not a client created. | Reporting a roster addition that didn't happen. | `test_form_mapping.py` |
+| **R-20** | Matching is on the **address only** — never the name. | Two people share a name far more often than an inbox, and silently merging two client records is not something an unattended sync should be able to do. | `test_form_mapping.py` |
 
 ---
 
@@ -274,6 +282,7 @@ Not omissions — decisions. Each needs the stated question answered *first*.
 | **Read state shared with Gmail** | Read state now exists *locally* (`EmailMessage.read_at`, N-22) but is never written back: marking a thread read here leaves it bold in Gmail, and reading it in Gmail leaves it counted here. `gmail.modify` permits the label change; nothing does it. Worth deciding deliberately — two-way read state is a sync problem, not a checkbox, and the app being wrong about what you've read is worse than it not knowing. |
 | **Deleting a calendar event** | Nobody asked, and the same trash-vs-delete question as email needs answering first. |
 | **Editing an existing event's guests** | See CAL-5. |
+| **Merging duplicate clients** | R-20 matches on the address alone, so a returning customer who fills the form in with a different email gets a second client record. Merging is deliberately *not* something an unattended sync may do — two people share a name far more often than an inbox. A **manual** merge (pick two clients, move orders/threads/sources onto one, keep the older record) belongs to the host, not here: it would have to move `Order`s, which this module must not import. Settle where it lives — an app-side `/clients/<id>/merge` reading a host hook — before writing it. |
 | **Creating an order from an enquiry** | `communications/` must not import `Order`. The honest shape is a host-registered hook (as `billing/` takes `resolve_billable`) or an app-side listener over `AutoCreatedClient` rows. Naming the order from the message is a Claude API job. **Settle the boundary before writing any of it.** |
 | **Gmail push notifications** | Architecture is ready (SY-3); not built. |
 | **A second provider** | A module in `providers/` plus two registry entries. Nothing above `providers/` should change — that's the test of P-1. |

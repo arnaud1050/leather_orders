@@ -200,10 +200,22 @@ class CalendarProvider(ABC):
     @abstractmethod
     def create_event(
         self, title, start, end, description=None, location=None,
-        attendees=None, all_day=False,
+        attendees=None, all_day=False, notify=False,
     ) -> FetchedEvent:
-        """Create an event and return it as stored."""
+        """Create an event and return it as stored.
+
+        `notify` decides whether the guests are *told*. Adding somebody as an
+        attendee and emailing them an invitation are two different acts, and
+        every backend has to keep them apart: a reminder to yourself with the
+        client attached must not mail the client. It defaults to False so a
+        caller that hasn't thought about it stays silent.
+        """
 
     @abstractmethod
     def update_event(self, provider_event_id: str, **fields) -> FetchedEvent:
-        """Patch an existing event. Only the fields given are changed."""
+        """Patch an existing event. Only the fields given are changed.
+
+        Takes `notify` on the same terms as create_event, and `attendees` —
+        which, if given, is the **complete** guest list, since patching
+        attendees replaces rather than merges.
+        """

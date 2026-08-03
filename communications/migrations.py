@@ -41,6 +41,10 @@ ADDED_COLUMNS = [
     # start tracking the model's default if that ever changes.
     ("email_sync_settings", "calendar_frequency", "INTEGER NOT NULL DEFAULT 30"),
     ("email_messages", "read_at", "DATETIME"),
+    # Null until the next calendar sync fills it, which is honest: we genuinely
+    # don't know who is on an event synced before this shipped. No backfill is
+    # possible without asking Google, and the sync does that anyway.
+    ("calendar_events", "attendees", "TEXT"),
 ]
 
 

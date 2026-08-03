@@ -21,6 +21,7 @@ from models import Client, db
 
 from communications.models import (
     AUDIT_CLIENT_AUTO_CREATED, AUDIT_CLIENT_CREATED_FROM_EMAIL,
+    AUDIT_CLIENT_MAIL_LINKED,
     AUDIT_EMAIL_SENT, AUDIT_SYNC_RUN, AUDIT_THREAD_TRASHED, DIRECTION_INCOMING,
     DIRECTION_OUTGOING, DISMISSED_HIDDEN, DISMISSED_TRASHED, AutoCreatedClient,
     EmailMessage, EmailThread, utcnow,
@@ -487,8 +488,25 @@ def trash_thread(company_id: int, thread_id: int) -> EmailThread:
     return thread
 
 
+def client_with_email(company_id: int, email_address: str) -> Client | None:
+    """Whoever is already on file at this address, if anyone.
+
+    Case-insensitively, and inside the company: two studios can each have a
+    client at the same address and neither may see the other's.
+    """
+    address = (email_address or "").strip().lower()
+    if not address:
+        return None
+    return (
+        Client.query.filter_by(company_id=company_id)
+        .filter(db.func.lower(Client.email) == address)
+        .first()
+    )
+
+
 def create_client_from_thread(
-    company_id: int, thread_id: int, commit: bool = True, **overrides
+    company_id: int, thread_id: int, commit: bool = True,
+    attributed_to: str = "", **overrides
 ) -> Client:
     """Turn an unmatched conversation into a client, and attach it.
 
@@ -499,11 +517,20 @@ def create_client_from_thread(
     `SenderRule` — and `auto_create_client()` below is what calls this for
     them. Everything else stays a deliberate click.
 
+    **An address already on file is reused, never duplicated** — the
+    conversation is simply attached to that client, which is what a person
+    would do with a repeat enquiry. `_apply_details` then fills whatever
+    the form answered and the record hasn't got, and overwrites nothing.
+    The audit line says *linked* rather than *created* in that case: the
+    two are different things to have to answer for later.
+
     Also re-runs matching across the company's other orphan threads, since
     the new client's address may appear in more than one of them.
 
     `commit=False` is for the sync, which owns a transaction covering every
     thread in the run and must be able to roll the whole thing back.
+    `attributed_to` names what did this ("rule @squarespace.info"), for the
+    log — the automatic path is otherwise indistinguishable from a click.
     """
     thread = get_thread(company_id, thread_id)
     if thread is None:
@@ -515,9 +542,7 @@ def create_client_from_thread(
     if not email_address:
         raise EmailServiceError("No sender address found on this conversation.")
 
-    existing = Client.query.filter_by(company_id=company_id).filter(
-        db.func.lower(Client.email) == email_address
-    ).first()
+    existing = client_with_email(company_id, email_address)
     if existing is not None:
         client = existing
     else:
@@ -550,8 +575,10 @@ def create_client_from_thread(
     thread.client_id = client.id
     also_matched = email_sync.rematch_unassigned(company_id)
     audit.record(
-        company_id, AUDIT_CLIENT_CREATED_FROM_EMAIL,
+        company_id,
+        AUDIT_CLIENT_MAIL_LINKED if existing is not None else AUDIT_CLIENT_CREATED_FROM_EMAIL,
         f"{client.name} <{email_address}> from thread {thread.display_subject!r}"
+        + (f" by {attributed_to}" if attributed_to else "")
         + (f"; {also_matched} other conversation(s) matched" if also_matched else ""),
     )
     if commit:
@@ -601,18 +628,32 @@ def _apply_details(client: Client, overrides: dict) -> None:
         client.sources.append(option)
 
 
-def auto_create_client(company_id: int, thread, rule) -> Client | None:
+def auto_create_client(company_id: int, thread, rule) -> tuple[Client | None, bool]:
     """Convert a thread because a sender rule said to. Does not commit.
 
-    Returns the client, or None if there was nothing to convert — an
-    address that's already on file, a thread with no readable sender. A
-    rule firing on mail the app can't turn into a client is not an error:
-    it's one thread left in the lead inbox for a person to look at, which
-    is where it would have been anyway.
+    Returns `(client, was_created)`. The second half is the part worth
+    having: **a repeat enquiry from somebody already on file is the normal
+    case**, not an error and not a new client. The form is sent from the
+    same relay address every time, so the thread arrives unmatched and the
+    rule fires exactly as it did the first time — but the address the
+    mapping pulls out of the body already belongs to a client. What should
+    happen then is what a person would do: attach the conversation to that
+    client and leave everything else alone.
 
-    Records an `AutoCreatedClient` row, which is what puts the badge on
-    Clients. Nobody chose this client, so somebody should be told it's
-    there.
+    So the reused case links the thread, fills any blanks the form
+    answered (`_apply_details`, which never overwrites), and stops there —
+    **no `AutoCreatedClient` row**. That badge means "the app added
+    somebody to your roster while you weren't looking"; nobody was added,
+    so raising it would send someone to a client page to look for a client
+    that has been there for a year. The unread-mail badge is what covers
+    this case, and it already does: a thread on a client with unread mail
+    is precisely what it counts.
+
+    `(None, False)` means there was nothing to convert — a thread with no
+    readable sender, or one already matched. A rule firing on mail the app
+    can't turn into a client is not an error: it's one thread left in the
+    lead inbox for a person to look at, which is where it would have been
+    anyway.
 
     If the rule carries a field mapping, the client is built from what the
     **form said** rather than from who sent it — which is the difference
@@ -623,17 +664,28 @@ def auto_create_client(company_id: int, thread, rule) -> Client | None:
     from communications.services import sender_rules
 
     if thread.client_id is not None:
-        return None
+        return None, False
     overrides = sender_rules.client_fields_from(rule, _first_incoming_body(thread))
+    # Asked *before* converting: afterwards the thread is linked either way
+    # and the two cases are indistinguishable.
+    existing = client_with_email(
+        company_id, overrides.get("email") or thread.counterparty or "",
+    )
     try:
         client = create_client_from_thread(
-            company_id, thread.id, commit=False, **overrides,
+            company_id, thread.id, commit=False,
+            attributed_to=f"rule {rule.pattern}", **overrides,
         )
     except EmailServiceError as exc:
         # E.g. no sender address on the conversation. Worth a line in the
         # log, not worth failing a sync that has already stored the mail.
         logger.info("Sender rule %s could not convert a thread: %s", rule.pattern, exc)
-        return None
+        return None, False
+
+    if existing is not None:
+        # Linked, not created — already audited as such inside the call
+        # above, and deliberately with no AutoCreatedClient row.
+        return client, False
 
     db.session.add(AutoCreatedClient(
         company_id=company_id, client_id=client.id, thread_id=thread.id,
@@ -643,7 +695,7 @@ def auto_create_client(company_id: int, thread, rule) -> Client | None:
         f"{client.name} <{client.email}> created by rule {rule.pattern} "
         f"from {thread.display_subject!r}",
     )
-    return client
+    return client, True
 
 
 def _split_name(first_name, last_name, thread: EmailThread) -> tuple[str, str]:

@@ -79,21 +79,74 @@
 
   {% elif section == 'orders' %}
 
+  {% macro sort_link(key, label, numeric=False) %}
+  {% set next_dir = 'desc' if sort_by == key and sort_dir == 'asc' else 'asc' %}
+  <a href="{{ url_for('client_orders', client_id=client.id, sort=key, dir=next_dir, return_to=return_to) }}" class="sort-link {{ 'is-active' if sort_by == key else '' }} {{ 'is-numeric' if numeric else '' }}">
+    {{ label }}
+    {% if sort_by == key %}
+    <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      {% if sort_dir == 'asc' %}<path d="M6 15l6-6 6 6" />{% else %}<path d="M6 9l6 6 6-6" />{% endif %}
+    </svg>
+    {% endif %}
+  </a>
+  {% endmacro %}
+
   <section class="detail-orders">
     {% if orders %}
-    <ul class="detail-order-list">
-      {% for o in orders %}
-      <li>
-        <a href="{{ url_for('order_page', order_id=o.id) }}?return_to={{ return_to }}">{{ o.item }}</a>
-        — ${{ '%.2f'|format(o.total) }}
-        — due {{ o.due.strftime('%b') }} {{ o.due.day }}, {{ o.due.year }}
-        <span class="dot dot--{{ o.status }}"></span>
-        {% if o.invoice %}
-        <a class="invoice-ref" href="{{ url_for('billing.invoice_page', invoice_id=o.invoice.id) }}?return_to={{ return_to }}">{{ o.invoice.number }}</a>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
+    <div class="client-stats">
+      <div class="client-stats__item">
+        <span class="client-stats__value" id="client-order-count">{{ orders|length }}</span>
+        <span class="client-stats__label" id="client-order-count-label">Order{{ 's' if orders|length != 1 else '' }}</span>
+      </div>
+      <div class="client-stats__item">
+        <span class="client-stats__value" id="client-order-balance-total">${{ '%.2f'|format(orders|sum(attribute='balance_due')) }}</span>
+        <span class="client-stats__label">Balance due, shown orders</span>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <span class="legend__label">Filter by</span>
+      <div class="legend" id="client-status-legend">
+        {% for key, label in status_labels.items() %}
+        <button type="button" class="legend__item" data-status="{{ key }}"><span class="dot dot--{{ key }}"></span>{{ label }}</button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="invoice-table invoice-table--no-mono" id="client-orders-table">
+        <thead>
+          <tr>
+            <th>{{ sort_link('item', 'Item') }}</th>
+            <th>{{ sort_link('status', 'Status') }}</th>
+            <th>{{ sort_link('start', 'Start') }}</th>
+            <th>{{ sort_link('due', 'Due') }}</th>
+            <th class="is-numeric">{{ sort_link('total', 'Total', numeric=True) }}</th>
+            <th class="is-numeric">{{ sort_link('paid', 'Paid', numeric=True) }}</th>
+            <th class="is-numeric">{{ sort_link('balance', 'Balance', numeric=True) }}</th>
+            <th>{{ sort_link('invoice', 'Invoice') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in orders %}
+          <tr data-status="{{ o.status }}" data-balance="{{ o.balance_due }}">
+            <td><a href="{{ url_for('order_page', order_id=o.id) }}?return_to={{ return_to }}">{{ o.item }}</a></td>
+            <td><span class="pill pill--{{ o.status }}">{{ status_labels[o.status] }}</span></td>
+            <td>{{ o.start.strftime('%Y-%m-%d') }}</td>
+            <td>{{ o.due.strftime('%Y-%m-%d') }}</td>
+            <td class="is-numeric">${{ '%.2f'|format(o.total) }}</td>
+            <td class="is-numeric">${{ '%.2f'|format(o.amount_paid) }}</td>
+            <td class="is-numeric">${{ '%.2f'|format(o.balance_due) }}</td>
+            <td>
+              {% if o.invoice %}
+              <a class="invoice-ref" href="{{ url_for('billing.invoice_page', invoice_id=o.invoice.id) }}?return_to={{ return_to }}">{{ o.invoice.number }}</a>
+              {% else %}&mdash;{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <p class="detail-note">No orders on file for this client yet.</p>
     {% endif %}
@@ -102,6 +155,70 @@
   {% endif %}
 
 </div>
+
+{% if section == 'orders' and orders %}
+<script>
+  // Status filter for this client's own orders table — same localStorage
+  // pattern as the main Orders list (orders_list.html), own key so hiding a
+  // status here doesn't affect that page or vice versa.
+  (function () {
+    var HIDDEN_KEY = 'client-orders-hidden-statuses';
+
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#client-orders-table tbody tr'));
+    var legendButtons = document.querySelectorAll('#client-status-legend .legend__item');
+    var orderCount = document.getElementById('client-order-count');
+    var orderCountLabel = document.getElementById('client-order-count-label');
+    var balanceTotal = document.getElementById('client-order-balance-total');
+
+    if (!rows.length) return;
+
+    function getHidden() {
+      try {
+        return JSON.parse(localStorage.getItem(HIDDEN_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function applyFilter() {
+      var hidden = getHidden();
+      var visible = 0;
+      var balance = 0;
+      rows.forEach(function (row) {
+        var isHidden = hidden.indexOf(row.dataset.status) !== -1;
+        row.hidden = isHidden;
+        if (!isHidden) {
+          visible++;
+          balance += parseFloat(row.dataset.balance);
+        }
+      });
+      legendButtons.forEach(function (btn) {
+        btn.classList.toggle('legend__item--off', hidden.indexOf(btn.dataset.status) !== -1);
+      });
+      orderCount.textContent = visible;
+      orderCountLabel.textContent = 'Order' + (visible !== 1 ? 's' : '');
+      balanceTotal.textContent = '$' + balance.toFixed(2);
+    }
+
+    legendButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var hidden = getHidden();
+        var status = btn.dataset.status;
+        var index = hidden.indexOf(status);
+        if (index === -1) {
+          hidden.push(status);
+        } else {
+          hidden.splice(index, 1);
+        }
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+        applyFilter();
+      });
+    });
+
+    applyFilter();
+  })();
+</script>
+{% endif %}
 
 {% if other_source_option %}
 <script>

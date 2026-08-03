@@ -561,6 +561,22 @@ ORDER_SORT_KEYS = {
     "balance": lambda o: o.balance_due,
 }
 
+# The client page's Orders tab is a single client's own roster, so it uses a
+# fixed column set (no per-company customization like ORDER_COLUMNS) plus one
+# column that list doesn't have — Invoice, since "did this order get billed"
+# reads naturally sitting next to a single client's orders in a way it
+# wouldn't in the company-wide list (that already has its own /invoices page).
+CLIENT_ORDER_SORT_KEYS = {
+    "item": lambda o: o.item.lower(),
+    "status": lambda o: o.status,
+    "start": lambda o: o.start,
+    "due": lambda o: o.due,
+    "total": lambda o: o.total,
+    "paid": lambda o: o.amount_paid,
+    "balance": lambda o: o.balance_due,
+    "invoice": lambda o: o.invoice.number.lower() if o.invoice else "",
+}
+
 # Canonical Orders-list columns: key -> (label, numeric). This dict is both
 # the fallback order for a company that's never saved a preference and the
 # whitelist a saved preference is filtered against — a key removed from here
@@ -771,13 +787,19 @@ def client_page(client_id: int):
 def client_orders(client_id: int):
     client = get_client_or_404(client_id)
     return_to = request.args.get("return_to") or url_for("timeline_view")
+    orders = list(client.orders)
+    sort_by, sort_dir = _sort_args(CLIENT_ORDER_SORT_KEYS, "due")
+    orders.sort(key=CLIENT_ORDER_SORT_KEYS[sort_by], reverse=(sort_dir == "desc"))
     return render_template(
         "client_page.html",
         section="orders",
         client=client,
-        orders=client.orders,
+        orders=orders,
         return_to=return_to,
         back_label=back_label(return_to),
+        status_labels=STATUS_LABELS,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         active_view=None,
     )
 

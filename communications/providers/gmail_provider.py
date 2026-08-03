@@ -341,12 +341,13 @@ class GoogleCalendarProvider(_GoogleBase, CalendarProvider):
 
     def create_event(
         self, title, start, end, description=None, location=None,
-        attendees=None, all_day=False,
+        attendees=None, all_day=False, notify=False,
     ) -> FetchedEvent:
         try:
             created = self._calendar().events().insert(
                 calendarId="primary",
                 body=_event_body(title, start, end, description, location, attendees, all_day),
+                sendUpdates=_send_updates(notify),
             ).execute()
         except Exception as exc:  # noqa: BLE001
             raise self._wrap(exc, "creating a calendar event") from exc
@@ -354,7 +355,14 @@ class GoogleCalendarProvider(_GoogleBase, CalendarProvider):
 
     def update_event(self, provider_event_id: str, **fields) -> FetchedEvent:
         """Patch, not update: PATCH sends only the fields being changed, so
-        editing a title can't blank out an attendee list we never loaded."""
+        editing a title can't blank out a field we never loaded.
+
+        `attendees` is the exception and has to be handled with care — patching
+        it *replaces* the array rather than merging, so a caller passing a
+        partial list uninvites the rest. It's therefore only sent when the key
+        is present at all, and callers are expected to pass the full list they
+        want the event to end up with (see the docstring on the base class).
+        """
         body = {}
         if "title" in fields:
             body["summary"] = fields["title"]
@@ -362,6 +370,10 @@ class GoogleCalendarProvider(_GoogleBase, CalendarProvider):
             body["description"] = fields["description"]
         if "location" in fields:
             body["location"] = fields["location"]
+        if "attendees" in fields:
+            body["attendees"] = [
+                {"email": address} for address in (fields["attendees"] or [])
+            ]
         all_day = fields.get("all_day", False)
         if fields.get("start"):
             body["start"] = _event_time(fields["start"], all_day)
@@ -371,6 +383,7 @@ class GoogleCalendarProvider(_GoogleBase, CalendarProvider):
         try:
             updated = self._calendar().events().patch(
                 calendarId="primary", eventId=provider_event_id, body=body,
+                sendUpdates=_send_updates(fields.get("notify", False)),
             ).execute()
         except Exception as exc:  # noqa: BLE001
             raise self._wrap(exc, "updating a calendar event") from exc
@@ -515,6 +528,19 @@ def _event_time(value: datetime, all_day: bool, is_end: bool = False) -> dict:
         day = value.date() + timedelta(days=1) if is_end else value.date()
         return {"date": day.isoformat()}
     return {"dateTime": _to_rfc3339(value), "timeZone": "UTC"}
+
+
+def _send_updates(notify) -> str:
+    """Google's flag for "email the guests about this".
+
+    Spelled out rather than left to the API's default, which is exactly the
+    surprise this replaces: `insert` defaults to sending nothing, so attaching
+    an attendee looked like inviting them while no mail ever went out.
+
+    "all" rather than "externalOnly": the studio's own staff on an appointment
+    should hear about it the same as a client does.
+    """
+    return "all" if notify else "none"
 
 
 def _event_body(title, start, end, description, location, attendees, all_day) -> dict:

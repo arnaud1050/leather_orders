@@ -13,12 +13,31 @@
      beside it — a lead can be read and still be waiting to be dealt with,
      and that's exactly the state worth being able to see. #}
   {% set is_new = flag_new|default(false) and thread.is_unopened %}
-  <li class="thread-list__item {% if is_new %}thread-list__item--new{% endif %}">
+
+  {# `flag_unread` is the client's Emails tab asking the other question:
+     not "has anyone ever opened this" but "is there mail in here I haven't
+     read". A client thread runs for years and gets opened many times, so
+     the lead inbox's rule would go quiet forever after the first read and
+     say nothing when they wrote again — which is precisely the case that
+     needs pointing at when a client has several conversations.
+
+     Same purple, and it clears the same way: by opening the conversation,
+     which marks its unread messages read. The two flags are never both on,
+     so a row carries one marker. #}
+  {% set unread = thread.unread_count if flag_unread|default(false) else 0 %}
+  <li class="thread-list__item {% if is_new or unread %}thread-list__item--new{% endif %}">
     <span class="thread-list__heading">
       <a class="thread-list__subject" href="{{ url_for('communications.thread_page', thread_id=thread.id, return_to=return_to) }}">
         {{ thread.display_subject }}
       </a>
       {% if is_new %}<span class="pill pill--new">New</span>{% endif %}
+      {% if unread %}
+      {# The count, not just "New": a thread with four unread replies is a
+         different amount of reading from one, and the per-row numbers add
+         up to the badge on the tab above them. #}
+      <span class="pill pill--new"
+            title="{{ unread }} unread message{{ 's' if unread != 1 }}">{{ unread }} new</span>
+      {% endif %}
     </span>
     <span class="thread-list__meta">
       {{ thread.counterparty or '—' }}

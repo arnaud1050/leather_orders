@@ -346,11 +346,15 @@ def test_the_new_pill_sits_with_the_subject_not_the_metadata(
     assert heading < pill < meta
 
 
-def test_the_client_email_tab_does_not_flag_new_threads(logged_in, client_record, thread):
-    """`flag_new` is off there, so the shared list renders without any
-    new/seen decoration rather than marking a client's whole history new."""
+def test_the_client_email_tab_never_says_new(logged_in, client_record, thread):
+    """`flag_new` is off there — a client's whole history isn't "new", and
+    marking a years-old conversation as never-opened would say nothing.
+
+    The tab does carry the *other* marker, an unread count per thread (see
+    test_client_mail_badge.py). Two questions, two rules: this asserts the
+    lead inbox's word never leaks onto a page where it isn't true."""
     body = logged_in.get(f"/clients/{client_record.id}/emails").get_data(as_text=True)
-    assert "pill--new" not in body
+    assert ">New</span>" not in body
 
 
 def test_the_dismissed_view_does_not_flag_threads_as_new(

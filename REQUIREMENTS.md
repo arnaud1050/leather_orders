@@ -2,7 +2,7 @@
 
 This is the living spec for the core app — `app.py` + `models.py` + their
 templates — on the same footing as `inventory/REQUIREMENTS.md` and
-`communications/BUSINESS_RULES.md`: every rule as a checkable statement, not
+`communications/REQUIREMENTS.md`: every rule as a checkable statement, not
 prose, so requirements don't only live in code (or in someone's head) and so
 test coverage can be checked against something. When behavior changes on
 purpose, update the rule here in the same commit — if a rule and the code
@@ -28,7 +28,7 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
     `tests/test_invoice_routes.py`, `tests/test_addresses.py` and
     `tests/test_billing_boundary.py`, and documented in prose in
     `CLAUDE.md`'s "Billing module" section.
-  - `communications/` — see `communications/BUSINESS_RULES.md`.
+  - `communications/` — see `communications/REQUIREMENTS.md`.
   - `inventory/` — see `inventory/REQUIREMENTS.md`.
   - `documents/` — file upload/storage for an order's documents; see
     `documents/REQUIREMENTS.md`.
@@ -336,6 +336,24 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   `.settings-nav` sub-nav shape as Settings; both stay at their existing
   URLs (`/clients/<id>`, `/clients/<id>/orders`) and both carry `return_to`
   through tab switches.
+- **CL14.** Each order on the client page's Orders tab shows its status as
+  the same labeled `.pill.pill--{status}` component the Orders page's
+  Status column uses — not the bare `.dot--{status}` marker (that one has no
+  label of its own and only reads correctly next to a legend, like the
+  timeline's).
+- **CL15.** The client page's Orders tab (`/clients/<id>/orders`) renders
+  that client's orders as a sortable, filterable table, matching `/orders`'s
+  style and interaction (not its per-company column customization):
+  - Sorting is server-side via `?sort=&dir=`, against a **fixed** set of
+    keys (`CLIENT_ORDER_SORT_KEYS`) — Item / Status / Start / Due / Total /
+    Paid / Balance / Invoice — unlike `/orders`'s reorderable/hideable
+    columns (LST6–LST12), since this is one client's own roster, not a
+    company-wide list a studio would want to reshape.
+  - The status filter is the same click-a-legend-item pattern as `/orders`,
+    persisted under its own `localStorage` key
+    (`client-orders-hidden-statuses`), independent of `/orders`'s.
+  - **Invoice** is a column `/orders` doesn't have — the order's invoice
+    number, linked, or an em dash when it has none.
 - **MOD4.** The full order page has three tabs — **Details → Materials →
   Billing** — same sub-nav shape; the bare `/orders/<id>` URL stays on
   Details for backward-link compatibility.
@@ -473,6 +491,8 @@ has no regression test.
 | OR11 | `test_new_order_inline_client_creation_creates_both_rows`, `test_new_order_inline_client_creation_requires_first_and_last_name` |
 | CL13 | `test_new_client_route_creates_a_client_with_minimal_fields`, `test_new_client_route_requires_first_and_last_name` |
 | MOD1–MOD4 | — gap — (dialog/tab markup and layout; not asserted by a route test) |
+| CL14 | `test_orders_tab_shows_the_labeled_status_pill`, `test_orders_tab_status_dot_only_appears_in_the_legend` (`tests/test_client_orders_tab.py`) |
+| CL15 | `test_orders_tab_is_a_table_with_the_expected_columns`, `test_orders_tab_shows_dash_for_an_uninvoiced_order`, `test_orders_tab_sorts_by_the_requested_column` (`tests/test_client_orders_tab.py`); the status filter itself is — gap — same as LST4's client-side limitation |
 | MOD5 | `test_edit_client_redirects_to_return_to`, `test_edit_order_redirects_to_return_to` |
 | MOD6 | `test_back_label_variants` |
 | SET1 | `test_settings_root_redirects_to_general` |

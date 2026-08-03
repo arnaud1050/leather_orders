@@ -620,8 +620,9 @@ def create_calendar_event():
         _flash(str(exc), "error")
         return redirect(return_to)
 
+    notify = _wants_invite(request.form)
     try:
-        calendar_service.create_event(
+        event = calendar_service.create_event(
             current_user.company_id,
             title=request.form.get("title", "").strip() or "(untitled event)",
             start=start, end=end, all_day=all_day,
@@ -629,22 +630,26 @@ def create_calendar_event():
             location=request.form.get("location", "").strip() or None,
             attendees=_attendees(request.form.get("attendees")),
             client_id=_client_id(request.form.get("client_id")),
+            notify=notify,
         )
     except (calendar_service.CalendarServiceError, ProviderError) as exc:
         _flash(str(exc), "error")
         return redirect(return_to)
-    _flash("Event added to your Google Calendar.", "success")
+    _flash(_event_notice("Event added to your Google Calendar.", event, notify), "success")
     return redirect(return_to)
 
 
 @bp.route("/calendar/events/<int:event_id>", methods=["POST"])
 @login_required
 def update_calendar_event(event_id: int):
-    """Edit a mirrored event.
+    """Edit a mirrored event, guests included.
 
-    Attendees are deliberately not editable here: Google's PATCH replaces the
-    whole attendee list, so sending one built from a form that never loaded the
-    existing guests would silently uninvite them.
+    Guests are editable now that the local mirror holds them
+    (`CalendarEvent.attendees`): the form is rendered *from* that list, so what
+    it posts back is the complete list the event should end up with, which is
+    what Google's replace-not-merge patch needs. It used to be refused for
+    exactly that reason — a form that didn't know the guests could only
+    uninvite them.
     """
     return_to = request.form.get("return_to") or url_for("calendar_view")
     try:
@@ -653,19 +658,22 @@ def update_calendar_event(event_id: int):
         _flash(str(exc), "error")
         return redirect(return_to)
 
+    notify = _wants_invite(request.form)
     try:
-        calendar_service.update_event(
+        event = calendar_service.update_event(
             current_user.company_id, event_id,
             title=request.form.get("title", "").strip() or "(untitled event)",
             start=start, end=end, all_day=all_day,
             description=request.form.get("description", "").strip() or None,
             location=request.form.get("location", "").strip() or None,
+            attendees=_attendees(request.form.get("attendees")),
             client_id=_client_id(request.form.get("client_id")),
+            notify=notify,
         )
     except (calendar_service.CalendarServiceError, ProviderError) as exc:
         _flash(str(exc), "error")
         return redirect(return_to)
-    _flash("Event updated.", "success")
+    _flash(_event_notice("Event updated.", event, notify), "success")
     return redirect(return_to)
 
 
@@ -718,10 +726,46 @@ def _parse_time(value):
 
 
 def _attendees(raw):
-    """Comma-separated invitees, or None. Whatever is typed goes to Google as
-    entered — it validates addresses far better than a regex here would."""
-    addresses = [part.strip() for part in (raw or "").split(",") if part.strip()]
-    return addresses or None
+    """Comma-separated extra guests, beyond the linked client.
+
+    Whatever is typed goes to Google as entered — it validates addresses far
+    better than a regex here would.
+
+    Returns a **list**, empty when nothing was typed, never None: for the edit
+    form an empty list is a real instruction ("this event now has no extra
+    guests"), and collapsing it to None would make removing the last one
+    impossible. The client's own address is added below this, by the service.
+    """
+    return [part.strip() for part in (raw or "").split(",") if part.strip()]
+
+
+def _wants_invite(form) -> bool:
+    """Whether the guests should be *emailed*, decided by the button pressed.
+
+    Read from the submit button's own name rather than inferred from the guest
+    list, because they answer different questions: an appointment noted against
+    a client is routine, telling the client about it is an outward-facing act
+    that only happens because somebody chose it. Inferring would mean linking a
+    client to a private reminder quietly mails them.
+    """
+    return bool(form.get("send_invite"))
+
+
+def _event_notice(base: str, event, notify: bool) -> str:
+    """Say whether mail actually went out.
+
+    The old message named the calendar and stopped there, which was the whole
+    trap: nothing on screen distinguished "invited" from "quietly added as an
+    attendee and never told". A confirmation that doesn't mention the mail is
+    one you have to go to Gmail to verify.
+    """
+    guests = event.guest_list if event is not None else []
+    if not guests:
+        return base
+    if not notify:
+        return f"{base} No invitations sent."
+    who = guests[0] if len(guests) == 1 else f"{len(guests)} guests"
+    return f"{base} Invitation sent to {who}."
 
 
 def _client_id(raw):

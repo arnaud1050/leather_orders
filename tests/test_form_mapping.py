@@ -17,8 +17,10 @@ import pytest
 from models import Client, SourceOption, db
 
 from communications.models import (
+    AUDIT_CLIENT_AUTO_CREATED, AUDIT_CLIENT_MAIL_LINKED,
     FIELD_EMAIL, FIELD_IGNORE, FIELD_INQUIRY, FIELD_MESSAGE, FIELD_NAME,
-    FIELD_PHONE, FIELD_SOURCE, RULE_CONVERT, SenderRuleField,
+    FIELD_PHONE, FIELD_SOURCE, RULE_CONVERT, AuditLog, AutoCreatedClient,
+    SenderRuleField,
 )
 from communications.services import email_service, sender_rules
 from communications.sync import email_sync
@@ -317,6 +319,132 @@ def test_a_form_with_no_email_falls_back_to_the_sender(app, company, account, ma
 def test_the_badge_still_announces_it(app, company, account, mapped_rule):
     deliver(account)
     assert sender_rules.unseen_client_count(company.id) == 1
+
+
+# --- a returning customer -------------------------------------------------
+#
+# The common case once the studio has been running a while: somebody
+# already on the roster fills in the contact form again. It arrives from
+# the same relay, so it's unmatched and the rule fires exactly as it did
+# the first time — but the address in the body is a client. Nothing should
+# be created; the conversation belongs on the record that exists.
+
+def test_a_returning_customer_gets_the_thread_on_their_record(
+    app, company, account, mapped_rule,
+):
+    existing = Client(company_id=company.id, first_name="Haejung", last_name="Kim",
+                      email="dayanee1004@gmail.com")
+    db.session.add(existing)
+    db.session.commit()
+
+    deliver(account)
+
+    assert Client.query.filter_by(company_id=company.id).count() == 1
+    assert len(email_service.threads_for_client(company.id, existing.id)) == 1
+
+
+def test_a_returning_customer_does_not_raise_the_new_client_badge(
+    app, company, account, mapped_rule,
+):
+    """The badge means "somebody appeared on your roster while you weren't
+    looking". Nobody did — so raising it would send someone off to look for
+    a client that has been there for a year."""
+    db.session.add(Client(company_id=company.id, first_name="Haejung",
+                          last_name="Kim", email="dayanee1004@gmail.com"))
+    db.session.commit()
+
+    deliver(account)
+
+    assert sender_rules.unseen_client_count(company.id) == 0
+    assert AutoCreatedClient.query.filter_by(company_id=company.id).count() == 0
+
+
+def test_a_returning_customers_mail_shows_as_unread_client_mail(
+    app, company, account, mapped_rule,
+):
+    """What *does* announce it, and the right badge for the job: their
+    enquiry is now unread mail from a client."""
+    existing = Client(company_id=company.id, first_name="Haejung", last_name="Kim",
+                      email="dayanee1004@gmail.com")
+    db.session.add(existing)
+    db.session.commit()
+
+    deliver(account)
+
+    assert email_service.unread_client_mail_count(company.id, existing.id) == 1
+
+
+def test_the_link_is_audited_as_a_link_not_a_creation(
+    app, company, account, mapped_rule,
+):
+    """"Created" would be a false claim, and the question someone asks
+    later — why is this thread on this client — is a different one."""
+    db.session.add(Client(company_id=company.id, first_name="Haejung",
+                          last_name="Kim", email="dayanee1004@gmail.com"))
+    db.session.commit()
+
+    deliver(account)
+
+    assert AuditLog.query.filter_by(event=AUDIT_CLIENT_AUTO_CREATED).count() == 0
+    entry = AuditLog.query.filter_by(event=AUDIT_CLIENT_MAIL_LINKED).one()
+    assert FORM in entry.detail          # the rule that did it
+
+
+def test_the_sync_summary_counts_it_as_matched_not_created(
+    app, company, account, mapped_rule,
+):
+    db.session.add(Client(company_id=company.id, first_name="Haejung",
+                          last_name="Kim", email="dayanee1004@gmail.com"))
+    db.session.commit()
+
+    result = deliver(account)
+
+    assert result.clients_auto_created == 0
+    assert result.threads_matched == 1
+
+
+def test_a_returning_customers_enquiry_leaves_the_lead_inbox(
+    app, company, account, mapped_rule,
+):
+    """It has an owner now, so it isn't a lead — same as any converted
+    thread."""
+    db.session.add(Client(company_id=company.id, first_name="Haejung",
+                          last_name="Kim", email="dayanee1004@gmail.com"))
+    db.session.commit()
+
+    deliver(account)
+    assert email_service.lead_threads(company.id) == []
+
+
+def test_the_form_fills_a_returning_customers_blanks_only(
+    app, company, account, mapped_rule,
+):
+    """Same rule as a second enquiry from a client the app created: fill
+    what's missing, overwrite nothing."""
+    existing = Client(company_id=company.id, first_name="Haejung", last_name="Kim",
+                      email="dayanee1004@gmail.com",
+                      inquiry_type="Belt (quoted last year)")
+    db.session.add(existing)
+    db.session.commit()
+
+    deliver(account)
+
+    assert existing.inquiry_type == "Belt (quoted last year)"
+    assert existing.first_message.startswith("Hi Joe,")
+
+
+def test_a_returning_customer_matched_by_name_is_still_a_separate_client(
+    app, company, account, mapped_rule,
+):
+    """Matching is on the address and only the address. Two people share a
+    name far more often than an inbox, and merging the wrong two client
+    records is not something a sync should be able to do."""
+    db.session.add(Client(company_id=company.id, first_name="Haejung",
+                          last_name="Kim", email="different@example.com"))
+    db.session.commit()
+
+    deliver(account)
+    assert Client.query.filter_by(company_id=company.id).count() == 2
 
 
 # --- managing the mapping -------------------------------------------------
