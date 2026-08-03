@@ -13,6 +13,59 @@ join through order -> client -> company is one that eventually gets skipped.
 
 from models import db
 
+from inventory.config import DEFAULT_UNIT, UNIT_CATALOG
+
+
+class InventoryUnit(db.Model):
+    """A company-configurable measurement unit for InventoryItem.unit,
+    picked from the fixed catalog in inventory/config.py's UNIT_CATALOG —
+    not free text, unlike InventoryType's label, so the Materials tab's
+    quantity-step logic (whole vs. divisible, see UNIT_CATALOG's `whole`
+    flag) always has a definition to read for whatever a company enables.
+
+    This table controls what's *offered* in the Add/Edit item dropdown and
+    in what order — it does not gate what `InventoryItem.unit` accepts (see
+    the module docstring in config.py and add_item/edit_item in
+    services.py): a unit already in use keeps labelling correctly even
+    after a company hides or removes it here, the same hide-don't-delete
+    reasoning as every other company-configurable list in this app.
+
+    `key` (config.DEFAULT_UNIT, "each") is special: every company always
+    has it, seeded lazily on first use (see services._ensure_default_unit,
+    the same "create it on first read" idiom billing.profile_for() uses),
+    and it can be neither hidden nor deleted — see `is_default`/`can_delete`
+    below. Position is not part of what makes it special, though: it's
+    reorderable like any other unit, and typically lands first only because
+    it's the first row a company ever has.
+    """
+    __tablename__ = "inventory_units"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, nullable=False)
+    key = db.Column(db.String(20), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    @property
+    def label(self) -> str:
+        return UNIT_CATALOG.get(self.key, {}).get("label", self.key)
+
+    @property
+    def whole(self) -> bool:
+        return UNIT_CATALOG.get(self.key, {}).get("whole", True)
+
+    @property
+    def is_default(self) -> bool:
+        return self.key == DEFAULT_UNIT
+
+    @property
+    def can_delete(self):
+        if self.is_default:
+            return False
+        return InventoryItem.query.filter_by(
+            company_id=self.company_id, unit=self.key,
+        ).first() is None
+
 
 class InventoryType(db.Model):
     """A company-configurable material category (Leather, Lining,

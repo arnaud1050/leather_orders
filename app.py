@@ -74,6 +74,7 @@ import inventory.migrations as inventory_migrations  # noqa: E402
 import inventory.routes as inventory_routes  # noqa: E402
 from inventory import services as inventory_service  # noqa: E402
 from inventory.config import UNIT_LABELS as INVENTORY_UNIT_LABELS  # noqa: E402
+from inventory.config import UNIT_WHOLE as INVENTORY_UNIT_WHOLE  # noqa: E402
 
 app = Flask(__name__)
 
@@ -1010,6 +1011,7 @@ def order_materials(order_id: int):
         selectable_items=inventory_service.selectable_items(current_user.company_id, order.id),
         understocked_materials=inventory_service.understocked_materials_for_order(order.id),
         unit_labels=INVENTORY_UNIT_LABELS,
+        unit_whole=INVENTORY_UNIT_WHOLE,
         return_to=return_to,
         back_label=back_label(return_to),
         active_view=None,
@@ -1235,6 +1237,8 @@ def settings_inventory():
         "settings.html",
         section="inventory",
         company=db.session.get(Company, current_user.company_id),
+        units=inventory_service.list_units(current_user.company_id),
+        available_units=inventory_service.available_catalog_units(current_user.company_id),
         inventory_types=inventory_service.list_types(current_user.company_id),
         notice=_take_settings_notice(),
         active_view="settings",

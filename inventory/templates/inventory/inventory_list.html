@@ -124,9 +124,17 @@
   {% endif %}
   <label class="modal__field">Unit
     <select name="unit">
-      {% for key, label in unit_labels.items() %}
-      <option value="{{ key }}" {% if item and key == item.unit %}selected{% endif %}>{{ label }}</option>
+      {% for unit in units if unit.is_active or (item and item.unit == unit.key) %}
+      <option value="{{ unit.key }}" {% if item and item.unit == unit.key %}selected{% endif %}>{{ unit.label }}{% if not unit.is_active %} (hidden){% endif %}</option>
       {% endfor %}
+      {% if item and item.unit not in (units|map(attribute='key')|list) %}
+      {# Belt-and-suspenders: an item whose unit isn't tracked as a company
+         InventoryUnit row at all (shouldn't happen once the migration
+         backfill has run — see inventory/migrations.py — but this is what
+         keeps a save from silently switching its unit to whatever sorts
+         first instead). #}
+      <option value="{{ item.unit }}" selected>{{ unit_labels.get(item.unit, item.unit) }}</option>
+      {% endif %}
     </select>
   </label>
   <label class="modal__field">Quantity on hand<input type="number" name="quantity_on_hand" step="0.01" value="{{ item.quantity_on_hand if item else '0' }}" required></label>

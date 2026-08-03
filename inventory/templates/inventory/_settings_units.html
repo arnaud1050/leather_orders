@@ -1,0 +1,132 @@
+{# Included from templates/settings.html's "inventory" section, first — the
+   unit a material is measured in decides how its quantity behaves
+   everywhere else (the Materials tab's step, what a number even means), so
+   it comes before Inventory types below it. Context expected: units
+   (InventoryUnit rows, in sort_order, active + hidden — see
+   inventory.services.list_units; "Each" lands first by default but is
+   reorderable like every other row), available_units (catalog entries not
+   yet added, grouped alphabetically by UNIT_CATALOG's group for the
+   "Add a unit" dropdown — see inventory.services.available_catalog_units). #}
+
+<h2>Units</h2>
+<p class="detail-note">
+  What quantities are measured in — shown as a dropdown when adding or
+  editing an inventory item. Picked from a fixed list rather than typed
+  freely, so the Materials tab always knows whether a quantity is whole
+  (like Each or Skein) or divisible (like Sqft or Yard).
+  <strong>Each</strong> is always available and can't be hidden or removed.
+  Drag a row by its handle to reorder — it saves as you drop it. A unit
+  can't be deleted once an item is measured in it — hide it instead to
+  remove it from new selections while keeping that item labelled correctly.
+</p>
+
+<ul class="settings-source-list" id="inventory-unit-list">
+  {% for unit in units %}
+  <li class="settings-source-list__item {% if not unit.is_active %}settings-source-list__item--hidden{% endif %}"
+      draggable="true" data-unit-id="{{ unit.id }}">
+    <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
+      <svg viewBox="0 0 10 16" fill="currentColor">
+        <circle cx="2" cy="2" r="1.3"/>
+        <circle cx="8" cy="2" r="1.3"/>
+        <circle cx="2" cy="8" r="1.3"/>
+        <circle cx="8" cy="8" r="1.3"/>
+        <circle cx="2" cy="14" r="1.3"/>
+        <circle cx="8" cy="14" r="1.3"/>
+      </svg>
+    </span>
+    <span class="settings-source-list__label">
+      {{ unit.label }}
+      {% if not unit.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+    </span>
+    {% if unit.is_default %}
+    {# No Hide/Delete for "Each" — but still a real .settings-source-list__actions
+       slot (not omitted) so this row keeps the same three-child flex layout
+       (grip / label / trailing slot) as every other row. Without it,
+       `justify-content: space-between` on the .item has only two children
+       and shoves the label flush right instead of left next to the grip. #}
+    <div class="settings-source-list__actions">
+      <span class="checkbox-group__hidden-tag">(always available)</span>
+    </div>
+    {% else %}
+    <div class="settings-source-list__actions">
+      <form method="post" action="{{ url_for('inventory.toggle_unit', unit_id=unit.id) }}">
+        <button type="submit" class="btn-secondary">{{ 'Unhide' if not unit.is_active else 'Hide' }}</button>
+      </form>
+      {% if unit.can_delete %}
+      <form method="post" action="{{ url_for('inventory.delete_unit', unit_id=unit.id) }}">
+        <button type="submit" class="btn-secondary">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+
+{% if available_units %}
+<form method="post" action="{{ url_for('inventory.add_unit') }}" class="detail-form settings-source-add">
+  <label>Add a unit
+    <select name="key">
+      {% set ns = namespace(current_group=None, open_group=False) %}
+      {% for catalog_unit in available_units %}
+        {% if catalog_unit.group != ns.current_group %}
+          {% if ns.open_group %}</optgroup>{% endif %}
+          <optgroup label="{{ catalog_unit.group }}">
+          {% set ns.current_group = catalog_unit.group %}
+          {% set ns.open_group = true %}
+        {% endif %}
+        <option value="{{ catalog_unit.key }}">{{ catalog_unit.label }}</option>
+      {% endfor %}
+      {% if ns.open_group %}</optgroup>{% endif %}
+    </select>
+  </label>
+  <div>
+    <button type="submit" class="btn-primary">Add</button>
+  </div>
+</form>
+{% else %}
+<p class="detail-note">Every available unit has already been added.</p>
+{% endif %}
+
+<script>
+  (function () {
+    var list = document.getElementById('inventory-unit-list');
+    if (!list) return;
+    var dragged = null;
+
+    list.addEventListener('dragstart', function (e) {
+      var item = e.target.closest('.settings-source-list__item');
+      if (!item) return;
+      dragged = item;
+      item.classList.add('settings-source-list__item--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', item.dataset.unitId);
+    });
+
+    list.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      var target = e.target.closest('.settings-source-list__item');
+      if (!target || target === dragged) return;
+      var rect = target.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < rect.height / 2;
+      list.insertBefore(dragged, before ? target : target.nextSibling);
+    });
+
+    list.addEventListener('drop', function (e) {
+      e.preventDefault();
+    });
+
+    list.addEventListener('dragend', function () {
+      if (dragged) dragged.classList.remove('settings-source-list__item--dragging');
+      dragged = null;
+      var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
+        .map(function (item) { return parseInt(item.dataset.unitId, 10); });
+      fetch("{{ url_for('inventory.reorder_units') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: order }),
+      });
+    });
+  })();
+</script>

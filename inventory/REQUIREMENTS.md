@@ -21,7 +21,78 @@ choices; this file is the checklist of *what must hold true*.
   order's Materials tab changes what the Billing tab shows or what an
   invoice says.
 
-## 1. Inventory types (`InventoryType`)
+## 1. Units (`InventoryUnit`)
+
+`config.UNIT_CATALOG` is the fixed, global catalog of every unit key the app
+knows about (Each, Sqft, Gram, Yard, ...) plus whether each is whole or
+divisible. `InventoryUnit` is a company's own configurable *subset and
+order* of that catalog — which keys are offered in the Add/Edit item unit
+dropdown, and in what sequence. It never gates what `InventoryItem.unit`
+*accepts* — see UN9.
+
+- **UN1.** A unit belongs to exactly one company (`company_id`), references
+  one `UNIT_CATALOG` key (`key`), and has `sort_order` and `is_active`.
+- **UN2.** `key` must be a real `UNIT_CATALOG` entry — an unknown key is
+  rejected (`add_unit` returns `None`, no row created).
+- **UN3.** Every company always has exactly one row with
+  `key = config.DEFAULT_UNIT` ("each"), seeded lazily on first read
+  (`_ensure_default_unit`, called by `list_units`/`active_units`/
+  `available_catalog_units`) — a company that's never touched Settings or
+  `/inventory` still gets it the moment any of those run.
+- **UN4.** The default unit lands first **by default** — it's assigned the
+  next `sort_order` when seeded (UN3), which is `0` the first time, before
+  any other unit exists for that company — but it is **not pinned**: like
+  any other unit, its position is whatever `reorder_units` (UN12) last set
+  it to.
+- **UN5.** The default unit **can be neither hidden nor deleted**
+  (`is_default` is `True`) — `toggle_unit`/`delete_unit` are a no-op against
+  it, and it has no Hide/Delete controls in the UI at all (there's nothing
+  for a request to hit — see UN-route note below). This exemption covers
+  hide/delete only, not position — see UN4/UN12.
+- **UN6.** Adding the default unit's key via `add_unit` is rejected (it
+  always already exists — see UN3) — the same as adding any key already
+  present for the company (`UN7`).
+- **UN7.** Adding a unit whose key is already present for the company —
+  active **or hidden** — is rejected as a duplicate, the same
+  match-against-hidden-too rule `InventoryType`/`SourceOption` use (T3). A
+  hidden unit is brought back via Unhide, not by re-adding it.
+- **UN8.** A new (non-default) unit is assigned the next `sort_order` — a
+  running count of every row the company already has, including the
+  default — so newly added units display after "Each" and after each other
+  in the order added, by default.
+- **UN9.** `add_item`/`edit_item` validate `unit` against the **full**
+  `UNIT_CATALOG`, not against the company's configured `InventoryUnit`
+  rows. The company's list controls what's *offered* in a dropdown, never
+  what's *accepted* — a catalog key stays a legal `InventoryItem.unit` even
+  if this company has never added it to their Units settings, the same way
+  a hidden `InventoryType` still labels the items already tagged with it.
+- **UN10.** Toggling or deleting a unit is scoped to the owning company — an
+  id belonging to another company is a no-op, same as `InventoryType`/
+  `InventoryItem`.
+- **UN11.** Deleting a (non-default) unit only succeeds when `can_delete` is
+  true, i.e. **no `InventoryItem` currently has that unit** — same
+  hide-don't-delete shape as `InventoryType`/`InventoryItem`.
+- **UN12.** Reordering (`reorder_units`) sets `sort_order` from position in
+  the given id list; **the default unit is repositioned exactly like any
+  other row** if its id is included (it is draggable in the UI — see UN4/
+  UN5); ids outside the company are silently skipped, same "the request is
+  a fetch(), not a form the server built" reasoning as
+  `reorder_document_types`/`reorder_source_options`.
+- **UN13.** `available_catalog_units(company_id)` — the "Add a unit"
+  dropdown's contents — excludes the default key entirely (UN6) and every
+  key already present for the company, active or hidden (UN7). Sorted by
+  `UNIT_CATALOG`'s `group` **alphabetically** (Area, Count, Length, Volume,
+  Weight) for the dropdown's `<optgroup>`s — a stable sort, so entries
+  within one group keep the catalog's own declaration order rather than
+  also being re-sorted by label.
+- **UN14.** A migration (`inventory/migrations.py`) backfills, for every
+  existing company, a default-unit row (if missing) and one `InventoryUnit`
+  per distinct `(company_id, unit)` pair any `InventoryItem` already
+  carries (if missing) — so upgrading an installation that predates this
+  feature surfaces units already in real use (e.g. "Sqft") instead of
+  showing only "Each". No-op once every company/pair has a row.
+
+## 2. Inventory types (`InventoryType`)
 
 - **T1.** A type belongs to exactly one company (`company_id`) and has a
   `label`, `sort_order`, and `is_active` flag.
@@ -48,13 +119,15 @@ choices; this file is the checklist of *what must hold true*.
   existence, not `is_active`, same "does the category exist" question
   `has_order_types` asks elsewhere in the app.
 
-## 2. Inventory items (`InventoryItem`)
+## 3. Inventory items (`InventoryItem`)
 
 - **I1.** An item belongs to exactly one company, may optionally belong to
   one `InventoryType` (nullable), and has `name`, `unit`, `quantity_on_hand`,
   `unit_price`, `is_active`.
-- **I2.** `unit` must be one of the fixed set `{"each", "sqft"}`
-  (`inventory/config.py`'s `UNIT_LABELS`) — nothing else is a valid unit.
+- **I2.** `unit` must be a key in `inventory/config.py`'s `UNIT_CATALOG`
+  (Each, Sqft, Gram, Yard, ... — see §1) — nothing else is a valid unit.
+  This checks the full catalog, not the company's configured `InventoryUnit`
+  list — see UN9.
 - **I3.** Creating an item requires a non-blank `name` **and** a valid
   `unit`. Either failing rejects the whole creation — no row is created.
 - **I4.** An `inventory_type_id` supplied at creation that doesn't belong to
@@ -82,7 +155,7 @@ choices; this file is the checklist of *what must hold true*.
   hidden both; sort order is a presentation concern (see §7), not a
   property of the stored data.
 
-## 3. Selectable items (the "add material" picker on an order)
+## 4. Selectable items (the "add material" picker on an order)
 
 - **S1.** The items offered are: every **active** item for the company,
   union any item — active or hidden — already used as an `OrderMaterial` on
@@ -92,7 +165,7 @@ choices; this file is the checklist of *what must hold true*.
 - **S3.** The merged, deduplicated set is ordered by (type's `sort_order`,
   item name); untyped items sort last.
 
-## 4. Drawing a material onto an order (`OrderMaterial`)
+## 5. Drawing a material onto an order (`OrderMaterial`)
 
 - **M1.** Adding a material requires an `inventory_item_id` that resolves to
   a real item belonging to the **same company** as the order, and a
@@ -123,7 +196,7 @@ choices; this file is the checklist of *what must hold true*.
   frozen (snapshotted) unit price, never a live one.
 - **M12.** The materials list for an order returns every row for that order.
 
-## 5. One-off costs (`OrderMaterialOther`)
+## 6. One-off costs (`OrderMaterialOther`)
 
 - **O1.** An "Other" cost is not tied to any `InventoryItem` and never
   touches stock — by construction, it has no such foreign key.
@@ -135,7 +208,7 @@ choices; this file is the checklist of *what must hold true*.
 - **O4.** Editing/deleting is scoped by `order_id`, same as materials (M9).
 - **O5.** Deleting removes the row outright — there's nothing to restore.
 
-## 6. Total material cost
+## 7. Total material cost
 
 - **C1.** The total = sum of every material's cost (M11) on that order,
   plus the sum of every "Other" cost (§5) on that order.
@@ -144,7 +217,7 @@ choices; this file is the checklist of *what must hold true*.
   — adding, editing, or removing a material or an Other must leave the
   order's client-facing total completely unaffected.
 
-## 7. Tenant isolation & auth
+## 8. Tenant isolation & auth
 
 - **A1.** Every mutating route (`/inventory/...`, `/settings/inventory-types/...`,
   `/orders/<id>/materials/...`) requires an authenticated session — an
@@ -160,7 +233,7 @@ choices; this file is the checklist of *what must hold true*.
   quietly no-op-ing.
 - **A5.** `/settings/inventory` lists types for the current company only.
 
-## 8. UI behavior
+## 9. UI behavior
 
 - **U1.** The master list is sortable by **Type**, **Name**, or **Unit
   price** (`?sort=&dir=`), defaulting to Type ascending; sorting by Type
@@ -209,7 +282,7 @@ choices; this file is the checklist of *what must hold true*.
 - **U13.** The "Show hidden" toggle is absent entirely when no item is
   hidden — there being nothing for it to reveal.
 
-## 9. Stock alerts (out-of-stock nav badge + Materials-tab warning)
+## 10. Stock alerts (out-of-stock nav badge + Materials-tab warning)
 
 Two separate surfaces reading the same underlying fact — an item at zero or
 negative stock — at two different scopes: company-wide (the badge) and
@@ -248,7 +321,7 @@ order-specific (the warning on that order's Materials tab).
   say what's currently true, not what happened historically, so neither can
   disagree with `/inventory`'s own per-row red-quantity flag (U6).
 
-## 10. Explicit non-requirements
+## 11. Explicit non-requirements
 
 These are deliberate omissions, not oversights — listed so nobody "fixes"
 them without checking first. See CLAUDE.md's "Known gaps" for the reasoning.
@@ -266,6 +339,11 @@ them without checking first. See CLAUDE.md's "Known gaps" for the reasoning.
   company starts empty.
 - **N5.** No CSRF token layer on this module's forms — same posture as every
   other mutating route in `app.py` (relies on `SESSION_COOKIE_SAMESITE=Lax`).
+- **N6.** A company's Units list is not an enforcement mechanism — hiding or
+  never adding a catalog unit doesn't stop `InventoryItem.unit` from being
+  set to it (UN9). Making it enforced would mean deciding what happens to
+  existing items measured in a unit a company later removes, which nothing
+  has asked for; the list only shapes what a dropdown offers.
 
 ---
 
@@ -277,6 +355,20 @@ catch a regression of it; that's a to-do, not a shrug.
 
 | Rule | Test(s) |
 | --- | --- |
+| UN1 | *(implicit — model shape)* |
+| UN2 | `test_add_unit_rejects_an_unknown_key` |
+| UN3 | `test_list_units_always_includes_each_first`, `test_each_is_scoped_per_company` |
+| UN4 | `test_list_units_includes_each_by_default`, `test_reorder_units_can_reposition_each` |
+| UN5 | `test_toggle_unit_is_a_no_op_for_each`, `test_delete_unit_is_a_no_op_for_each` |
+| UN6 | `test_add_unit_rejects_each` |
+| UN7 | `test_add_unit_rejects_a_duplicate`, `test_add_unit_rejects_a_duplicate_of_a_hidden_unit` |
+| UN8 | `test_add_unit_appends_after_each` |
+| UN9 | `test_add_item_accepts_any_catalog_unit_regardless_of_company_selection`, `test_add_item_rejects_a_key_outside_the_catalog` |
+| UN10 | `test_toggle_unit_is_scoped_to_the_tenant` — gap: delete_unit's own tenant scoping isn't separately asserted |
+| UN11 | `test_delete_unit_removes_it_when_unused`, `test_delete_unit_is_blocked_once_referenced` |
+| UN12 | `test_reorder_units_sets_sort_order_from_position`, `test_reorder_units_can_reposition_each`, `test_reorder_units_skips_ids_outside_the_tenant` |
+| UN13 | `test_available_catalog_units_excludes_each_and_added_units`, `test_available_catalog_units_still_excludes_a_hidden_unit`, `test_available_catalog_units_are_grouped_alphabetically` |
+| UN14 | `test_migration_backfills_a_unit_from_an_existing_item`, `test_migration_backfill_is_idempotent` |
 | T1 | *(implicit — model shape)* |
 | T2 | `test_add_type_rejects_a_blank_label` |
 | T3 | `test_add_type_rejects_an_exact_duplicate`, `test_add_type_rejects_a_case_insensitive_duplicate`, `test_add_type_rejects_a_duplicate_of_a_hidden_type` |

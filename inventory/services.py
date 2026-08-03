@@ -11,8 +11,120 @@ with nowhere interesting to show a stack trace.
 
 from models import db
 
-from inventory.config import UNIT_LABELS
-from inventory.models import InventoryItem, InventoryType, OrderMaterial, OrderMaterialOther
+from inventory.config import DEFAULT_UNIT, UNIT_CATALOG
+from inventory.models import InventoryItem, InventoryType, InventoryUnit, OrderMaterial, OrderMaterialOther
+
+# ---------------------------------------------------------------------------
+# Units — which of config.UNIT_CATALOG's keys a company offers in its
+# Add/Edit item dropdown, and in what order. See InventoryUnit's docstring:
+# this list controls what's *offered*, never what add_item/edit_item
+# *accept* (that's the full UNIT_CATALOG, always — see below).
+# ---------------------------------------------------------------------------
+
+def _ensure_default_unit(company_id: int) -> None:
+    """Every company always has "Each" (config.DEFAULT_UNIT) selectable —
+    seeded lazily on first read rather than at company creation, the same
+    "create it on first use" idiom billing.profile_for() uses, so a company
+    that's never touched /settings/inventory or /inventory still gets it
+    the moment either page (or add_unit) is asked to list units.
+
+    Assigned the next sort_order like any other unit (not pinned) — it just
+    happens to land first by default since nothing else exists yet the
+    first time this runs. Unlike hide/delete, position is not part of what
+    makes "Each" special: a company can drag it anywhere in the list."""
+    exists = InventoryUnit.query.filter_by(company_id=company_id, key=DEFAULT_UNIT).first()
+    if exists is None:
+        next_sort_order = InventoryUnit.query.filter_by(company_id=company_id).count()
+        db.session.add(InventoryUnit(company_id=company_id, key=DEFAULT_UNIT, sort_order=next_sort_order))
+        db.session.commit()
+
+
+def list_units(company_id: int) -> list[InventoryUnit]:
+    """Every configured unit, active or hidden, for the Units settings
+    section, in the company's own sort_order — "Each" lands first by
+    default (see _ensure_default_unit) but can be dragged elsewhere."""
+    _ensure_default_unit(company_id)
+    return (
+        InventoryUnit.query.filter_by(company_id=company_id)
+        .order_by(InventoryUnit.sort_order).all()
+    )
+
+
+def active_units(company_id: int) -> list[InventoryUnit]:
+    _ensure_default_unit(company_id)
+    return (
+        InventoryUnit.query.filter_by(company_id=company_id, is_active=True)
+        .order_by(InventoryUnit.sort_order).all()
+    )
+
+
+def available_catalog_units(company_id: int) -> list[dict]:
+    """Catalog entries not yet added (active or hidden) for this company —
+    what the "Add a unit" dropdown in Settings offers. "Each" is never
+    offered here: every company always has it (_ensure_default_unit) and it
+    can't be hidden or removed, so re-adding it would be meaningless.
+
+    Sorted by `group` (Area, Count, Length, Volume, Weight) so the
+    dropdown's <optgroup>s read alphabetically — a stable sort, so entries
+    within one group keep UNIT_CATALOG's own order rather than also being
+    re-sorted by label."""
+    _ensure_default_unit(company_id)
+    used_keys = {u.key for u in InventoryUnit.query.filter_by(company_id=company_id).all()}
+    entries = [
+        {"key": key, **info}
+        for key, info in UNIT_CATALOG.items()
+        if key != DEFAULT_UNIT and key not in used_keys
+    ]
+    return sorted(entries, key=lambda entry: entry["group"])
+
+
+def add_unit(company_id: int, key: str) -> InventoryUnit | None:
+    if key not in UNIT_CATALOG or key == DEFAULT_UNIT:
+        return None
+    _ensure_default_unit(company_id)
+    if InventoryUnit.query.filter_by(company_id=company_id, key=key).first() is not None:
+        return None
+    next_sort_order = InventoryUnit.query.filter_by(company_id=company_id).count()
+    unit = InventoryUnit(company_id=company_id, key=key, sort_order=next_sort_order)
+    db.session.add(unit)
+    db.session.commit()
+    return unit
+
+
+def toggle_unit(company_id: int, unit_id: int) -> None:
+    unit = InventoryUnit.query.filter_by(id=unit_id, company_id=company_id).first()
+    if unit is not None and not unit.is_default:
+        unit.is_active = not unit.is_active
+        db.session.commit()
+
+
+def delete_unit(company_id: int, unit_id: int) -> None:
+    unit = InventoryUnit.query.filter_by(id=unit_id, company_id=company_id).first()
+    if unit is not None and unit.can_delete:
+        db.session.delete(unit)
+        db.session.commit()
+
+
+def reorder_units(company_id: int, ordered_ids: list[int]) -> None:
+    """Set sort_order from position in `ordered_ids`, same shape as
+    documents.reorder_document_types. "Each" is draggable like any other
+    row (see _settings_units.html) and is repositioned exactly like the
+    rest — being exempt from hide/delete doesn't extend to position. Ids
+    outside this company are silently skipped, same "the request is a
+    fetch(), not a form the server built" reasoning as everywhere else this
+    pattern is used."""
+    units_by_id = {
+        u.id: u for u in InventoryUnit.query.filter_by(company_id=company_id).all()
+    }
+    position = 0
+    for unit_id in ordered_ids:
+        unit = units_by_id.get(unit_id)
+        if unit is None:
+            continue
+        unit.sort_order = position
+        position += 1
+    db.session.commit()
+
 
 # ---------------------------------------------------------------------------
 # Inventory types — company-configurable categories, same hide-don't-delete
@@ -131,7 +243,7 @@ def add_item(
     quantity_on_hand: float, unit_price: float,
 ) -> InventoryItem | None:
     name = (name or "").strip()
-    if not name or unit not in UNIT_LABELS:
+    if not name or unit not in UNIT_CATALOG:
         return None
     resolved_type_id = None
     if inventory_type_id is not None:
@@ -162,7 +274,7 @@ def edit_item(
     name = (name or "").strip()
     if name:
         item.name = name
-    if unit in UNIT_LABELS:
+    if unit in UNIT_CATALOG:
         item.unit = unit
     if inventory_type_id is None:
         item.inventory_type_id = None

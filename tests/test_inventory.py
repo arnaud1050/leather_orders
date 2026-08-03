@@ -6,6 +6,7 @@ on every route, and that none of this touches Order.total/OrderLine/the
 invoice — this module is cost-tracking only (see inventory/__init__.py).
 """
 
+import json
 from datetime import date
 
 import pytest
@@ -13,7 +14,247 @@ import pytest
 from models import Client, Order, db
 
 from inventory import services
-from inventory.models import InventoryItem, InventoryType, OrderMaterial, OrderMaterialOther
+from inventory.models import InventoryItem, InventoryType, InventoryUnit, OrderMaterial, OrderMaterialOther
+
+
+# --- units: which UNIT_CATALOG keys a company offers, and in what order ----
+
+def test_list_units_includes_each_by_default(company):
+    units = services.list_units(company.id)
+    assert [u.key for u in units] == ["each"]
+    assert units[0].is_default is True
+
+
+def test_each_is_scoped_per_company(company, other_company):
+    """_ensure_default_unit seeds "each" lazily per company — visiting it
+    for one company must not create a row for another."""
+    services.list_units(company.id)
+    assert InventoryUnit.query.filter_by(company_id=other_company.id).count() == 0
+
+
+def test_add_unit_appends_after_each(company):
+    unit = services.add_unit(company.id, "sqft")
+    assert unit.key == "sqft"
+    assert unit.sort_order == 1  # after "each" (sort_order 0, count 1)
+    assert [u.key for u in services.list_units(company.id)] == ["each", "sqft"]
+
+
+def test_add_unit_rejects_an_unknown_key(company):
+    assert services.add_unit(company.id, "furlong") is None
+
+
+def test_add_unit_rejects_each(company):
+    """"Each" is always present already — re-adding it via the catalog
+    picker would be meaningless."""
+    assert services.add_unit(company.id, "each") is None
+
+
+def test_add_unit_rejects_a_duplicate(company):
+    services.add_unit(company.id, "sqft")
+    assert services.add_unit(company.id, "sqft") is None
+    assert InventoryUnit.query.filter_by(company_id=company.id, key="sqft").count() == 1
+
+
+def test_add_unit_rejects_a_duplicate_of_a_hidden_unit(company):
+    unit = services.add_unit(company.id, "sqft")
+    services.toggle_unit(company.id, unit.id)
+    assert services.add_unit(company.id, "sqft") is None
+
+
+def test_available_catalog_units_excludes_each_and_added_units(company):
+    services.add_unit(company.id, "sqft")
+    available = {u["key"] for u in services.available_catalog_units(company.id)}
+    assert "each" not in available
+    assert "sqft" not in available
+    assert "gram" in available  # not yet added
+
+
+def test_available_catalog_units_still_excludes_a_hidden_unit(company):
+    """A hidden unit isn't offered to "add" again — bring it back via
+    Unhide in the existing list instead, same as SourceOption/OrderType."""
+    unit = services.add_unit(company.id, "sqft")
+    services.toggle_unit(company.id, unit.id)
+    available = {u["key"] for u in services.available_catalog_units(company.id)}
+    assert "sqft" not in available
+
+
+def test_available_catalog_units_are_grouped_alphabetically(company):
+    """The "Add a unit" dropdown's <optgroup>s should read Area, Count,
+    Length, Volume, Weight — alphabetical, not UNIT_CATALOG's own
+    Count/Length/Area/Weight/Volume declaration order."""
+    groups = [u["group"] for u in services.available_catalog_units(company.id)]
+    seen_in_order = list(dict.fromkeys(groups))
+    assert seen_in_order == sorted(seen_in_order)
+    assert seen_in_order[0] == "Area"
+
+
+def test_toggle_unit_flips_is_active(company):
+    unit = services.add_unit(company.id, "sqft")
+    services.toggle_unit(company.id, unit.id)
+    assert db.session.get(InventoryUnit, unit.id).is_active is False
+    services.toggle_unit(company.id, unit.id)
+    assert db.session.get(InventoryUnit, unit.id).is_active is True
+
+
+def test_toggle_unit_is_a_no_op_for_each(company):
+    each = services.list_units(company.id)[0]
+    services.toggle_unit(company.id, each.id)
+    assert db.session.get(InventoryUnit, each.id).is_active is True
+
+
+def test_toggle_unit_is_scoped_to_the_tenant(company, other_company):
+    unit = services.add_unit(other_company.id, "sqft")
+    services.toggle_unit(company.id, unit.id)
+    assert db.session.get(InventoryUnit, unit.id).is_active is True  # untouched
+
+
+def test_delete_unit_removes_it_when_unused(company):
+    unit = services.add_unit(company.id, "sqft")
+    services.delete_unit(company.id, unit.id)
+    assert db.session.get(InventoryUnit, unit.id) is None
+
+
+def test_delete_unit_is_blocked_once_referenced(company):
+    unit = services.add_unit(company.id, "sqft")
+    services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=10, unit_price=1,
+    )
+    services.delete_unit(company.id, unit.id)
+    assert db.session.get(InventoryUnit, unit.id) is not None
+
+
+def test_delete_unit_is_a_no_op_for_each(company):
+    each = services.list_units(company.id)[0]
+    services.delete_unit(company.id, each.id)
+    assert db.session.get(InventoryUnit, each.id) is not None
+
+
+def test_reorder_units_sets_sort_order_from_position(company):
+    a = services.add_unit(company.id, "sqft")
+    b = services.add_unit(company.id, "gram")
+    services.reorder_units(company.id, [b.id, a.id])
+    assert db.session.get(InventoryUnit, b.id).sort_order == 0
+    assert db.session.get(InventoryUnit, a.id).sort_order == 1
+
+
+def test_reorder_units_can_reposition_each(company):
+    """"Each" can't be hidden or deleted, but it isn't pinned in place —
+    a company can drag it anywhere in the list."""
+    each = services.list_units(company.id)[0]
+    unit = services.add_unit(company.id, "sqft")
+    services.reorder_units(company.id, [unit.id, each.id])
+    assert db.session.get(InventoryUnit, unit.id).sort_order == 0
+    assert db.session.get(InventoryUnit, each.id).sort_order == 1
+
+
+def test_reorder_units_skips_ids_outside_the_tenant(company, other_company):
+    theirs = services.add_unit(other_company.id, "sqft")
+    services.reorder_units(company.id, [theirs.id])
+    assert db.session.get(InventoryUnit, theirs.id).sort_order == 1  # untouched
+
+
+def test_add_item_accepts_any_catalog_unit_regardless_of_company_selection(company):
+    """The Units list controls what's *offered* in the dropdown, never what
+    add_item/edit_item *accept* — a catalog key is always valid even if this
+    company has never added it to their settings."""
+    assert InventoryUnit.query.filter_by(company_id=company.id, key="gram").first() is None
+    item = services.add_item(
+        company.id, name="Clay", unit="gram",
+        inventory_type_id=None, quantity_on_hand=500, unit_price=0.02,
+    )
+    assert item is not None
+    assert item.unit == "gram"
+
+
+def test_add_item_rejects_a_key_outside_the_catalog(company):
+    assert services.add_item(
+        company.id, name="Widget", unit="furlong",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    ) is None
+
+
+# --- routes: units settings --------------------------------------------
+
+def test_add_unit_route_creates_a_unit(logged_in, company):
+    response = logged_in.post("/settings/inventory-units", data={"key": "sqft"}, follow_redirects=True)
+    assert response.status_code == 200
+    assert InventoryUnit.query.filter_by(company_id=company.id, key="sqft").first() is not None
+
+
+def test_toggle_unit_route_flips_is_active(logged_in, company):
+    unit = services.add_unit(company.id, "sqft")
+    logged_in.post(f"/settings/inventory-units/{unit.id}/toggle")
+    assert db.session.get(InventoryUnit, unit.id).is_active is False
+
+
+def test_delete_unit_route_removes_it_when_unused(logged_in, company):
+    unit = services.add_unit(company.id, "sqft")
+    logged_in.post(f"/settings/inventory-units/{unit.id}/delete")
+    assert db.session.get(InventoryUnit, unit.id) is None
+
+
+def test_reorder_units_route_persists_order(logged_in, company):
+    a = services.add_unit(company.id, "sqft")
+    b = services.add_unit(company.id, "gram")
+    logged_in.post(
+        "/settings/inventory-units/reorder",
+        data=json.dumps({"order": [b.id, a.id]}),
+        content_type="application/json",
+    )
+    assert db.session.get(InventoryUnit, b.id).sort_order == 0
+    assert db.session.get(InventoryUnit, a.id).sort_order == 1
+
+
+def test_settings_inventory_page_lists_units_first(logged_in, company):
+    services.add_unit(company.id, "sqft")
+    response = logged_in.get("/settings/inventory")
+    assert response.status_code == 200
+    body = response.data.decode()
+    assert body.index("Units") < body.index("Inventory types")
+    assert "Sqft" in body
+    assert "always available" in body  # Each's tag
+
+
+def test_settings_inventory_page_excludes_added_units_from_add_dropdown(logged_in, company):
+    services.add_unit(company.id, "sqft")
+    body = logged_in.get("/settings/inventory").data.decode()
+    assert 'value="gram"' in body  # still offered
+    assert 'value="sqft"' not in body  # already added, not re-offered
+
+
+# --- migrations: backfilling units from existing items ----------------------
+
+def test_migration_backfills_a_unit_from_an_existing_item(company):
+    from inventory import migrations as inventory_migrations
+
+    services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=10, unit_price=1,
+    )
+    assert InventoryUnit.query.filter_by(company_id=company.id, key="sqft").first() is None
+
+    inventory_migrations.run_migrations()
+
+    backfilled = InventoryUnit.query.filter_by(company_id=company.id, key="sqft").first()
+    assert backfilled is not None
+    assert backfilled.is_active is True
+
+    each = InventoryUnit.query.filter_by(company_id=company.id, key="each").first()
+    assert each is not None
+    assert each.is_default is True
+
+
+def test_migration_backfill_is_idempotent(company):
+    from inventory import migrations as inventory_migrations
+
+    services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=10, unit_price=1,
+    )
+    inventory_migrations.run_migrations()
+    inventory_migrations.run_migrations()
+    assert InventoryUnit.query.filter_by(company_id=company.id, key="sqft").count() == 1
 
 
 # --- inventory types: add / duplicate / hide-don't-delete / tenant scoping --
@@ -444,6 +685,10 @@ def test_total_material_cost_never_touches_order_total(company, order):
     "/settings/inventory-types",
     "/settings/inventory-types/1/toggle",
     "/settings/inventory-types/1/delete",
+    "/settings/inventory-units",
+    "/settings/inventory-units/1/toggle",
+    "/settings/inventory-units/1/delete",
+    "/settings/inventory-units/reorder",
 ])
 def test_inventory_management_routes_require_login(app, path):
     response = app.test_client().post(path, data={})

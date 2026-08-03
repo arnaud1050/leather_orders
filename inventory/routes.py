@@ -139,6 +139,12 @@ def inventory_list():
         sort_by=sort_by,
         sort_dir=sort_dir,
         inventory_types=services.active_types(current_user.company_id),
+        # list_units(), not active_units(): the Add/Edit item dropdown (see
+        # inventory_list.html's item_fields() macro) needs every configured
+        # unit so it can still show a hidden-but-currently-selected one on
+        # an existing item, same active-∪-current pattern as
+        # inventory_type_id's own hidden-option handling just above it.
+        units=services.list_units(current_user.company_id),
         unit_labels=UNIT_LABELS,
         active_view="inventory",
     )
@@ -186,6 +192,48 @@ def toggle_item(item_id: int):
 def delete_item(item_id: int):
     services.delete_item(current_user.company_id, item_id)
     return redirect(url_for("inventory.inventory_list"))
+
+
+# ---------------------------------------------------------------------------
+# Units — settings-level (company-wide), which of config.UNIT_CATALOG's keys
+# a company offers and in what order. "Each" (config.DEFAULT_UNIT) has no
+# toggle/delete route at all — there's nothing for a request to hit, so a
+# hand-crafted POST against a nonexistent id is just a 404, not a guarded
+# no-op the service also happens to enforce (services.toggle_unit/delete_unit
+# still check is_default too, belt-and-suspenders).
+# ---------------------------------------------------------------------------
+
+@bp.route("/settings/inventory-units", methods=["POST"])
+@login_required
+def add_unit():
+    key = request.form.get("key", "")
+    services.add_unit(current_user.company_id, key)
+    return redirect(url_for("settings_inventory"))
+
+
+@bp.route("/settings/inventory-units/<int:unit_id>/toggle", methods=["POST"])
+@login_required
+def toggle_unit(unit_id: int):
+    services.toggle_unit(current_user.company_id, unit_id)
+    return redirect(url_for("settings_inventory"))
+
+
+@bp.route("/settings/inventory-units/<int:unit_id>/delete", methods=["POST"])
+@login_required
+def delete_unit(unit_id: int):
+    services.delete_unit(current_user.company_id, unit_id)
+    return redirect(url_for("settings_inventory"))
+
+
+@bp.route("/settings/inventory-units/reorder", methods=["POST"])
+@login_required
+def reorder_units():
+    """Fired by the drag-and-drop handler in _settings_units.html — a JSON
+    body, not a form post, same shape as documents.reorder_types."""
+    payload = request.get_json(silent=True) or {}
+    ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
+    services.reorder_units(current_user.company_id, ordered_ids)
+    return "", 204
 
 
 # ---------------------------------------------------------------------------

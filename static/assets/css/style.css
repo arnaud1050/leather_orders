@@ -1926,6 +1926,12 @@ dialog.modal::backdrop {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
+  /* A floor, not a fixed height — every row already reaches this with a
+     Hide/Delete button in its trailing slot (see .settings-source-list__actions).
+     The one row with no buttons there at all ("Each" on /settings/inventory,
+     which only ever shows a plain "(always available)" tag) would otherwise
+     render visibly shorter than every row around it. */
+  min-height: 55px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
 }

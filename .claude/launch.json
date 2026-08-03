@@ -12,15 +12,6 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["-m", "flask", "--app", "app", "run", "--port", "5051"],
       "port": 5051
-    },
-    {
-      "name": "snapshot-preview",
-      "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": [
-        "-m", "http.server", "5052",
-        "-d", "C:/Users/arnau/AppData/Local/Temp/atelier-calendar-preview"
-      ],
-      "port": 5052
     }
   ]
 }

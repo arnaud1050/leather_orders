@@ -4,7 +4,8 @@
    (OrderMaterialOther rows), selectable_items (InventoryItem, active ∪
    already used on this order), total_material_cost, understocked_materials
    (OrderMaterial rows whose live item is now at zero/negative stock),
-   unit_labels, return_to.
+   unit_labels, unit_whole (config.UNIT_WHOLE — key -> whole/divisible, for
+   the Add-material quantity step below), return_to.
 
    This tab is cost-tracking only — nothing here touches order.total,
    OrderLine, or the invoice. See inventory/__init__.py. #}
@@ -37,8 +38,8 @@
     <li class="doc-list__item">
       <span class="doc-list__label">{{ material.item_name }}</span>
       <span class="doc-list__filename">
-        {{ (material.quantity_used|round(0)|int) if material.unit == 'each' else ('%.2f'|format(material.quantity_used)) }}
-        {{ unit_labels[material.unit] }} &times; ${{ '%.2f'|format(material.unit_price) }}
+        {{ (material.quantity_used|round(0)|int) if unit_whole.get(material.unit, True) else ('%.2f'|format(material.quantity_used)) }}
+        {{ unit_labels.get(material.unit, material.unit) }} &times; ${{ '%.2f'|format(material.unit_price) }}
       </span>
       <span class="doc-list__amount">${{ '%.2f'|format(material.total) }}</span>
       <div class="doc-list__actions">
@@ -69,7 +70,7 @@
             {% set ns.current_type = type_label %}
             {% set ns.open_group = true %}
           {% endif %}
-          <option value="{{ item.id }}" data-unit="{{ item.unit }}" data-price="{{ item.unit_price }}">{{ item.name }} ({{ unit_labels[item.unit] }}, ${{ '%.2f'|format(item.unit_price) }})</option>
+          <option value="{{ item.id }}" data-price="{{ item.unit_price }}" data-step="{{ '1' if unit_whole.get(item.unit, True) else '0.01' }}">{{ item.name }} ({{ unit_labels.get(item.unit, item.unit) }}, ${{ '%.2f'|format(item.unit_price) }})</option>
         {% endfor %}
         {% if ns.open_group %}</optgroup>{% endif %}
       </select>
@@ -129,7 +130,7 @@
   <form method="post" action="{{ url_for('inventory.edit_material', order_id=order.id, material_id=material.id) }}" class="modal__form">
     <input type="hidden" name="return_to" value="{{ request.path }}">
     <h2 class="modal__title">{{ material.item_name }}</h2>
-    <label class="modal__field">Quantity ({{ unit_labels[material.unit] }})<input type="number" name="quantity_used" step="0.01" min="0" value="{{ material.quantity_used }}" required></label>
+    <label class="modal__field">Quantity ({{ unit_labels.get(material.unit, material.unit) }})<input type="number" name="quantity_used" step="{{ '1' if unit_whole.get(material.unit, True) else '0.01' }}" min="0" value="{{ material.quantity_used }}" required></label>
     <div class="modal__field">Unit price<span class="modal__readout">${{ '%.2f'|format(material.unit_price) }}</span></div>
     <div class="modal__actions">
       <div class="modal__buttons">
@@ -167,9 +168,8 @@
 
     function sync() {
       var option = select.options[select.selectedIndex];
-      var unit = option ? option.dataset.unit : null;
       var price = option ? parseFloat(option.dataset.price) : NaN;
-      quantity.step = unit === 'sqft' ? '0.01' : '1';
+      quantity.step = option ? (option.dataset.step || '1') : '1';
       var qty = parseFloat(quantity.value);
       if (!estimate) return;
       estimate.textContent = (option && option.value && !isNaN(qty) && !isNaN(price))

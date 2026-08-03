@@ -5,9 +5,9 @@
    category is added. Each page passes `section`. #}
 <nav class="settings-nav">
   <a href="{{ url_for('settings_general') }}" class="settings-nav__link {{ 'is-active' if section == 'general' else '' }}">General</a>
+  <a href="{{ url_for('settings_clients') }}" class="settings-nav__link {{ 'is-active' if section == 'clients' else '' }}">Clients</a>
   <a href="{{ url_for('settings_orders') }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
   <a href="{{ url_for('settings_inventory') }}" class="settings-nav__link {{ 'is-active' if section == 'inventory' else '' }}">Inventory</a>
-  <a href="{{ url_for('settings_clients') }}" class="settings-nav__link {{ 'is-active' if section == 'clients' else '' }}">Clients</a>
   <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
   {# Carries the same alert badge as the top nav's Settings link, so the trail
      from "something's wrong" to the page that says what continues here. #}
