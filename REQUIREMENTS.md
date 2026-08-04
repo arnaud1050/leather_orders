@@ -58,6 +58,12 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **CO5.** `base.html`'s top nav (`.view-switch`) renders only when
   `current_user.is_authenticated` — a logged-out visitor sees no nav, not a
   disabled one.
+- **CO5a.** Below 680px, the nav's links (`#view-switch-links`) are always
+  present in the markup but collapse behind a hamburger toggle button
+  (`#nav-toggle`) that reveals them as a dropdown on click; above 680px the
+  toggle is hidden and the links render as the same horizontal row as
+  always. Both elements exist regardless of viewport — only CSS decides
+  which is visible.
 - **CO6.** There is exactly one seeded company today (no signup flow, no
   tenant switcher) — `CO1`–`CO3` are enforced as schema-and-query-level
   guarantees anyway, so a second company can be added later without an audit
@@ -452,7 +458,9 @@ has no regression test.
 | CO1–CO2 | — gap — (structural; exercised indirectly by every CO3-tagged test below, not asserted on its own) |
 | CO3 | `test_get_order_or_404_is_scoped_to_the_tenant`, `test_get_client_or_404_is_scoped_to_the_tenant` |
 | CO4 | `test_core_get_routes_require_login`, `test_core_get_routes_require_login_for_a_specific_order_and_client`, `test_core_post_routes_require_login` |
-| CO5–CO6 | — gap — (nav-visibility and single-tenant-seed are markup/deployment facts, not asserted by a test) |
+| CO5 | `test_nav_hides_for_a_logged_out_visitor` |
+| CO5a | `test_nav_includes_the_mobile_hamburger_toggle` (markup presence/order only — the CSS collapse and the open/close click behavior itself are client-side and unassertable by a route test, same limitation as TL7–TL9) |
+| CO6 | — gap — (single-tenant-seed is a deployment fact, not asserted by a test) |
 | CO7 | — gap — (asserted implicitly by every billing test reading `BillingProfile` instead of `Company`, but not stated as a `Company`-shape rule directly) |
 | CO8 | — gap — |
 | CO9 | `tests/test_migrations.py` (covers the modules' own migrations; core-app `run_migrations()` itself has no dedicated test) |

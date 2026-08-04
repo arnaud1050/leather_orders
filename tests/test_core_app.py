@@ -97,6 +97,27 @@ def test_get_client_or_404_is_scoped_to_the_tenant(logged_in, other_company):
 
 
 # ---------------------------------------------------------------------------
+# Nav (CO5, CO5a)
+# ---------------------------------------------------------------------------
+
+def test_nav_hides_for_a_logged_out_visitor(app):
+    anon = app.test_client()
+    response = anon.get("/login")
+    assert b"view-switch" not in response.data
+
+
+def test_nav_includes_the_mobile_hamburger_toggle(logged_in):
+    response = logged_in.get("/")
+    body = response.data
+    assert b'id="nav-toggle"' in body
+    assert b'id="view-switch-links"' in body
+    # the toggle button is the wrapper's DOM sibling, not nested inside it --
+    # CSS alone (margin-left: auto below 680px) is what visually pins it to
+    # the right, not markup order.
+    assert body.index(b'id="nav-toggle"') < body.index(b'id="view-switch-links"')
+
+
+# ---------------------------------------------------------------------------
 # Client (CL1, CL2, CL11)
 # ---------------------------------------------------------------------------
 

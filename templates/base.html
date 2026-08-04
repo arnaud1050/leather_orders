@@ -11,45 +11,69 @@
 <body>
   {% if current_user.is_authenticated %}
   <nav class="view-switch">
-    <a href="{{ url_for('timeline_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'timeline' else '' }}">Timeline</a>
-    <a href="{{ url_for('calendar_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'calendar' else '' }}">Calendar</a>
-    <a href="{{ url_for('clients_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'clients' else '' }}">
-      Clients
-      {% set pending_leads = pending_lead_count() %}
-      {% if pending_leads %}<span class="nav-badge" title="{{ pending_leads }} lead{{ 's' if pending_leads != 1 }} waiting — convert, hide or trash to clear this">{{ pending_leads }}</span>{% endif %}
-      {# Purple, and separate from the grey one above: a lead is undecided,
-         a client already exists. Different facts, different colours. #}
-      {% set new_clients = new_client_count() %}
-      {% if new_clients %}<span class="nav-badge nav-badge--new" title="{{ new_clients }} client{{ 's' if new_clients != 1 }} added automatically from email">{{ new_clients }}</span>{% endif %}
-      {# Unread mail from people already on file. Its own badge rather than
-         folded into the lead count: a lead is work you haven't triaged, this
-         is a client waiting on a reply. #}
-      {% set client_mail = client_mail_count() %}
-      {% if client_mail %}<span class="nav-badge nav-badge--mail" title="{{ client_mail }} unread email{{ 's' if client_mail != 1 }} from clients">{{ client_mail }}</span>{% endif %}
-    </a>
-    <a href="{{ url_for('orders_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'orders' else '' }}">Orders</a>
-    {# Badge count comes from the inventory module's own context processor
-       (inventory/routes.py's _inject_nav_badge) — same "available on every
-       page without each route passing it" shape as the two badges below. #}
-    <a href="{{ url_for('inventory.inventory_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'inventory' else '' }}">
-      Inventory
-      {% set out_of_stock = out_of_stock_count() %}
-      {% if out_of_stock %}<span class="nav-badge nav-badge--stock-alert" title="{{ out_of_stock }} item{{ 's' if out_of_stock != 1 }} at zero or negative stock — restock from Inventory">{{ out_of_stock }}</span>{% endif %}
-    </a>
-    {# Badge count comes from the communications module's context processor,
-       so it's available on every page without each route passing it. #}
-    <a href="{{ url_for('billing.invoice_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'invoices' else '' }}">Invoices</a>
-    <a href="{{ url_for('analytics') }}" class="view-switch__link {{ 'is-active' if active_view == 'analytics' else '' }}">Analytics</a>
-    {# Same context processor as the lead badge. "!" rather than a count: what
-       matters is that an integration stopped working, not how many — and the
-       fix is the same trip to Settings → Integrations either way. #}
-    <a href="{{ url_for('settings') }}" class="view-switch__link {{ 'is-active' if active_view == 'settings' else '' }}">
-      Settings
-      {% set failing_integrations = integration_alert_count() %}
-      {% if failing_integrations %}<span class="nav-badge nav-badge--alert" title="{{ failing_integrations }} integration{{ 's' if failing_integrations != 1 }} stopped syncing — see Settings → Integrations">!</span>{% endif %}
-    </a>
-    <a href="{{ url_for('logout') }}" class="view-switch__logout">Log out</a>
+    <button type="button" class="view-switch__toggle" id="nav-toggle" aria-expanded="false" aria-controls="view-switch-links" aria-label="Toggle navigation menu">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 6h18M3 12h18M3 18h18" />
+      </svg>
+    </button>
+    <div class="view-switch__links" id="view-switch-links">
+      <a href="{{ url_for('timeline_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'timeline' else '' }}">Timeline</a>
+      <a href="{{ url_for('calendar_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'calendar' else '' }}">Calendar</a>
+      <a href="{{ url_for('clients_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'clients' else '' }}">
+        Clients
+        {% set pending_leads = pending_lead_count() %}
+        {% if pending_leads %}<span class="nav-badge" title="{{ pending_leads }} lead{{ 's' if pending_leads != 1 }} waiting — convert, hide or trash to clear this">{{ pending_leads }}</span>{% endif %}
+        {# Purple, and separate from the grey one above: a lead is undecided,
+           a client already exists. Different facts, different colours. #}
+        {% set new_clients = new_client_count() %}
+        {% if new_clients %}<span class="nav-badge nav-badge--new" title="{{ new_clients }} client{{ 's' if new_clients != 1 }} added automatically from email">{{ new_clients }}</span>{% endif %}
+        {# Unread mail from people already on file. Its own badge rather than
+           folded into the lead count: a lead is work you haven't triaged, this
+           is a client waiting on a reply. #}
+        {% set client_mail = client_mail_count() %}
+        {% if client_mail %}<span class="nav-badge nav-badge--mail" title="{{ client_mail }} unread email{{ 's' if client_mail != 1 }} from clients">{{ client_mail }}</span>{% endif %}
+      </a>
+      <a href="{{ url_for('orders_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'orders' else '' }}">Orders</a>
+      {# Badge count comes from the inventory module's own context processor
+         (inventory/routes.py's _inject_nav_badge) — same "available on every
+         page without each route passing it" shape as the two badges below. #}
+      <a href="{{ url_for('inventory.inventory_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'inventory' else '' }}">
+        Inventory
+        {% set out_of_stock = out_of_stock_count() %}
+        {% if out_of_stock %}<span class="nav-badge nav-badge--stock-alert" title="{{ out_of_stock }} item{{ 's' if out_of_stock != 1 }} at zero or negative stock — restock from Inventory">{{ out_of_stock }}</span>{% endif %}
+      </a>
+      {# Badge count comes from the communications module's context processor,
+         so it's available on every page without each route passing it. #}
+      <a href="{{ url_for('billing.invoice_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'invoices' else '' }}">Invoices</a>
+      <a href="{{ url_for('analytics') }}" class="view-switch__link {{ 'is-active' if active_view == 'analytics' else '' }}">Analytics</a>
+      {# Same context processor as the lead badge. "!" rather than a count: what
+         matters is that an integration stopped working, not how many — and the
+         fix is the same trip to Settings → Integrations either way. #}
+      <a href="{{ url_for('settings') }}" class="view-switch__link {{ 'is-active' if active_view == 'settings' else '' }}">
+        Settings
+        {% set failing_integrations = integration_alert_count() %}
+        {% if failing_integrations %}<span class="nav-badge nav-badge--alert" title="{{ failing_integrations }} integration{{ 's' if failing_integrations != 1 }} stopped syncing — see Settings → Integrations">!</span>{% endif %}
+      </a>
+      <a href="{{ url_for('logout') }}" class="view-switch__logout">Log out</a>
+    </div>
   </nav>
+  <script>
+    (function () {
+      var toggle = document.getElementById('nav-toggle');
+      var links = document.getElementById('view-switch-links');
+      if (!toggle || !links) return;
+      toggle.addEventListener('click', function () {
+        var open = links.classList.toggle('is-open');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      links.querySelectorAll('.view-switch__link, .view-switch__logout').forEach(function (link) {
+        link.addEventListener('click', function () {
+          links.classList.remove('is-open');
+          toggle.setAttribute('aria-expanded', 'false');
+        });
+      });
+    })();
+  </script>
   {% endif %}
   {% block content %}{% endblock %}
   <footer class="site-footer">

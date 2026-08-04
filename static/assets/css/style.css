@@ -68,6 +68,32 @@ body {
   padding: 0 24px;
   display: flex;
   gap: 4px;
+  position: relative;
+}
+
+.view-switch__toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.view-switch__toggle:hover {
+  border-color: var(--ink);
+}
+
+.view-switch__links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
 }
 
 .view-switch__link {
@@ -2051,6 +2077,51 @@ dialog.modal::backdrop {
    --------------------------------------------------------------------- */
 
 @media (max-width: 680px) {
+  .view-switch {
+    padding: 0 16px;
+  }
+
+  .view-switch__toggle {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .view-switch__links {
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 16px;
+    right: 16px;
+    background: var(--paper);
+    border: 1px solid var(--hairline);
+    padding: 6px;
+    z-index: 20;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  }
+
+  .view-switch__links.is-open {
+    display: flex;
+  }
+
+  .view-switch__links .view-switch__link {
+    padding: 12px 10px;
+    border-radius: var(--radius);
+  }
+
+  .view-switch__links .view-switch__link.is-active {
+    background: var(--paper-deep);
+  }
+
+  .view-switch__logout {
+    margin-left: 0;
+    margin-top: 6px;
+    align-self: stretch;
+    text-align: center;
+  }
+
   .ledger__header {
     grid-template-columns: 1fr;
     text-align: center;
