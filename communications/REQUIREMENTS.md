@@ -13,7 +13,7 @@ Scope: `communications/` only (Gmail + Google Calendar, the lead inbox,
 sender rules). Tax, invoicing and inventory rules live elsewhere. Design
 and structural notes are in `CLAUDE.md`; this file is behaviour.
 
-**709 of the suite's 1194 tests cover this module.**
+**This module accounts for the majority of the test suite.**
 
 Rule ids are stable — cite them in commit messages and in review. Sections
 are grouped by what a rule protects, not by which file implements it.

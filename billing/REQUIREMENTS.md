@@ -8,7 +8,7 @@ update the rule here in the same commit — if a rule and the code disagree,
 one of them is a bug.
 
 Each rule has an id (e.g. `F2`) referenced from the **Test coverage map** at
-the bottom of this file. `CLAUDE.md`'s "Billing module" section explains the
+the bottom of this file. `billing/CLAUDE.md` explains the
 *why* behind these choices; this file is the checklist of *what must hold
 true*.
 
@@ -362,7 +362,7 @@ reason being that a stored copy can disagree with the rows it describes.
 ## 12. Explicit non-requirements
 
 These are deliberate omissions, not oversights — listed so nobody "fixes"
-them without checking first. See `CLAUDE.md`'s "Known gaps" for reasoning.
+them without checking first. See `docs/roadmap.md` for reasoning.
 
 - **Z1.** **No invoice deletion**, of drafts or anything else. Adding it
   means fixing N11 first.
@@ -532,7 +532,7 @@ passes it to `analytics.html`, which **doesn't render it**. So the query runs
 on every analytics page load and the figure is never shown — D11 is
 implemented and tested at the service layer, but the remittance report it
 exists for isn't on the page yet. Either render it or stop computing it;
-`CLAUDE.md`'s "No tax-collected report" gap is describing this half-finished
+`docs/roadmap.md`'s "No tax-collected report" gap is describing this half-finished
 state.
 
 Everything marked "manually verified in the browser only" was exercised by

@@ -8,7 +8,8 @@ test coverage can be checked against something. When behavior changes on
 purpose, update the rule here in the same commit — if a rule and the code
 disagree, one of them is a bug.
 
-`CLAUDE.md` explains the *why* behind these choices at much greater length;
+The `docs/` files (see the root `CLAUDE.md` index) explain the *why* behind
+these choices at much greater length;
 this file is the checklist of *what must hold true*. Rule ids are namespaced
 by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 `SET-`, `AN-`) so they can be cited from tests without colliding with the
@@ -22,12 +23,10 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   Analytics, the client/order modals and detail pages).
 - **Not covered here** — each of these self-contained modules already has
   its own spec, kept next to its own code and tests:
-  - `billing/` — invoicing, Canadian sales tax, invoice numbering/freezing.
-    No structured requirements file yet; its rules are pinned instead by
-    `tests/test_tax.py`, `tests/test_invoicing.py`,
-    `tests/test_invoice_routes.py`, `tests/test_addresses.py` and
-    `tests/test_billing_boundary.py`, and documented in prose in
-    `CLAUDE.md`'s "Billing module" section.
+  - `billing/` — invoicing, Canadian sales tax, invoice numbering/freezing;
+    see `billing/REQUIREMENTS.md`, backed by `tests/test_tax.py`,
+    `tests/test_invoicing.py`, `tests/test_invoice_routes.py`,
+    `tests/test_addresses.py` and `tests/test_billing_boundary.py`.
   - `communications/` — see `communications/REQUIREMENTS.md`.
   - `inventory/` — see `inventory/REQUIREMENTS.md`.
   - `documents/` — file upload/storage for an order's documents; see
@@ -433,7 +432,7 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 ## 14. Explicit non-requirements
 
 Deliberate omissions, not oversights — listed so nobody "fixes" them without
-checking first. See `CLAUDE.md`'s "Known gaps" for the full reasoning behind
+checking first. See `docs/roadmap.md` for the full reasoning behind
 each.
 
 - **N1.** No in-place edit of an existing `OrderLine` — remove and re-add

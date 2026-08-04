@@ -9,7 +9,7 @@ one of them is a bug.
 
 Each rule has an id (e.g. `M4`) referenced from `tests/test_inventory.py` where
 practical, and from the **Test coverage map** at the bottom of this file.
-`CLAUDE.md`'s "Inventory module" section explains the *why* behind these
+`inventory/CLAUDE.md` explains the *why* behind these
 choices; this file is the checklist of *what must hold true*.
 
 ## 0. Scope
@@ -324,7 +324,7 @@ order-specific (the warning on that order's Materials tab).
 ## 11. Explicit non-requirements
 
 These are deliberate omissions, not oversights — listed so nobody "fixes"
-them without checking first. See CLAUDE.md's "Known gaps" for the reasoning.
+them without checking first. See `docs/roadmap.md` for the reasoning.
 
 - **N1.** No bulk/CSV import for inventory items.
 - **N2.** No inventory-**value** reporting (total stock value in dollars),

@@ -7,3 +7,4 @@ __pycache__/
 *.log
 data/
 CLAUDE.md
+docs/
