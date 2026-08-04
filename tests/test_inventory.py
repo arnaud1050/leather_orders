@@ -124,6 +124,14 @@ def test_delete_unit_is_blocked_once_referenced(company):
     assert db.session.get(InventoryUnit, unit.id) is not None
 
 
+def test_delete_unit_is_scoped_to_the_tenant(company, other_company):
+    """delete_unit filters on company_id just as toggle_unit does — deleting
+    with the wrong company must leave the other tenant's unit alone (UN10)."""
+    unit = services.add_unit(other_company.id, "sqft")
+    services.delete_unit(company.id, unit.id)
+    assert db.session.get(InventoryUnit, unit.id) is not None  # untouched
+
+
 def test_delete_unit_is_a_no_op_for_each(company):
     each = services.list_units(company.id)[0]
     services.delete_unit(company.id, each.id)
@@ -431,6 +439,69 @@ def test_edit_item_is_scoped_to_the_tenant(company, other_company):
     assert db.session.get(InventoryItem, item.id).name == "Widget"  # untouched
 
 
+def test_edit_item_ignores_a_blank_name(company):
+    """Editing is a partial update, unlike creation (I6): a blank name keeps
+    the existing one rather than failing the edit — while quantity/price are
+    still overwritten, proving it's a partial update, not a whole no-op."""
+    item = services.add_item(
+        company.id, name="Original", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    services.edit_item(
+        company.id, item.id, name="   ", unit="each",
+        inventory_type_id=None, quantity_on_hand=9, unit_price=7,
+    )
+    updated = db.session.get(InventoryItem, item.id)
+    assert updated.name == "Original"      # blank name ignored
+    assert updated.quantity_on_hand == 9   # other fields still applied
+    assert updated.unit_price == 7
+
+
+def test_edit_item_ignores_an_invalid_unit(company):
+    """An unrecognised unit keeps the existing one (I6), the same
+    drop-silently shape as the blank name."""
+    item = services.add_item(
+        company.id, name="Widget", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    services.edit_item(
+        company.id, item.id, name="Widget", unit="not-a-real-unit",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    assert db.session.get(InventoryItem, item.id).unit == "sqft"  # kept
+
+
+def test_edit_item_clearing_the_type_sets_it_to_none(company):
+    """Editing inventory_type_id to empty clears the type (I7)."""
+    leather = services.add_type(company.id, "Leather")
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=leather.id, quantity_on_hand=1, unit_price=1,
+    )
+    services.edit_item(
+        company.id, item.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    assert db.session.get(InventoryItem, item.id).inventory_type_id is None
+
+
+def test_edit_item_with_a_foreign_type_id_falls_back_to_none(company, other_company):
+    """A type id belonging to another company resolves to "no type" on edit,
+    the same drop-silently behaviour I4 asserts for creation — the gap I7
+    names, since only the creation path was covered before."""
+    own_type = services.add_type(company.id, "Leather")
+    foreign_type = services.add_type(other_company.id, "Lining")
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=own_type.id, quantity_on_hand=1, unit_price=1,
+    )
+    services.edit_item(
+        company.id, item.id, name="Widget", unit="each",
+        inventory_type_id=foreign_type.id, quantity_on_hand=1, unit_price=1,
+    )
+    assert db.session.get(InventoryItem, item.id).inventory_type_id is None
+
+
 def test_toggle_item_flips_is_active(company):
     item = services.add_item(
         company.id, name="Widget", unit="each",
@@ -479,6 +550,30 @@ def test_selectable_items_includes_a_hidden_item_already_used_on_this_order(comp
     services.toggle_item(company.id, item.id)  # hide after using it
 
     assert services.selectable_items(company.id, order.id) == [item]
+
+
+def test_selectable_items_are_ordered_by_type_sort_order_then_name(company):
+    """The merged, deduplicated set is ordered by (type sort_order, item
+    name), untyped last (S3) — previously only membership was asserted, not
+    the order. Labels and names are chosen so a naive alphabetical sort would
+    give a different answer, pinning it to sort_order specifically."""
+    first_type = services.add_type(company.id, "Zebra")      # sort_order 0
+    second_type = services.add_type(company.id, "Antelope")  # sort_order 1
+    for name, type_id in [
+        ("Zzz", first_type.id),    # same type as Alpha, later name
+        ("Aaa", second_type.id),   # earlier name but later type
+        ("Untyped", None),         # no type -> sorts last
+        ("Alpha", first_type.id),
+    ]:
+        services.add_item(
+            company.id, name=name, unit="each",
+            inventory_type_id=type_id, quantity_on_hand=1, unit_price=1,
+        )
+
+    names = [i.name for i in services.selectable_items(company.id)]
+    # Zebra (sort_order 0) before Antelope (1) despite "A" < "Z"; within
+    # Zebra, name breaks the tie (Alpha < Zzz); untyped (9999) last.
+    assert names == ["Alpha", "Zzz", "Aaa", "Untyped"]
 
 
 # --- order materials: snapshot pricing, stock decrement/restore -----------
@@ -642,10 +737,46 @@ def test_edit_other_is_scoped_to_the_order(company, order):
     assert db.session.get(OrderMaterialOther, other.id).description == "Buckle"
 
 
+def test_edit_other_rejects_a_blank_description(company, order):
+    """Same guard as add_other: a blank description is refused and the row
+    left untouched (O3), not blanked out."""
+    other = services.add_other(company.id, order.id, "Buckle", 8.5)
+    assert services.edit_other(order.id, other.id, "   ", 9.0) is None
+    unchanged = db.session.get(OrderMaterialOther, other.id)
+    assert unchanged.description == "Buckle"
+    assert unchanged.cost == 8.5
+
+
+def test_edit_other_rejects_a_missing_cost(company, order):
+    other = services.add_other(company.id, order.id, "Buckle", 8.5)
+    assert services.edit_other(order.id, other.id, "Replacement buckle", None) is None
+    unchanged = db.session.get(OrderMaterialOther, other.id)
+    assert unchanged.description == "Buckle"
+    assert unchanged.cost == 8.5
+
+
 def test_delete_other_removes_the_row(company, order):
     other = services.add_other(company.id, order.id, "Buckle", 8.5)
     services.delete_other(order.id, other.id)
     assert db.session.get(OrderMaterialOther, other.id) is None
+
+
+def test_list_materials_for_order_returns_every_row_in_id_order(company, order):
+    """M12: every row for the order, in insertion (id) order — and only that
+    order's rows, never another order's."""
+    item = services.add_item(
+        company.id, name="Leather", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=100, unit_price=5,
+    )
+    m1 = services.add_material(company.id, order.id, item.id, quantity_used=1)
+    m2 = services.add_material(company.id, order.id, item.id, quantity_used=2)
+    m3 = services.add_material(company.id, order.id, item.id, quantity_used=3)
+
+    other_order = _order_for(company.id)
+    services.add_material(company.id, other_order.id, item.id, quantity_used=9)
+
+    rows = services.list_materials_for_order(order.id)
+    assert [r.id for r in rows] == [m1.id, m2.id, m3.id]
 
 
 # --- total_material_cost: materials + others, nothing else -----------------
@@ -744,6 +875,24 @@ def test_inventory_list_sorts_by_price(logged_in, company):
     response = logged_in.get("/inventory?sort=price&dir=asc")
     body = response.data.decode()
     assert body.index("Cheap") < body.index("Pricey")
+
+
+def test_inventory_list_sorts_by_type(logged_in, company):
+    """The default sort, and the one branch of INVENTORY_SORT_KEYS not
+    covered by name/price above — a type is a joined label, so it's sorted
+    in Python by the type's label, ties broken by item name (U1)."""
+    zinc = services.add_type(company.id, "Zinc")
+    alpha = services.add_type(company.id, "Alpha")
+    services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=zinc.id, quantity_on_hand=1, unit_price=1,
+    )
+    services.add_item(
+        company.id, name="Gadget", unit="each",
+        inventory_type_id=alpha.id, quantity_on_hand=1, unit_price=1,
+    )
+    body = logged_in.get("/inventory?sort=type&dir=asc").data.decode()
+    assert body.index("Gadget") < body.index("Widget")  # Alpha-type before Zinc-type
 
 
 def test_filter_types_excludes_no_type_when_company_has_no_types_defined(logged_in, company):

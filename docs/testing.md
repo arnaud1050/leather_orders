@@ -4,10 +4,16 @@
 
 `pytest`. Most of the suite covers `communications/`; the rest covers the money
 (tax, invoice numbering, the snapshot rules) and the `inventory/` module.
-Timeline, orders and analytics are still untested; `tests/test_client_orders_tab.py`
-covers one narrow slice of the client page (the Orders tab's table — its status
-pill, its fixed columns, sorting, and the invoice-or-dash cell),
-not the page as a whole.
+The core app is exercised through `tests/test_core_app.py` (client/order edit
+rules, payments, the timeline window and analytics) and `tests/test_routes.py`;
+`tests/test_client_orders_tab.py` covers one narrow slice of the client page (the
+Orders tab's table — its status pill, its fixed columns, sorting, and the
+invoice-or-dash cell), not the page as a whole. The Settings letterhead POST
+routes are `tests/test_settings_company.py`, order-line add/delete is
+`tests/test_order_lines.py`, and the two option lists' hide-vs-hard-delete
+guard is in `tests/test_settings_options.py`. What's still thin: the Gmail API
+wrapper (`communications/providers/gmail_provider.py`, substituted by
+`tests/fakes.py` rather than run) and the PDF thumbnail path (needs `poppler`).
 
 The four money files, and the single rule each exists to defend:
 

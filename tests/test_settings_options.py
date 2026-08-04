@@ -8,7 +8,9 @@ name is confusing whether or not one is hidden, so the match is
 case-insensitive and checked against active and hidden rows alike.
 """
 
-from models import OrderType, SourceOption, db
+from datetime import date
+
+from models import Client, Order, OrderType, SourceOption, db
 
 
 def test_add_order_type_rejects_a_case_insensitive_duplicate(logged_in, company):
@@ -117,3 +119,61 @@ def test_reorder_source_options_requires_login(app):
         "/settings/sources/reorder", json={"order": []},
     )
     assert response.status_code in (302, 401)
+
+
+# --- hard delete, gated on can_delete (hard rule 8) ------------------------
+#
+# The two lists hide-don't-delete once a record references them, and hard
+# delete only while `can_delete` (no client/order points at the row). Both
+# the delete-it and the guard-blocks-it branches were previously untested.
+
+def test_delete_order_type_removes_an_unreferenced_type(logged_in, company):
+    order_type = OrderType(company_id=company.id, label="Retired", sort_order=0)
+    db.session.add(order_type)
+    db.session.commit()
+    type_id = order_type.id
+
+    logged_in.post(f"/settings/order-types/{type_id}/delete")
+
+    assert db.session.get(OrderType, type_id) is None
+
+
+def test_delete_order_type_keeps_a_type_an_order_uses(logged_in, company, client_record):
+    order_type = OrderType(company_id=company.id, label="In use", sort_order=0)
+    db.session.add(order_type)
+    db.session.flush()
+    db.session.add(Order(
+        client_id=client_record.id, item="Bag", order_type_id=order_type.id,
+        start=date(2026, 7, 1), due=date(2026, 7, 15), status="in_progress"))
+    db.session.commit()
+    type_id = order_type.id
+
+    logged_in.post(f"/settings/order-types/{type_id}/delete")
+
+    assert db.session.get(OrderType, type_id) is not None  # guarded by can_delete
+
+
+def test_delete_source_option_removes_an_unreferenced_option(logged_in, company):
+    option = SourceOption(company_id=company.id, label="Retired", sort_order=0)
+    db.session.add(option)
+    db.session.commit()
+    option_id = option.id
+
+    logged_in.post(f"/settings/sources/{option_id}/delete")
+
+    assert db.session.get(SourceOption, option_id) is None
+
+
+def test_delete_source_option_keeps_an_option_a_client_uses(logged_in, company):
+    option = SourceOption(company_id=company.id, label="In use", sort_order=0)
+    db.session.add(option)
+    db.session.flush()
+    client = Client(company_id=company.id, first_name="Referring", last_name="Client")
+    client.sources.append(option)
+    db.session.add(client)
+    db.session.commit()
+    option_id = option.id
+
+    logged_in.post(f"/settings/sources/{option_id}/delete")
+
+    assert db.session.get(SourceOption, option_id) is not None  # guarded by can_delete

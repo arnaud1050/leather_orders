@@ -446,7 +446,7 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | P7 | `test_the_backfill_does_not_freeze_an_empty_letterhead` (indirectly) |
 | P8 | `test_an_issued_invoice_ignores_later_seller_changes`, `test_a_draft_reads_seller_details_live` |
 | P9 | — gap — *(registration ordering is markup-adjacent and unasserted)* |
-| P10 | — gap — *(host-side form validation of province/prefix has no test)* |
+| P10 | `test_update_company_rejects_an_unknown_province`, `test_update_invoicing_truncates_a_long_prefix_to_ten_chars` (both in `tests/test_settings_company.py`) |
 | N1 | `test_first_number_of_the_year` |
 | N2 | `test_numbers_increment` |
 | N3 | `test_the_sequence_restarts_each_year` |

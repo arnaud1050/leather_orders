@@ -62,7 +62,7 @@ The isolation story, and the one no other rule can compensate for.
 | # | Rule | Why | Tested in |
 |---|---|---|---|
 | **P-1** | Only `providers/` knows a vendor exists. Label ids, MIME trees, base64url and Gmail's `q:` syntax appear nowhere else. | Adding a second provider is a new module plus two registry entries, with `services/`, `sync/`, routes and templates untouched. | `test_gmail_provider.py` |
-| **P-2** | `registry.py` is the **only** place an `if provider == "gmail"` may live. | One seam instead of five. | — (structural; see `CLAUDE.md`) |
+| **P-2** | `registry.py` is the **only** place an `if provider == "gmail"` may live. | One seam instead of five. | `test_communications_boundary.py` |
 | **P-3** | Columns are named `provider_thread_id` / `provider_message_id`, not `gmail_*`. | A column named for one vendor guarantees the next provider gets a misleading column or a migration. | `test_models.py` |
 | **P-4** | Timestamps are **naive UTC everywhere**, normalised at the provider boundary. | Gmail returns epoch millis and RFC 3339 with offsets; a tz-aware value in a SQLite `DateTime` compares wrong against the naive ones around it rather than failing loudly. | `test_gmail_provider.py`, `test_timezone.py` |
 | **P-5** | Google's **exclusive** all-day end date is converted in both directions inside `gmail_provider.py`. | Without it a one-day event occupies two cells of the month grid. Nothing above the provider should see the quirk. | `test_gmail_provider.py` |
@@ -303,10 +303,6 @@ Not omissions — decisions. Each needs the stated question answered *first*.
 
 Rules currently defended by reading the code rather than by a test:
 
-- **P-2** (registry is the only vendor branch) — structural; a boundary test
-  like `test_billing_boundary.py` would catch a stray `if provider ==` and an
-  import of `providers` from outside the module. **This is the most valuable
-  test missing from this module.**
 - **M-3**, **M-10**, **CAL-7**, and the colour halves of **N-4** / **N-17** —
   visual, asserted only as markup. Nothing catches a token being changed.
 - **N-20** (badge counts are lazy) — nothing asserts the COUNT doesn't run on
@@ -315,10 +311,15 @@ Rules currently defended by reading the code rather than by a test:
   counts ever get expensive.
 - **Nothing exercises a real OAuth round trip.** By design (P-8), but it
   means the first live connection after a change to `oauth/` is the test.
-- **No test asserts the module never imports `Order`.** The rule in §12 is
-  currently a convention. Worth the same treatment as
-  `test_billing_boundary.py` before the order-from-enquiry work starts, since
-  that's exactly when someone will be tempted.
+
+**Now closed:** `test_communications_boundary.py` defends **P-2** (the vendor
+branch on `.provider` lives only in `registry.py`) and the §12 rule that the
+module never imports `Order` — the boundary test previously flagged here as the
+most valuable one missing, worth landing before the order-from-enquiry work.
+It also pins the two sanctioned back-references into `app.py` (`back_label`,
+`get_client_or_404`, imported in `routes.py`) so that coupling can't quietly
+widen — an order helper pulled from `app.py` would be the §12 rule circumvented
+without ever touching `from models import`.
 
 ---
 

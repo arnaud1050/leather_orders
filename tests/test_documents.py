@@ -94,6 +94,47 @@ def test_zip_without_content_types_is_not_a_valid_docx():
         validate_upload("sheet.docx", buf.getvalue(), current_usage_bytes=0)
 
 
+# --- the remaining rejection branches ----------------------------------
+#
+# The happy path and a couple of rejections above are covered; these are
+# the per-type "the bytes don't match the extension" branches that weren't.
+
+def test_renamed_nonimage_png_fails_the_image_sniff():
+    """A .png whose bytes PIL can't open — the image branch, distinct from
+    the .pdf sniff already tested above."""
+    with pytest.raises(ValidationError):
+        validate_upload("fake.png", b"not really a png", current_usage_bytes=0)
+
+
+def test_eps_without_a_postscript_header_is_rejected():
+    with pytest.raises(ValidationError):
+        validate_upload("art.eps", b"%PDF-1.4\nnot postscript", current_usage_bytes=0)
+
+
+def test_svg_that_is_not_valid_utf8_is_rejected():
+    """An SVG must decode as UTF-8 before we even look for its root — the
+    UnicodeDecodeError branch, separate from the has-no-<svg> one."""
+    with pytest.raises(ValidationError):
+        validate_upload("logo.svg", b"\xff\xfe<svg>", current_usage_bytes=0)
+
+
+def test_non_zip_docx_is_rejected():
+    """Bytes that aren't a Zip archive at all — the BadZipFile branch, as
+    opposed to the valid-zip-missing-Content_Types case above."""
+    with pytest.raises(ValidationError):
+        validate_upload("sheet.docx", b"plainly not a zip", current_usage_bytes=0)
+
+
+def test_an_allowed_extension_with_no_sniff_branch_is_rejected(monkeypatch):
+    """Defensive: if the allowlist ever gains an extension nobody wrote a
+    content check for, the sniff must refuse it rather than wave it through.
+    Reproduced by adding .txt to the allowlist without a matching branch."""
+    monkeypatch.setattr(config, "ALLOWED_EXTENSIONS", config.ALLOWED_EXTENSIONS | {".txt"})
+
+    with pytest.raises(ValidationError, match="isn't an allowed file type"):
+        validate_upload("notes.txt", b"anything", current_usage_bytes=0)
+
+
 # --- size + quota ------------------------------------------------------
 
 def test_oversized_file_is_rejected(monkeypatch):

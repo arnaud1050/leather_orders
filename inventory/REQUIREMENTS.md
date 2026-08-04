@@ -364,7 +364,7 @@ catch a regression of it; that's a to-do, not a shrug.
 | UN7 | `test_add_unit_rejects_a_duplicate`, `test_add_unit_rejects_a_duplicate_of_a_hidden_unit` |
 | UN8 | `test_add_unit_appends_after_each` |
 | UN9 | `test_add_item_accepts_any_catalog_unit_regardless_of_company_selection`, `test_add_item_rejects_a_key_outside_the_catalog` |
-| UN10 | `test_toggle_unit_is_scoped_to_the_tenant` — gap: delete_unit's own tenant scoping isn't separately asserted |
+| UN10 | `test_toggle_unit_is_scoped_to_the_tenant`, `test_delete_unit_is_scoped_to_the_tenant` |
 | UN11 | `test_delete_unit_removes_it_when_unused`, `test_delete_unit_is_blocked_once_referenced` |
 | UN12 | `test_reorder_units_sets_sort_order_from_position`, `test_reorder_units_can_reposition_each`, `test_reorder_units_skips_ids_outside_the_tenant` |
 | UN13 | `test_available_catalog_units_excludes_each_and_added_units`, `test_available_catalog_units_still_excludes_a_hidden_unit`, `test_available_catalog_units_are_grouped_alphabetically` |
@@ -383,8 +383,8 @@ catch a regression of it; that's a to-do, not a shrug.
 | I3 | `test_add_item_rejects_a_blank_name`, `test_add_item_rejects_an_invalid_unit` |
 | I4 | `test_add_item_with_a_foreign_type_id_falls_back_to_none` |
 | I5 | `test_add_item_creates_it_with_given_fields` |
-| I6 | — gap — (blank-name-on-edit and invalid-unit-on-edit are not separately asserted) |
-| I7 | — gap — (foreign type id on **edit** specifically; only creation is covered by I4) |
+| I6 | `test_edit_item_ignores_a_blank_name`, `test_edit_item_ignores_an_invalid_unit` |
+| I7 | `test_edit_item_clearing_the_type_sets_it_to_none`, `test_edit_item_with_a_foreign_type_id_falls_back_to_none` |
 | I8 | `test_edit_item_allows_setting_quantity_negative` |
 | I9 | `test_edit_item_is_scoped_to_the_tenant`, `test_item_management_routes_are_scoped_to_the_tenant` |
 | I10 | `test_toggle_item_flips_is_active`, `test_toggle_item_route_flips_is_active` |
@@ -392,7 +392,7 @@ catch a regression of it; that's a to-do, not a shrug.
 | I12 | `test_inventory_list_sorts_by_name` (indirectly, via the route) |
 | S1 | `test_selectable_items_includes_a_hidden_item_already_used_on_this_order` |
 | S2 | `test_selectable_items_excludes_hidden_items_by_default` |
-| S3 | — gap — (merge order itself isn't asserted, only membership) |
+| S3 | `test_selectable_items_are_ordered_by_type_sort_order_then_name` |
 | M1 | `test_add_material_rejects_a_zero_or_negative_quantity`, `test_add_material_rejects_a_missing_quantity`, `test_add_material_rejects_an_unknown_item`, `test_add_material_rejects_another_tenants_item` |
 | M2 | `test_add_material_decrements_stock_and_snapshots_the_item` |
 | M3 | `test_add_material_snapshot_survives_a_later_price_change` |
@@ -404,10 +404,10 @@ catch a regression of it; that's a to-do, not a shrug.
 | M9 | `test_edit_material_is_scoped_to_the_order` |
 | M10 | `test_delete_material_restores_stock_and_removes_the_row` |
 | M11 | `test_add_material_decrements_stock_and_snapshots_the_item` (asserts `.total`) |
-| M12 | — gap — (ordering of `list_materials_for_order` isn't asserted) |
+| M12 | `test_list_materials_for_order_returns_every_row_in_id_order` |
 | O1 | *(by construction — no FK exists to assert against)* |
 | O2 | `test_add_other_creates_a_cost_row`, `test_add_other_rejects_blank_description_or_missing_cost` |
-| O3 | `test_edit_other_updates_fields` (happy path only) — gap: rejection on blank/`None` isn't tested |
+| O3 | `test_edit_other_updates_fields`, `test_edit_other_rejects_a_blank_description`, `test_edit_other_rejects_a_missing_cost` |
 | O4 | `test_edit_other_is_scoped_to_the_order` |
 | O5 | `test_delete_other_removes_the_row` |
 | C1 | `test_total_material_cost_sums_materials_and_others` |
@@ -417,7 +417,7 @@ catch a regression of it; that's a to-do, not a shrug.
 | A3 | `test_item_management_routes_are_scoped_to_the_tenant`, `test_toggle_type_is_scoped_to_the_tenant` |
 | A4 | `test_add_material_404s_for_another_tenants_order`, `test_edit_material_404s_for_another_tenants_order`, `test_delete_material_404s_for_another_tenants_order`, `test_order_materials_page_404s_for_another_tenants_order` |
 | A5 | `test_settings_inventory_page_lists_types` |
-| U1 | `test_inventory_list_sorts_by_name`, `test_inventory_list_sorts_by_price` — gap: sorting by **Type** has no route test |
+| U1 | `test_inventory_list_sorts_by_name`, `test_inventory_list_sorts_by_price`, `test_inventory_list_sorts_by_type` |
 | U2 | — gap — (client-side `localStorage` filter; manually verified in browser only) |
 | U3 | — gap — (modal-vs-inline is markup/JS; the underlying POST is covered by `test_add_item_route_creates_an_item`) |
 | U4 | — gap — (client-side; manually verified in browser only) |
