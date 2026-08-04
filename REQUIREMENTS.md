@@ -218,6 +218,14 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   `other` (`PAYMENT_METHOD_LABELS`), and `reference` is free-text tying a
   row back to a bank/Square statement. Neither is required to be filled for
   cash/other, but the field exists to be filled when it's known.
+- **PM5.** Adding or deleting a payment redirects back to the Billing tab
+  itself (`request.path` at the time the form was rendered), not to the
+  page's own `return_to` (the "Back to timeline"/wherever-you-came-from
+  link) — the two are different destinations and only look interchangeable
+  because the Billing tab happens to render both. Submitting the outer
+  `return_to` bounced the page away from Billing after every delete; Line
+  items' add/delete forms already did this correctly and Payments' forms
+  were brought in line with them.
 
 ## 7. Documents
 
@@ -490,6 +498,7 @@ has no regression test.
 | PM2 | — gap — (the modal-omits-payments UI split isn't asserted, only the route behavior) |
 | PM3 | `test_delete_payment_is_scoped_to_the_order` |
 | PM4 | `test_add_payment_defaults_an_invalid_method_to_cash`, `test_add_payment_rejects_missing_or_invalid_fields`, `test_delete_payment_removes_it_and_recomputes_balance` |
+| PM5 | `test_billing_tab_forms_carry_their_own_page_as_return_to` |
 | DOC1 | see `documents/REQUIREMENTS.md` (`tests/test_documents.py`) — this file only asserts the seam, not the module's internals |
 | TL1 | `test_timeline_next_and_prev_step_by_half_the_window` (implicitly, via the 8-week window math) |
 | TL2 | `test_sunday_on_or_before_snaps_back_to_the_most_recent_sunday`, `test_timeline_window_always_starts_on_a_sunday` |

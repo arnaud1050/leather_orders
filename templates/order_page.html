@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "inventory/_icons.html" import icon_trash %}
 {% block title %}{{ order.item }} — Atelier Order Book{% endblock %}
 {% block content %}
 <div class="ledger">
@@ -70,10 +71,12 @@
         <span class="doc-list__label">{{ line.description }}</span>
         <span class="doc-list__filename">{{ line.quantity }} &times; ${{ '%.2f'|format(line.unit_price) }}</span>
         <span class="doc-list__amount">${{ '%.2f'|format(line.total) }}</span>
-        <form method="post" action="{{ url_for('delete_order_line', order_id=order.id, line_id=line.id) }}" class="doc-list__delete-form">
-          <input type="hidden" name="return_to" value="{{ request.path }}">
-          <button type="submit" class="doc-list__delete">Remove</button>
-        </form>
+        <div class="doc-list__actions">
+          <form method="post" action="{{ url_for('delete_order_line', order_id=order.id, line_id=line.id) }}" class="icon-form">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ line.description }}">{{ icon_trash() }}</button>
+          </form>
+        </div>
       </li>
       {% endfor %}
     </ul>
@@ -164,10 +167,12 @@
           &middot; {{ payment_method_labels.get(payment.method, payment.method) }}
           {% if payment.reference %}&middot; <span class="doc-list__ref">{{ payment.reference }}</span>{% endif %}
         </span>
-        <form method="post" action="{{ url_for('delete_payment', order_id=order.id, payment_id=payment.id) }}" class="doc-list__delete-form">
-          <input type="hidden" name="return_to" value="{{ return_to }}">
-          <button type="submit" class="doc-list__delete">Remove</button>
-        </form>
+        <div class="doc-list__actions">
+          <form method="post" action="{{ url_for('delete_payment', order_id=order.id, payment_id=payment.id) }}" class="icon-form">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete payment">{{ icon_trash() }}</button>
+          </form>
+        </div>
       </li>
       {% endfor %}
     </ul>
@@ -176,7 +181,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('add_payment', order_id=order.id) }}" class="detail-form detail-payments__add">
-      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
       <label>Amount<input type="number" name="amount" step="0.01" min="0" required></label>
       <label>Date<input type="date" name="paid_date" value="{{ today.isoformat() }}" required></label>
       <label>Method

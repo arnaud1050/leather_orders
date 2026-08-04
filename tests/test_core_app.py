@@ -444,6 +444,22 @@ def test_add_payment_rejects_missing_or_invalid_fields(logged_in, order, data):
     assert db.session.get(Order, order.id).payments == []
 
 
+def test_billing_tab_deletes_via_trash_icon_not_a_remove_button(logged_in, order):
+    # Line items and Payments used to delete via a text "Remove" button
+    # (.doc-list__delete); both now use the same icon-btn trash icon the
+    # inventory module's Materials/Others rows use, per the app-wide
+    # "trash icon or a 'Delete' button, nothing else" convention.
+    logged_in.post(f"/orders/{order.id}/payments", data={
+        "amount": "50", "paid_date": "2026-07-05", "method": "cash",
+    })
+
+    html = logged_in.get(f"/orders/{order.id}/billing").get_data(as_text=True)
+
+    assert "doc-list__delete" not in html
+    assert ">Remove<" not in html
+    assert html.count('icon-btn icon-btn--danger') == 2  # one line item, one payment
+
+
 def test_delete_payment_is_scoped_to_the_order(logged_in, order, client_record):
     other_order = Order(
         client_id=client_record.id, item="Other order",
@@ -472,6 +488,27 @@ def test_delete_payment_removes_it_and_recomputes_balance(logged_in, order):
 
     assert db.session.get(Payment, payment_id) is None
     assert db.session.get(Order, order.id).balance_due == pytest.approx(balance_before + 100.0)
+
+
+def test_billing_tab_forms_carry_their_own_page_as_return_to(logged_in, order):
+    # The Billing tab's own return_to (used by its "Back to..." link) points
+    # wherever the order page was opened from, e.g. the timeline — but a
+    # mutation happening *inside* the tab (add/delete a payment or line item)
+    # must redirect back to the Billing tab itself, not out to that outer
+    # destination. Payments used to submit the outer return_to by mistake,
+    # which bounced you off the page after every delete.
+    payment = Payment(order_id=order.id, amount=25.0, paid_date=date(2026, 1, 2))
+    db.session.add(payment)
+    db.session.commit()
+
+    billing_path = f"/orders/{order.id}/billing"
+    html = logged_in.get(billing_path, query_string={"return_to": "/timeline/2026/1/1"}).get_data(as_text=True)
+
+    assert "/payments" in html and "/lines" in html
+    # Every hidden return_to in the Payments/Line items forms should be the
+    # tab's own path (one delete-line, one add-line, one delete-payment, one
+    # add-payment form), never the "/timeline/..." value passed in above.
+    assert html.count(f'name="return_to" value="{billing_path}"') == 4
 
 
 # ---------------------------------------------------------------------------

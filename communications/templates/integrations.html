@@ -243,7 +243,7 @@
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn-secondary">Remove</button>
+            <button type="submit" class="btn-secondary">Delete</button>
           </form>
         </div>
       </li>
@@ -271,7 +271,7 @@
         </span>
         <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-secondary">Remove</button>
+          <button type="submit" class="btn-secondary">Delete</button>
         </form>
       </div>
 
@@ -299,7 +299,7 @@
           <div class="settings-source-list__actions">
             <form method="post" action="{{ url_for('communications.delete_rule_field', field_id=field.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn-secondary">Remove</button>
+              <button type="submit" class="btn-secondary">Delete</button>
             </form>
           </div>
         </li>

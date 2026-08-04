@@ -438,6 +438,15 @@ def test_the_integrations_page_lists_the_rules(logged_in, company):
     assert "@newsletter.example.com" in body
 
 
+def test_a_rule_deletes_via_a_delete_button_not_remove(logged_in, company):
+    # Matches the app-wide delete convention (trash icon, or a "Delete"
+    # button) — this page used to read "Remove" for sender rules.
+    rule(company, "@newsletter.example.com", RULE_HIDE)
+    body = logged_in.get("/settings/integrations").get_data(as_text=True)
+    assert ">Remove<" not in body
+    assert ">Delete<" in body
+
+
 def test_adding_a_rule_from_the_page(logged_in, csrf, company):
     logged_in.post("/integrations/rules", data={
         "csrf_token": csrf, "pattern": FORM, "action": RULE_CONVERT,
