@@ -499,9 +499,9 @@ catch a regression of it; that's a to-do, not a shrug.
 | V6 | `test_materials_tab_shows_warning_when_understocked`, `test_materials_tab_has_no_warning_when_fully_stocked` |
 | V7 | — gap — (asserted by construction: `OrderMaterialOther` has no `inventory_item_id` to check against) |
 | V8 | — gap — (cross-surface consistency isn't separately asserted, only each surface's own test) |
-| V9 | `test_low_stock_count_counts_items_in_the_amber_band`, `test_low_stock_count_excludes_out_of_stock_and_zero_threshold`, `test_low_stock_count_excludes_hidden_items` |
+| V9 | `test_low_stock_count_counts_items_in_the_amber_band`, `test_low_stock_count_excludes_out_of_stock_and_zero_threshold`, `test_low_stock_count_excludes_hidden_items`, `test_out_of_stock_and_low_stock_counts_are_disjoint` |
 | V10 | `test_low_stock_count_is_scoped_to_the_tenant` |
-| V11 | `test_low_stock_badge_appears_when_an_item_is_low`, `test_low_stock_badge_absent_when_nothing_is_low` |
+| V11 | `test_low_stock_badge_appears_when_an_item_is_low`, `test_low_stock_badge_absent_when_nothing_is_low`, `test_both_stock_badges_render_together` |
 | V12 | `test_low_stock_badge_clears_after_restocking` |
 | V13 | `test_low_stock_materials_for_order_reads_live_quantity_and_threshold` |
 | V14 | `test_low_stock_and_out_of_stock_banners_are_distinct_on_the_tab` |

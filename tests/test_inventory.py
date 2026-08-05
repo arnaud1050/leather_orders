@@ -1430,6 +1430,25 @@ def test_low_stock_badge_clears_after_restocking(logged_in, company):
     assert "nav-badge--low-stock" not in logged_in.get("/").get_data(as_text=True)
 
 
+def test_both_stock_badges_render_together(logged_in, company):
+    """One out-of-stock item and a separate low one make both nav badges
+    render side by side — red (--stock-alert) and amber (--low-stock) — each
+    with its own count of 1, never double-counting the same item (V3 + V11)."""
+    services.add_item(
+        company.id, name="Empty", unit="each",
+        inventory_type_id=None, quantity_on_hand=0, unit_price=1,
+        low_stock_threshold=5,
+    )
+    services.add_item(
+        company.id, name="Low", unit="each",
+        inventory_type_id=None, quantity_on_hand=3, unit_price=1,
+        low_stock_threshold=10,
+    )
+    body = logged_in.get("/").get_data(as_text=True)
+    assert "nav-badge--stock-alert" in body
+    assert "nav-badge--low-stock" in body
+
+
 def test_low_stock_materials_for_order_reads_live_quantity_and_threshold(company, order):
     item = services.add_item(
         company.id, name="Horween Chromexcel", unit="sqft",
