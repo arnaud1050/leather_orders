@@ -1418,6 +1418,14 @@ dialog.modal::backdrop {
   color: var(--status-progress);
 }
 
+/* The urgent variant — red instead of the default amber — for the "out of
+   stock" tier, so it matches its own red nav badge while the plain amber
+   .warning-note carries the softer "running low" tier beside it. */
+.warning-note--alert {
+  border-left-color: var(--day-today);
+  background: rgba(194, 59, 52, 0.07);
+}
+
 /* Uniform gap between page sections (order/client/settings/invoice pages).
    Deliberately on the section wrapper, not on whatever happens to be its
    last child (a form, a list, a note) — those vary per section and were
@@ -1523,6 +1531,15 @@ dialog.modal::backdrop {
    something's oversold. */
 .inventory-qty--negative {
   color: var(--day-today);
+  font-weight: 600;
+}
+
+/* The amber companion: a quantity that's low but still positive — at or below
+   the item's own warning point (see InventoryItem.is_low_stock). Same
+   gold/amber as the low-stock nav badge, one tier down from the red negative
+   flag above. */
+.inventory-qty--low {
+  color: var(--status-ready);
   font-weight: 600;
 }
 
@@ -2271,6 +2288,18 @@ dialog.modal::backdrop {
    instead of a symbol. */
 .nav-badge--stock-alert {
   background: var(--day-today);
+}
+
+/* The softer, "running low" companion to --stock-alert: amber (the same
+   gold/amber --status-ready the .warning-note border and the "ready" order
+   status already use), sized like the base .nav-badge since it too carries a
+   count. Sits beside the red badge when both apply — red = out of stock now,
+   amber = restock soon. This is a fourth badge weight, added deliberately
+   with the low-stock feature (see docs/design.md): amber = "worth attention
+   soon", distinct from red = "broken/out". */
+.nav-badge--low-stock {
+  color: #fff;
+  background: var(--status-ready);
 }
 
 /* A client the app created by itself from a sender rule. Purple, the app's

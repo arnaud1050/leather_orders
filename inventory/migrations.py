@@ -23,7 +23,16 @@ from inventory.models import InventoryItem, InventoryUnit
 
 logger = logging.getLogger(__name__)
 
-ADDED_COLUMNS: list[tuple[str, str, str]] = []
+ADDED_COLUMNS: list[tuple[str, str, str]] = [
+    # The low-stock warning point on an item, added after inventory_items
+    # first shipped (see InventoryItem.low_stock_threshold). `db.create_all()`
+    # adds missing tables but never missing columns, so an installation that
+    # predates this feature needs the ALTER here. NOT NULL DEFAULT 0 backfills
+    # every existing row to "no warning point set" — the exact behaviour those
+    # items had before the column existed (only the hard zero/negative signal
+    # applies until someone sets a threshold).
+    ("inventory_items", "low_stock_threshold", "FLOAT NOT NULL DEFAULT 0"),
+]
 
 
 def run_migrations() -> None:

@@ -33,15 +33,16 @@ def register(app, *, resolve_order) -> None:
 
 @bp.app_context_processor
 def _inject_nav_badge():
-    """The nav badge next to "Inventory" in base.html — how many active
-    items are at zero or negative stock, i.e. need restocking. Same shape as
-    communications' badges (see communications/routes.py's
+    """The two nav badges next to "Inventory" in base.html — how many active
+    items are out of stock (red, at zero/negative) and how many are low
+    (amber, above zero but at or below their own warning point). Same shape
+    as communications' badges (see communications/routes.py's
     `_inject_nav_badges`): an `app_context_processor` since base.html is
-    extended by every page, not just this module's own; the count comes
+    extended by every page, not just this module's own; each count comes
     back as a callable so the query only runs on templates that actually
-    render it; and it's deliberately forgiving (no user, or a table that
-    doesn't exist yet on a partially-migrated database) since a decoration
-    isn't worth a 500.
+    render it; and both are deliberately forgiving (no user, or a table/
+    column that doesn't exist yet on a partially-migrated database) since a
+    decoration isn't worth a 500.
     """
     def out_of_stock_count() -> int:
         if not current_user.is_authenticated:
@@ -52,7 +53,16 @@ def _inject_nav_badge():
             current_app.logger.debug("Could not compute the inventory stock badge", exc_info=True)
             return 0
 
-    return {"out_of_stock_count": out_of_stock_count}
+    def low_stock_count() -> int:
+        if not current_user.is_authenticated:
+            return 0
+        try:
+            return services.low_stock_count(current_user.company_id)
+        except Exception:  # noqa: BLE001 — see docstring
+            current_app.logger.debug("Could not compute the inventory low-stock badge", exc_info=True)
+            return 0
+
+    return {"out_of_stock_count": out_of_stock_count, "low_stock_count": low_stock_count}
 
 
 def _get_order_or_404(order_id: int):
@@ -161,6 +171,7 @@ def add_item():
         inventory_type_id=int(raw_type_id) if raw_type_id.isdigit() else None,
         quantity_on_hand=_parse_float(request.form.get("quantity_on_hand")) or 0.0,
         unit_price=_parse_float(request.form.get("unit_price")) or 0.0,
+        low_stock_threshold=_parse_float(request.form.get("low_stock_threshold")) or 0.0,
     )
     return redirect(url_for("inventory.inventory_list"))
 
@@ -176,6 +187,7 @@ def edit_item(item_id: int):
         inventory_type_id=int(raw_type_id) if raw_type_id.isdigit() else None,
         quantity_on_hand=_parse_float(request.form.get("quantity_on_hand")) or 0.0,
         unit_price=_parse_float(request.form.get("unit_price")) or 0.0,
+        low_stock_threshold=_parse_float(request.form.get("low_stock_threshold")) or 0.0,
     )
     return redirect(url_for("inventory.inventory_list"))
 

@@ -85,11 +85,21 @@ Current tokens (top of `style.css`):
   count. Deliberately non-committal: a lead is by definition undecided —
   client, supplier or spam, nobody has looked yet — and a louder colour would
   claim more than the app knows
-- `--day-today` (red) — the current-day marker, and the *only* other thing
-  entitled to red: `.nav-badge--alert`, "an integration has stopped syncing".
-  Red means broken. **The three badge weights are the whole scheme: grey =
-  undecided, purple = worth knowing, red = broken.** Don't add a fourth, and
-  don't promote a count from one to another because it feels important
+- `--day-today` (red) — the current-day marker, and red for "broken/needs
+  attention now": `.nav-badge--alert` ("an integration has stopped syncing")
+  and `.nav-badge--stock-alert` (inventory items at zero/negative stock).
+  Red means broken.
+- `--status-ready` (gold/amber) — besides the "ready" order status, the
+  "needs attention *soon*" badge weight: `.nav-badge--low-stock`, the count of
+  inventory items running low (above zero but at or below their own warning
+  point), plus the amber-bordered `.warning-note` it mirrors on the order
+  Materials tab. One tier softer than red. **The four badge weights are the
+  whole scheme: grey = undecided, purple = worth knowing, amber = needs
+  attention soon, red = broken.** Amber was added deliberately with the
+  inventory low-stock feature — a genuinely milder severity than the red
+  out-of-stock signal it sits beside, not a count promoted because it felt
+  important. Don't add a fifth, and don't promote a count from one weight to
+  another because it feels important
 - Fonts: Inter (body + effectively headings too) — a Google Font, loaded in
   `base.html`'s single `<link>`. **There is no mono font anywhere in the app
   any more.** It started as IBM Plex Mono, was swapped for Roboto Mono, then

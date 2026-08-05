@@ -76,7 +76,10 @@
             {% if not item.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
           </td>
           <td>{{ unit_labels[item.unit] }}</td>
-          <td class="is-numeric {{ 'inventory-qty--negative' if item.quantity_on_hand < 0 else '' }}">
+          {# Red when oversold (negative), amber when low but still above zero
+             (at/below its warning point) — the master-list mirror of the two
+             nav badges. See InventoryItem.is_low_stock. #}
+          <td class="is-numeric {{ 'inventory-qty--negative' if item.quantity_on_hand < 0 else ('inventory-qty--low' if item.is_low_stock else '') }}">
             {{ ('%.0f'|format(item.quantity_on_hand)) if item.unit == 'each' else ('%.2f'|format(item.quantity_on_hand)) }}
           </td>
           <td class="is-numeric">${{ '%.2f'|format(item.unit_price) }}</td>
@@ -137,8 +140,19 @@
       {% endif %}
     </select>
   </label>
-  <label class="modal__field">Quantity on hand<input type="number" name="quantity_on_hand" step="0.01" value="{{ item.quantity_on_hand if item else '0' }}" required></label>
+  <label class="modal__field">Quantity on hand<input type="number" name="quantity_on_hand" step="0.01" value="{{ item.quantity_on_hand if item else '0' }}" data-quantity required></label>
   <label class="modal__field">Unit price<input type="number" name="unit_price" step="0.01" min="0" value="{{ item.unit_price if item else '0.00' }}" required></label>
+  {# Low-stock warning point. On a NEW item the field carries data-auto so the
+     script below preloads it at ~10% of the quantity (rounded up) as the user
+     types, until they edit it themselves; on an EXISTING item it shows the
+     saved value and is left alone. 0 = no low-stock warning (only the hard
+     out-of-stock signal applies). See InventoryItem.is_low_stock. #}
+  <label class="modal__field">Warn when stock at or below
+    <input type="number" name="low_stock_threshold" step="0.01" min="0"
+           value="{{ item.low_stock_threshold if item else '' }}"
+           {% if not item %}data-auto{% endif %} data-threshold>
+  </label>
+  <p class="modal__hint">Amber &ldquo;running low&rdquo; alert. 0 means no warning until it&rsquo;s out of stock.</p>
   {% endmacro %}
 
   {# Add-item modal, opened by the button above. #}
@@ -192,6 +206,28 @@
   document.querySelectorAll('dialog.modal').forEach(function (dialog) {
     dialog.addEventListener('click', function (event) {
       if (event.target === dialog) dialog.close();
+    });
+  });
+
+  // Low-stock threshold preload: on a NEW item (its threshold field carries
+  // data-auto), fill "Warn when stock at or below" with ~10% of the quantity
+  // entered, rounded up, as the user types — until they edit the threshold
+  // themselves, at which point data-auto is dropped and it's left alone.
+  // Scoped per form so one modal's quantity never writes another's threshold.
+  document.querySelectorAll('.modal__form').forEach(function (form) {
+    var quantity = form.querySelector('[data-quantity]');
+    var threshold = form.querySelector('[data-threshold]');
+    if (!quantity || !threshold) return;
+
+    quantity.addEventListener('input', function () {
+      if (!threshold.hasAttribute('data-auto')) return;
+      var qty = parseFloat(quantity.value);
+      threshold.value = (!isNaN(qty) && qty > 0) ? Math.ceil(qty * 0.1) : '';
+    });
+
+    // Any hand-edit of the threshold pins it — stop tracking the quantity.
+    threshold.addEventListener('input', function () {
+      threshold.removeAttribute('data-auto');
     });
   });
 

@@ -1012,6 +1012,7 @@ def order_materials(order_id: int):
         total_material_cost=inventory_service.total_material_cost(order.id),
         selectable_items=inventory_service.selectable_items(current_user.company_id, order.id),
         understocked_materials=inventory_service.understocked_materials_for_order(order.id),
+        low_stock_materials=inventory_service.low_stock_materials_for_order(order.id),
         unit_labels=INVENTORY_UNIT_LABELS,
         unit_whole=INVENTORY_UNIT_WHOLE,
         return_to=return_to,

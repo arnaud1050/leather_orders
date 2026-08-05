@@ -137,8 +137,8 @@ dropdown, and in what sequence. It never gates what `InventoryItem.unit`
 - **I6.** Editing an item is a **partial update**, unlike creation: a blank
   `name` is ignored (the existing name is kept) instead of failing the
   whole edit; an invalid `unit` is likewise ignored (existing unit kept).
-  `quantity_on_hand` and `unit_price` are always overwritten with whatever
-  was supplied.
+  `quantity_on_hand`, `unit_price`, and `low_stock_threshold` are always
+  overwritten with whatever was supplied.
 - **I7.** Editing an item's `inventory_type_id` to empty clears the type;
   supplying an id belonging to another company resolves to "no type" (same
   drop-silently behavior as I4).
@@ -154,6 +154,14 @@ dropdown, and in what sequence. It never gates what `InventoryItem.unit`
 - **I12.** The master list returns every item for a company — active and
   hidden both; sort order is a presentation concern (see §7), not a
   property of the stored data.
+- **I13.** An item carries a `low_stock_threshold` (float, default `0`) — the
+  quantity at or below which it counts as "low" (see §10). `0` means the
+  low-stock band is off: only the hard zero/negative signal applies, which is
+  how every item behaved before this column existed. A column added after the
+  table shipped, so it needs a migration entry in `inventory/migrations.py`'s
+  `ADDED_COLUMNS` (backfilled `NOT NULL DEFAULT 0`). It is validated only as a
+  number — negative/blank collapse to `0` at the route (`_parse_float(...) or
+  0.0`); no cross-check against `quantity_on_hand` is imposed.
 
 ## 4. Selectable items (the "add material" picker on an order)
 
@@ -247,11 +255,18 @@ dropdown, and in what sequence. It never gates what `InventoryItem.unit`
   the right (same layout as the Timeline/Orders "+ New order" button), and
   is always present regardless of whether any filters are showing.
 - **U4.** Clicking an item's name opens its own edit modal (name / type /
-  unit / quantity / price only — Hide/Delete are not in this modal).
+  unit / quantity / price / low-stock warning point only — Hide/Delete are
+  not in this modal). On the **Add** modal the warning-point field preloads
+  at ~10% of the quantity entered, **rounded up**, tracking the quantity as
+  it's typed until the user edits the field themselves (client-side; `0`/blank
+  if no quantity). The **Edit** modal shows the saved value and leaves it
+  alone. See `I13`.
 - **U5.** Each row's Actions column offers Hide/Unhide and Delete (the
   latter only when `can_delete`) as icon buttons with text tooltips.
 - **U6.** A negative `quantity_on_hand` renders in a visually distinct
-  (red) style on the master list.
+  (red) style on the master list; a low but positive one (`is_low_stock`)
+  renders in a distinct **amber** style (`.inventory-qty--low`) — the
+  master-list mirror of the two nav badges' tiers.
 - **U7.** The order page's Materials tab sits between Details and Billing,
   both in the tab navigation and in the rendered section order.
 - **U8.** Adding a material groups the item picker by type (`<optgroup>`),
@@ -282,11 +297,24 @@ dropdown, and in what sequence. It never gates what `InventoryItem.unit`
 - **U13.** The "Show hidden" toggle is absent entirely when no item is
   hidden — there being nothing for it to reveal.
 
-## 10. Stock alerts (out-of-stock nav badge + Materials-tab warning)
+## 10. Stock alerts (out-of-stock + low-stock, nav badges + Materials-tab warnings)
 
-Two separate surfaces reading the same underlying fact — an item at zero or
-negative stock — at two different scopes: company-wide (the badge) and
-order-specific (the warning on that order's Materials tab).
+Two severity tiers over live stock, each surfaced at two scopes —
+company-wide (a nav badge) and order-specific (a warning on that order's
+Materials tab):
+
+- **Out of stock** (red) — `quantity_on_hand <= 0`. "Broken/oversold." `V1`–`V8`.
+- **Low stock** (amber) — `0 < quantity_on_hand <= low_stock_threshold`.
+  "Running low, restock soon." `V9`–`V15`.
+
+The two bands are **disjoint by construction** (`> 0` excludes `<= 0`), so an
+item is in at most one, and the two counts / two warnings never double-report
+the same item. Both are derived on every read, never stored — same "the fact
+resolves it, not acknowledging it" rule throughout. An item with
+`low_stock_threshold = 0` can never be low (§3 I13), so items with no warning
+point set behave exactly as before this tier existed.
+
+### Out of stock (red)
 
 - **V1.** `out_of_stock_count(company_id)` counts every **active**
   `InventoryItem` for that company with `quantity_on_hand <= 0`. Hidden
@@ -321,17 +349,49 @@ order-specific (the warning on that order's Materials tab).
   say what's currently true, not what happened historically, so neither can
   disagree with `/inventory`'s own per-row red-quantity flag (U6).
 
+### Low stock (amber)
+
+- **V9.** `low_stock_count(company_id)` counts every **active**
+  `InventoryItem` for that company that is low — `quantity_on_hand > 0` **and**
+  `quantity_on_hand <= low_stock_threshold`. Hidden items are excluded (same
+  reason as V1); items at/below zero are excluded (V1 owns those — the bands
+  are disjoint); items with `low_stock_threshold = 0` can never qualify.
+- **V10.** The count is scoped per company — an item belonging to another
+  company is never counted (same tenant boundary as V2).
+- **V11.** The amber nav badge (`.nav-badge--low-stock`) next to "Inventory"
+  in `base.html` renders only when the count is greater than zero, shows the
+  **count itself**, and is styled amber (`--status-ready`) — one severity tier
+  below the red `.nav-badge--stock-alert`, which it sits beside when both
+  apply (red first). Amber is the app's "needs attention soon" weight; see
+  `docs/design.md`.
+- **V12.** The count is **derived on every page load, never stored** — no
+  "acknowledged" flag. It clears the moment a restock lifts every affected
+  item back above its threshold, and reappears the moment a later draw drops
+  another item to/under its own threshold (V4's rule, one tier down).
+- **V13.** `low_stock_materials_for_order(order_id)` returns the
+  `OrderMaterial` rows on that order whose **live** linked item is currently
+  low (`is_low_stock`) — reading the item's current quantity and threshold,
+  never the material's frozen snapshot (same live-read reasoning as V5).
+- **V14.** The Materials tab shows an amber warning banner (the plain
+  `.warning-note`) listing each affected material by name whenever
+  `low_stock_materials_for_order` returns at least one row; absent when it
+  returns none. The out-of-stock banner beside it takes the red
+  `.warning-note--alert` variant so the two tiers read distinctly; a material
+  appears in at most one banner (the bands are disjoint).
+- **V15.** `OrderMaterialOther` rows are never considered (they carry no
+  `inventory_item_id`, same as V7).
+
 ## 11. Explicit non-requirements
 
 These are deliberate omissions, not oversights — listed so nobody "fixes"
 them without checking first. See `docs/roadmap.md` for the reasoning.
 
 - **N1.** No bulk/CSV import for inventory items.
-- **N2.** No inventory-**value** reporting (total stock value in dollars),
-  and no *threshold*-based low-stock alerting (e.g. "warn under 5 units on
-  hand"). What exists is a hard zero-or-negative signal only — the per-row
-  red flag on `/inventory` (U6), the nav badge, and the Materials-tab
-  warning (both §9) — not a configurable reorder point.
+- **N2.** No inventory-**value** reporting (total stock value in dollars).
+  (Threshold-based low-stock alerting — a per-item configurable warning point
+  — *does* now exist; see §3 `low_stock_threshold` and §10's amber tier. It
+  was a non-requirement originally and is called out here so the history is
+  clear.)
 - **N3.** A material's item/unit/snapshotted price cannot be changed after
   creation — only `quantity_used` (M7). Changing the item means deleting
   and re-adding.
@@ -390,6 +450,7 @@ catch a regression of it; that's a to-do, not a shrug.
 | I10 | `test_toggle_item_flips_is_active`, `test_toggle_item_route_flips_is_active` |
 | I11 | `test_delete_item_removes_it_when_unused`, `test_delete_item_is_blocked_once_referenced` |
 | I12 | `test_inventory_list_sorts_by_name` (indirectly, via the route) |
+| I13 | `test_add_item_stores_the_low_stock_threshold`, `test_add_item_defaults_the_threshold_to_zero`, `test_edit_item_overwrites_the_low_stock_threshold`, `test_is_low_stock_only_in_the_band_above_zero` |
 | S1 | `test_selectable_items_includes_a_hidden_item_already_used_on_this_order` |
 | S2 | `test_selectable_items_excludes_hidden_items_by_default` |
 | S3 | `test_selectable_items_are_ordered_by_type_sort_order_then_name` |
@@ -438,6 +499,13 @@ catch a regression of it; that's a to-do, not a shrug.
 | V6 | `test_materials_tab_shows_warning_when_understocked`, `test_materials_tab_has_no_warning_when_fully_stocked` |
 | V7 | — gap — (asserted by construction: `OrderMaterialOther` has no `inventory_item_id` to check against) |
 | V8 | — gap — (cross-surface consistency isn't separately asserted, only each surface's own test) |
+| V9 | `test_low_stock_count_counts_items_in_the_amber_band`, `test_low_stock_count_excludes_out_of_stock_and_zero_threshold`, `test_low_stock_count_excludes_hidden_items` |
+| V10 | `test_low_stock_count_is_scoped_to_the_tenant` |
+| V11 | `test_low_stock_badge_appears_when_an_item_is_low`, `test_low_stock_badge_absent_when_nothing_is_low` |
+| V12 | `test_low_stock_badge_clears_after_restocking` |
+| V13 | `test_low_stock_materials_for_order_reads_live_quantity_and_threshold` |
+| V14 | `test_low_stock_and_out_of_stock_banners_are_distinct_on_the_tab` |
+| V15 | — gap — (asserted by construction: `OrderMaterialOther` has no `inventory_item_id` to check against) |
 
 Everything marked "manually verified in browser only" was exercised by hand
 during development (see the session that built this module) but has no

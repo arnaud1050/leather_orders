@@ -439,6 +439,64 @@ def test_edit_item_is_scoped_to_the_tenant(company, other_company):
     assert db.session.get(InventoryItem, item.id).name == "Widget"  # untouched
 
 
+# --- I13: the low-stock warning point on an item --------------------------
+
+def test_add_item_stores_the_low_stock_threshold(company):
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=100, unit_price=1,
+        low_stock_threshold=10,
+    )
+    assert item.low_stock_threshold == 10
+
+
+def test_add_item_defaults_the_threshold_to_zero(company):
+    """Omitted (as every pre-existing caller does) means 0 — the low-stock
+    band off, only the hard zero/negative signal applies."""
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=5, unit_price=1,
+    )
+    assert item.low_stock_threshold == 0
+
+
+def test_edit_item_overwrites_the_low_stock_threshold(company):
+    """Always overwritten, like quantity/price (I6) — not a partial-update
+    field that a blank keeps."""
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=100, unit_price=1,
+        low_stock_threshold=10,
+    )
+    services.edit_item(
+        company.id, item.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=100, unit_price=1,
+        low_stock_threshold=25,
+    )
+    assert db.session.get(InventoryItem, item.id).low_stock_threshold == 25
+
+
+def test_is_low_stock_only_in_the_band_above_zero(company):
+    """0 < qty <= threshold. Out-of-stock (<= 0) is the red tier's job, and a
+    0 threshold can never be low — the bands are disjoint."""
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=10, unit_price=1,
+        low_stock_threshold=10,
+    )
+    assert item.is_low_stock is True  # exactly at the threshold counts
+
+    item.quantity_on_hand = 11
+    assert item.is_low_stock is False  # above it
+
+    item.quantity_on_hand = 0
+    assert item.is_low_stock is False  # zero belongs to the red tier
+
+    item.quantity_on_hand = 5
+    item.low_stock_threshold = 0
+    assert item.is_low_stock is False  # no warning point set
+
+
 def test_edit_item_ignores_a_blank_name(company):
     """Editing is a partial update, unlike creation (I6): a blank name keeps
     the existing one rather than failing the edit — while quantity/price are
@@ -1259,6 +1317,163 @@ def test_materials_tab_has_no_warning_when_fully_stocked(logged_in, company, ord
     )
     body = logged_in.get(f"/orders/{order.id}/materials").get_data(as_text=True)
     assert "This order's materials aren't fully covered" not in body
+
+
+# --- low-stock (amber) alerts: nav badge + Materials-tab warning -----------
+
+def test_low_stock_count_counts_items_in_the_amber_band(company):
+    """Above zero and at or below the item's own threshold."""
+    services.add_item(
+        company.id, name="Low", unit="each",
+        inventory_type_id=None, quantity_on_hand=5, unit_price=1,
+        low_stock_threshold=5,  # exactly at threshold counts
+    )
+    services.add_item(
+        company.id, name="Also low", unit="each",
+        inventory_type_id=None, quantity_on_hand=3, unit_price=1,
+        low_stock_threshold=10,
+    )
+    assert services.low_stock_count(company.id) == 2
+
+
+def test_low_stock_count_excludes_out_of_stock_and_zero_threshold(company):
+    """The band is disjoint from out-of-stock (V1 owns <= 0), and an item with
+    no warning point set (threshold 0) is never low."""
+    services.add_item(  # out of stock — the red tier, not this one
+        company.id, name="Empty", unit="each",
+        inventory_type_id=None, quantity_on_hand=0, unit_price=1,
+        low_stock_threshold=5,
+    )
+    services.add_item(  # plenty, but no threshold set
+        company.id, name="Untracked", unit="each",
+        inventory_type_id=None, quantity_on_hand=2, unit_price=1,
+        low_stock_threshold=0,
+    )
+    services.add_item(  # plenty, above its threshold
+        company.id, name="Fine", unit="each",
+        inventory_type_id=None, quantity_on_hand=50, unit_price=1,
+        low_stock_threshold=5,
+    )
+    assert services.low_stock_count(company.id) == 0
+
+
+def test_low_stock_count_excludes_hidden_items(company):
+    item = services.add_item(
+        company.id, name="Retired", unit="each",
+        inventory_type_id=None, quantity_on_hand=3, unit_price=1,
+        low_stock_threshold=10,
+    )
+    services.toggle_item(company.id, item.id)  # hide it
+    assert services.low_stock_count(company.id) == 0
+
+
+def test_low_stock_count_is_scoped_to_the_tenant(company, other_company):
+    services.add_item(
+        other_company.id, name="Theirs", unit="each",
+        inventory_type_id=None, quantity_on_hand=3, unit_price=1,
+        low_stock_threshold=10,
+    )
+    assert services.low_stock_count(company.id) == 0
+
+
+def test_out_of_stock_and_low_stock_counts_are_disjoint(company):
+    """With one item out of stock and a separate one merely low, each count
+    reports exactly its own tier — the out-of-stock item never leaks into the
+    low count, and vice versa (V9's disjoint-bands guarantee)."""
+    services.add_item(
+        company.id, name="Empty", unit="each",
+        inventory_type_id=None, quantity_on_hand=0, unit_price=1,
+        low_stock_threshold=5,
+    )
+    services.add_item(
+        company.id, name="Low", unit="each",
+        inventory_type_id=None, quantity_on_hand=3, unit_price=1,
+        low_stock_threshold=10,
+    )
+    assert services.out_of_stock_count(company.id) == 1
+    assert services.low_stock_count(company.id) == 1
+
+
+def test_low_stock_badge_appears_when_an_item_is_low(logged_in, company):
+    services.add_item(
+        company.id, name="Low", unit="each",
+        inventory_type_id=None, quantity_on_hand=3, unit_price=1,
+        low_stock_threshold=10,
+    )
+    body = logged_in.get("/").get_data(as_text=True)
+    assert "nav-badge--low-stock" in body
+
+
+def test_low_stock_badge_absent_when_nothing_is_low(logged_in, company):
+    services.add_item(
+        company.id, name="Plenty", unit="each",
+        inventory_type_id=None, quantity_on_hand=50, unit_price=1,
+        low_stock_threshold=10,
+    )
+    body = logged_in.get("/").get_data(as_text=True)
+    assert "nav-badge--low-stock" not in body
+
+
+def test_low_stock_badge_clears_after_restocking(logged_in, company):
+    item = services.add_item(
+        company.id, name="Low", unit="each",
+        inventory_type_id=None, quantity_on_hand=3, unit_price=1,
+        low_stock_threshold=10,
+    )
+    assert "nav-badge--low-stock" in logged_in.get("/").get_data(as_text=True)
+
+    services.edit_item(
+        company.id, item.id, name=item.name, unit=item.unit,
+        inventory_type_id=None, quantity_on_hand=50, unit_price=item.unit_price,
+        low_stock_threshold=10,
+    )
+    assert "nav-badge--low-stock" not in logged_in.get("/").get_data(as_text=True)
+
+
+def test_low_stock_materials_for_order_reads_live_quantity_and_threshold(company, order):
+    item = services.add_item(
+        company.id, name="Horween Chromexcel", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=20, unit_price=12.5,
+        low_stock_threshold=8,
+    )
+    material = services.add_material(company.id, order.id, item.id, quantity_used=2)
+    assert services.low_stock_materials_for_order(order.id) == []  # 18 on hand, above 8
+
+    # A later draw (simulated via edit) drops the live item into the band.
+    services.edit_item(
+        company.id, item.id, name=item.name, unit=item.unit,
+        inventory_type_id=None, quantity_on_hand=5, unit_price=item.unit_price,
+        low_stock_threshold=8,
+    )
+    assert services.low_stock_materials_for_order(order.id) == [material]
+
+
+def test_low_stock_and_out_of_stock_banners_are_distinct_on_the_tab(logged_in, company, order):
+    """Two materials, one out of stock (red banner) and one merely low (amber
+    banner) — both appear, in their own distinct notes."""
+    empty = services.add_item(
+        company.id, name="Empty leather", unit="sqft",
+        inventory_type_id=None, quantity_on_hand=2, unit_price=1,
+        low_stock_threshold=5,
+    )
+    low = services.add_item(
+        company.id, name="Low thread", unit="each",
+        inventory_type_id=None, quantity_on_hand=20, unit_price=1,
+        low_stock_threshold=6,
+    )
+    logged_in.post(
+        f"/orders/{order.id}/materials/add",
+        data={"inventory_item_id": str(empty.id), "quantity_used": "2"},
+    )  # -> 0 on hand, out of stock
+    logged_in.post(
+        f"/orders/{order.id}/materials/add",
+        data={"inventory_item_id": str(low.id), "quantity_used": "15"},
+    )  # -> 5 on hand, at/below threshold 6, low
+    body = logged_in.get(f"/orders/{order.id}/materials").get_data(as_text=True)
+    assert "warning-note--alert" in body  # red out-of-stock banner
+    assert "Running low on" in body        # amber low-stock banner
+    assert "Empty leather" in body
+    assert "Low thread" in body
 
 
 # --- routes: tenant isolation on order-scoped material routes --------------

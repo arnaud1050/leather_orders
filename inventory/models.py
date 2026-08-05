@@ -117,6 +117,14 @@ class InventoryItem(db.Model):
     unit = db.Column(db.String(10), nullable=False, default="each")
     quantity_on_hand = db.Column(db.Float, nullable=False, default=0.0)
     unit_price = db.Column(db.Float, nullable=False, default=0.0)
+    # The low-stock warning point: once quantity_on_hand drops to this or
+    # below (while still above zero), the item is "low" — an amber signal,
+    # milder than the red at-or-below-zero "out of stock" one. `0` means the
+    # band is off: only the hard zero/negative signal applies, which is
+    # exactly how every item behaved before this column existed. The Add/Edit
+    # modal preloads it at ~10% of the quantity entered (see
+    # inventory_list.html), but it's freely editable from there.
+    low_stock_threshold = db.Column(db.Float, nullable=False, default=0.0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
     inventory_type = db.relationship("InventoryType")
@@ -124,6 +132,15 @@ class InventoryItem(db.Model):
     @property
     def can_delete(self):
         return OrderMaterial.query.filter_by(inventory_item_id=self.id).first() is None
+
+    @property
+    def is_low_stock(self) -> bool:
+        """Above zero but at or below the configured warning point — the
+        amber "restock soon" band. Deliberately excludes zero/negative (the
+        red `out_of_stock` band owns those), so the two signals never
+        double-count the same item. A `0` threshold makes this always False,
+        so an item with no warning point set never registers as "low"."""
+        return 0 < self.quantity_on_hand <= self.low_stock_threshold
 
 
 class OrderMaterial(db.Model):

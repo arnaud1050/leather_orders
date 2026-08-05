@@ -240,7 +240,7 @@ def selectable_items(company_id: int, order_id: int | None = None) -> list[Inven
 
 def add_item(
     company_id: int, name: str, unit: str, inventory_type_id: int | None,
-    quantity_on_hand: float, unit_price: float,
+    quantity_on_hand: float, unit_price: float, low_stock_threshold: float = 0.0,
 ) -> InventoryItem | None:
     name = (name or "").strip()
     if not name or unit not in UNIT_CATALOG:
@@ -258,6 +258,7 @@ def add_item(
         unit=unit,
         quantity_on_hand=quantity_on_hand,
         unit_price=unit_price,
+        low_stock_threshold=low_stock_threshold,
     )
     db.session.add(item)
     db.session.commit()
@@ -267,6 +268,7 @@ def add_item(
 def edit_item(
     company_id: int, item_id: int, *, name: str, unit: str,
     inventory_type_id: int | None, quantity_on_hand: float, unit_price: float,
+    low_stock_threshold: float = 0.0,
 ) -> InventoryItem | None:
     item = get_item(company_id, item_id)
     if item is None:
@@ -286,6 +288,10 @@ def edit_item(
         item.inventory_type_id = resolved_type_id
     item.quantity_on_hand = quantity_on_hand
     item.unit_price = unit_price
+    # Always overwritten, same as quantity/price — the Add/Edit modal always
+    # renders this field, so a blank means "no warning point" (0), not "leave
+    # it alone" (unlike name/unit, which a partial edit keeps).
+    item.low_stock_threshold = low_stock_threshold
     db.session.commit()
     return item
 
@@ -319,6 +325,25 @@ def out_of_stock_count(company_id: int) -> int:
     ).count()
 
 
+def low_stock_count(company_id: int) -> int:
+    """Active items in the amber "low stock" band — above zero but at or
+    below their own `low_stock_threshold` — the count behind the amber nav
+    badge next to "Inventory" (see inventory/routes.py's `_inject_nav_badge`).
+
+    Deliberately disjoint from `out_of_stock_count`: `quantity_on_hand > 0`
+    excludes anything the red badge already counts, so an item is only ever
+    in one band and the two counts never double-report it. An item with a `0`
+    threshold can never qualify (`0 < qty <= 0` is empty), so items with no
+    warning point set are silently ignored here. Same derive-on-every-read,
+    no-stored-flag rule as `out_of_stock_count`: a restock that lifts an
+    item back above its threshold clears it, a later draw that drops another
+    to/under its threshold relights it, with nothing to acknowledge."""
+    return InventoryItem.query.filter_by(company_id=company_id, is_active=True).filter(
+        InventoryItem.quantity_on_hand > 0,
+        InventoryItem.quantity_on_hand <= InventoryItem.low_stock_threshold,
+    ).count()
+
+
 # ---------------------------------------------------------------------------
 # Order materials + one-off "Others" — the Materials tab on an order page.
 # ---------------------------------------------------------------------------
@@ -340,6 +365,23 @@ def understocked_materials_for_order(order_id: int) -> list[OrderMaterial]:
         material
         for material in list_materials_for_order(order_id)
         if material.item is not None and material.item.quantity_on_hand <= 0
+    ]
+
+
+def low_stock_materials_for_order(order_id: int) -> list[OrderMaterial]:
+    """This order's materials whose live item is currently in the amber
+    "low stock" band (above zero but at or below its `low_stock_threshold`)
+    — the order-scoped mirror of `low_stock_count`, powering the Materials
+    tab's amber warning banner. Reads the item's *live* `is_low_stock`, not
+    the material's frozen snapshot, same reasoning as
+    `understocked_materials_for_order`: stock is a shared figure every order
+    and restock moves. Disjoint from that function by construction — an item
+    can't be both `<= 0` and `> 0` at once — so a material shows in at most
+    one of the two banners."""
+    return [
+        material
+        for material in list_materials_for_order(order_id)
+        if material.item is not None and material.item.is_low_stock
     ]
 
 

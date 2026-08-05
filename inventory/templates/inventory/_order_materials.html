@@ -4,8 +4,10 @@
    (OrderMaterialOther rows), selectable_items (InventoryItem, active ∪
    already used on this order), total_material_cost, understocked_materials
    (OrderMaterial rows whose live item is now at zero/negative stock),
-   unit_labels, unit_whole (config.UNIT_WHOLE — key -> whole/divisible, for
-   the Add-material quantity step below), return_to.
+   low_stock_materials (OrderMaterial rows whose live item is low — above
+   zero but at/below its warning point), unit_labels, unit_whole
+   (config.UNIT_WHOLE — key -> whole/divisible, for the Add-material quantity
+   step below), return_to.
 
    This tab is cost-tracking only — nothing here touches order.total,
    OrderLine, or the invoice. See inventory/__init__.py. #}
@@ -18,16 +20,32 @@
     its remaining quantity on the <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a> page.
   </p>
 
+  {# Order-scoped mirrors of the two company-wide nav badges, most severe
+     first: red for materials whose live item is out of stock (zero/negative),
+     amber for materials whose live item is merely low (above zero but at or
+     below its warning point). The nav badge says *something* is off; these say
+     *which of this order's own materials* are affected, so nobody has to go
+     hunting on the Inventory page. Both read the live item, never the frozen
+     snapshot — see understocked/low_stock_materials_for_order. A material
+     shows in at most one of the two (the bands are disjoint). #}
   {% if understocked_materials %}
-  {# Same warning-note the tax-status note on the Billing tab uses — this is
-     the order-scoped mirror of the company-wide nav badge above: that badge
-     says *something* is out of stock, this says *which of this order's own
-     materials* are affected, so this page doesn't just point at Inventory
-     and make someone go hunting for what ran out. #}
-  <p class="warning-note">
+  {# Red variant of the tax-status .warning-note — matches its own red nav
+     badge; "out of stock" is the urgent tier. #}
+  <p class="warning-note warning-note--alert">
     This order's materials aren't fully covered by what's on hand —
     {% for material in understocked_materials %}{{ material.item_name }}{% if not loop.last %}, {% endif %}{% endfor %}
     {{ 'is' if understocked_materials|length == 1 else 'are' }} at zero or negative stock.
+    Restock from <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a>.
+  </p>
+  {% endif %}
+
+  {% if low_stock_materials %}
+  {# Amber (the plain .warning-note colour) — matches its amber nav badge;
+     "running low" is the softer, restock-soon tier. #}
+  <p class="warning-note">
+    Running low on
+    {% for material in low_stock_materials %}{{ material.item_name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    — at or below the warning point.
     Restock from <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a>.
   </p>
   {% endif %}
