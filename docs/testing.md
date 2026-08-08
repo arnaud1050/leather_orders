@@ -59,6 +59,19 @@ The four money files, and the single rule each exists to defend:
   "self-contained" is an intention rather than a property: one `from models
   import Order` added for convenience would go unnoticed by every other test.
 
+- **`tests/test_mail_attachments.py`** — attaching an order document to an
+  outgoing email, which spans three parts none of which may import the
+  others: `documents/` owns the bytes, `communications/` owns the sending,
+  and the two hooks in `app.py` are the only place an Order, a Document and
+  an EmailMessage meet. So the tests are aimed at the seam rather than at
+  either module: what the picker offers (orders with documents, grouped by
+  type; "no orders" told apart from "no documents"), and what happens to an
+  id that shouldn't resolve. The sharpest one posts **another tenant's**
+  `document_id` into `/mail/send` and asserts both halves — their file
+  doesn't go out, *and* the message still does. Dropping rather than
+  raising is the rule (`SEND-9`), and a test that only checked the first
+  half would pass against code that lost the user's draft.
+
 - **`tests/test_ai_boundary.py`** — the same trick for `ai/`, which claims a
   stricter boundary than any other module: it never sees a host model at all,
   since it's wired to three different host concepts (orders, documents, mail

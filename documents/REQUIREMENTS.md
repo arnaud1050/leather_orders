@@ -14,6 +14,14 @@ rule changes, update this file in the same change.
   scope for this module as built.
 - A document optionally belongs to one **document type** (category) — see
   §4. Untyped is a valid, permanent state, not just a migration artifact.
+- A document can leave this module **as bytes** (`services.read_bytes`,
+  over `storage.read`), for a caller that has to hand the file to something
+  other than the browser — today, mailing one out from the compose form's
+  attachment picker (`communications/REQUIREMENTS.md` SEND-7 … SEND-11).
+  `services.get_for_company` is the tenant-checked lookup that goes with
+  it, for a caller holding an id but no order. Serving a document *to* the
+  browser still goes through `storage.path_for` + `send_file`, which
+  streams rather than reading the whole file into memory.
 
 ## 2. Storage
 

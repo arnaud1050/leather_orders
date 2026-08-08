@@ -118,6 +118,27 @@ def test_picker_route_returns_json(logged_in, company, user, client_record, orde
     assert response.get_json()["orders"][0]["id"] == order.id
 
 
+# --- the compose form --------------------------------------------------
+
+def test_the_compose_form_offers_the_picker(logged_in, user, account, client_record):
+    """Offered whether or not anything is attachable — what's there to
+    attach is answered inside the modal, which can tell "no orders yet"
+    from "no documents on them" (a missing button can't)."""
+    page = logged_in.get(f"/clients/{client_record.id}/emails").get_data(as_text=True)
+
+    assert 'id="doc-attach-btn"' in page
+    assert 'id="doc-attach-modal"' in page
+    assert f"/mail/attachable-documents/{client_record.id}" in page
+
+
+def test_a_lead_thread_has_no_picker(logged_in, user, account, lead_thread):
+    """A lead isn't a client yet, so "documents for this client" has no
+    meaning — same reason the AI suggestion button gates on a thread."""
+    page = logged_in.get(f"/mail/threads/{lead_thread.id}").get_data(as_text=True)
+
+    assert 'id="doc-attach-btn"' not in page
+
+
 # --- the picker: resolving ids back into bytes ---------------------------
 
 def test_load_returns_the_stored_bytes(company, order):
