@@ -140,6 +140,30 @@ def test_a_blank_prompt_restores_the_default(company):
     assert services.settings_for(company.id).reply_prompt == config.DEFAULT_REPLY_PROMPT
 
 
+def test_a_prompt_saved_from_a_browser_is_stored_with_lf(company):
+    """**A browser submits textarea content with CRLF**, per the HTML spec,
+    while every default in config.py uses LF. Left alone, a company that
+    opened the page and pressed Save without changing a word would hold a
+    byte-different copy of the prompt it never edited — which makes "has
+    this been edited?" unanswerable, and that question is exactly what
+    migrations.py relies on. Found by diffing a real database, not here."""
+    services.save_reply_settings(company.id, prompt="Line one.\r\nLine two.")
+    assert services.settings_for(company.id).reply_prompt == "Line one.\nLine two."
+
+
+def test_an_unedited_prompt_saved_from_a_browser_still_equals_the_default(company):
+    """The case that matters: Save pressed with nothing changed has to leave
+    the row byte-identical to the shipped default."""
+    browser_copy = config.DEFAULT_REPLY_PROMPT.replace("\n", "\r\n")
+    services.save_reply_settings(company.id, prompt=browser_copy)
+    assert services.settings_for(company.id).reply_prompt == config.DEFAULT_REPLY_PROMPT
+
+
+def test_a_render_prompt_is_normalised_too(company):
+    services.save_render_settings(company.id, prompt="One.\r\nTwo.")
+    assert services.settings_for(company.id).render_prompt == "One.\nTwo."
+
+
 def test_a_blank_model_restores_the_default(company):
     services.save_render_settings(company.id, model="")
     assert services.settings_for(company.id).image_model == config.IMAGE_MODEL

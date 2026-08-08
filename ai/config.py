@@ -65,6 +65,33 @@ IMAGE_TIMEOUT_SECONDS = int(os.environ.get("AI_IMAGE_TIMEOUT_SECONDS", 120))
 # or the order is appended as context at call time, so a company editing
 # these can't accidentally break a placeholder.
 DEFAULT_REPLY_PROMPT = """\
+You are drafting a reply to a new enquiry for a one-person custom leather \
+atelier. Write in the first person singular — "I" and "my", never "we" or \
+"our"; there is only one person here.
+
+Write a warm, brief reply that thanks them for getting in touch and asks \
+for what's needed to quote the piece:
+
+- what they'd like made, and what it's for
+- rough dimensions, or an existing item to match
+- leather colour and finish, and hardware finish
+- any inspiration photos or sketches they can send
+- when they need it by, and any budget they have in mind
+
+Ask only for what the thread hasn't already told you. Keep it under 150 \
+words, plain sentences, no bullet-point interrogation. Never invent prices, \
+turnaround times, phone numbers or addresses.
+
+End with the last sentence of your message. Do not write a sign-off, a \
+name, or a signature — one is added automatically after your reply.\
+"""
+
+# Prompts that were once this module's default, newest last. A company's
+# saved prompt is *its* text and is never touched — except when it's still
+# byte-for-byte one of these, which means it was never edited, and leaving
+# it would quietly pin that company to a default we've since corrected.
+# See ai/migrations.py.
+SUPERSEDED_REPLY_PROMPTS = ["""\
 You are replying on behalf of a small custom leather goods studio to a new \
 enquiry. Write a warm, brief reply that thanks them for getting in touch and \
 asks for what's needed to quote the piece:
@@ -78,7 +105,7 @@ asks for what's needed to quote the piece:
 Ask only for what the thread hasn't already told you. Keep it under 150 \
 words, plain sentences, no bullet-point interrogation. Sign off with the \
 studio name only — no invented phone numbers, prices, or turnaround times.\
-"""
+"""]
 
 DEFAULT_RENDER_PROMPT = """\
 Produce a realistic product rendering of the finished leather item shown in \

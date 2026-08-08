@@ -1720,9 +1720,32 @@ def settings_account():
         section="account",
         company=db.session.get(Company, current_user.company_id),
         password_status=session.pop("password_status", None),
+        signature_saved=session.pop("signature_saved", False),
         min_password_length=MIN_PASSWORD_LENGTH,
         active_view="settings",
     )
+
+
+@app.route("/settings/account/signature", methods=["POST"])
+@login_required
+def update_signature():
+    """Set the signed-in user's own email signature.
+
+    Blank is a real value here, meaning "no signature" — unlike a key or a
+    prompt, there's nothing destructive about clearing it and no other way
+    to say it. Stored as None rather than "" so `signature_block` has one
+    empty case to test rather than two.
+    """
+    # Normalised to LF for the same reason prompts are (see
+    # ai.services.normalise_newlines): a browser submits textarea content
+    # with CRLF, and this text is concatenated into message bodies and
+    # compared in tests — one line-ending convention in the database is
+    # worth more than round-tripping the browser's exactly.
+    signature = request.form.get("signature", "").replace("\r\n", "\n").replace("\r", "\n")
+    current_user.signature = signature.strip() or None
+    db.session.commit()
+    session["signature_saved"] = True
+    return redirect(url_for("settings_account"))
 
 
 @app.route("/settings/account/password", methods=["POST"])

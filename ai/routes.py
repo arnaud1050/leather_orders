@@ -99,7 +99,13 @@ def suggest_reply():
         return jsonify(error="No conversation to reply to."), 404
 
     try:
-        suggestion = services.suggest_reply(current_user.company_id, conversation)
+        suggestion = services.suggest_reply(
+            current_user.company_id, conversation,
+            # Read straight off the session's user — a signature belongs to
+            # a person, and this route already knows which one. No host hook
+            # needed, and the module still never sees a `User`.
+            signature=getattr(current_user, "signature", "") or "",
+        )
     except AIError as exc:
         return jsonify(error=str(exc)), 502
 

@@ -68,6 +68,25 @@
     </form>
   </section>
 
+  <section class="detail-orders">
+    <h2>Email signature</h2>
+    <p class="detail-note">
+      How <strong>{{ current_user.username }}</strong> signs off an email.
+    </p>
+    <form method="post" action="{{ url_for('update_signature') }}" class="detail-form ai-form">
+      <label>Signature
+        <textarea name="signature" rows="5" placeholder="John Smith&#10;My Awesome Studio">{{ current_user.signature or '' }}</textarea>
+      </label>
+      <p class="detail-note">Leave it empty for no signature.</p>
+      <div>
+        <button type="submit" class="btn-primary">Save signature</button>
+      </div>
+      {% if signature_saved %}
+      <p class="password-status">Signature saved.</p>
+      {% endif %}
+    </form>
+  </section>
+
   {% elif section == 'orders' %}
 
   <section class="detail-orders">

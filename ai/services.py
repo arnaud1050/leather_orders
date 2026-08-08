@@ -13,6 +13,20 @@ from ai.models import AISettings
 from models import db
 
 
+def normalise_newlines(text: str) -> str:
+    """CRLF (and bare CR) to LF.
+
+    **A browser submits textarea content with CRLF line endings**, per the
+    HTML spec, while every default shipped in `config.py` uses LF. Without
+    this, a prompt saved through the form is byte-different from the same
+    prompt in code — which makes "has this company edited its prompt?"
+    unanswerable, and that question is what `migrations.py` relies on to
+    move an untouched default forward. Found by diffing a real database
+    against the recorded default, not in a test.
+    """
+    return (text or "").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def settings_for(company_id: int) -> AISettings:
     """This tenant's AI settings, created empty on first use.
 
@@ -56,12 +70,18 @@ def can_render_document(company_id: int, content_type: str | None) -> bool:
     )
 
 
-def suggest_reply(company_id: int, conversation: dict) -> str:
+def suggest_reply(company_id: int, conversation: dict, signature: str = "") -> str:
     """A draft reply to `conversation`, as plain text.
 
     **This never sends anything** (`R-1`). It returns text for a human to
     edit in the compose box, and the module has no path to a mail provider
     at all — sending stays entirely in `communications/`.
+
+    `signature` is **appended in code, never asked of the model** (`R-11`).
+    The prompt tells it to stop at its last sentence; the sign-off is then
+    exact by construction, costs no tokens, and can't be paraphrased into
+    someone else's name. It arrives as a plain string, like everything else
+    crossing this boundary — the module never sees a `User`.
 
     Raises `AIError` with a message written for the user on every failure
     path: no key saved, the vendor rejecting the key, a rate limit, a
@@ -88,13 +108,14 @@ def suggest_reply(company_id: int, conversation: dict) -> str:
             "No OpenAI API key is saved. Add one under Settings → AI."
         )
 
-    return openai_client.generate_reply(
+    draft = openai_client.generate_reply(
         api_key=api_key,
         model=settings.text_model,
         instructions=settings.reply_prompt,
         conversation=conversation_text.render(conversation),
         timeout=config.TEXT_TIMEOUT_SECONDS,
     )
+    return draft + (f"\n\n{signature.strip()}" if signature.strip() else "")
 
 
 def using_derived_key() -> bool:
@@ -123,7 +144,7 @@ def save_reply_settings(
     if model is not None:
         settings.text_model = model.strip() or config.TEXT_MODEL
     if prompt is not None:
-        settings.reply_prompt = prompt.strip() or config.DEFAULT_REPLY_PROMPT
+        settings.reply_prompt = normalise_newlines(prompt).strip() or config.DEFAULT_REPLY_PROMPT
     db.session.commit()
     return settings
 
@@ -140,7 +161,7 @@ def save_render_settings(
     if model is not None:
         settings.image_model = model.strip() or config.IMAGE_MODEL
     if prompt is not None:
-        settings.render_prompt = prompt.strip() or config.DEFAULT_RENDER_PROMPT
+        settings.render_prompt = normalise_newlines(prompt).strip() or config.DEFAULT_RENDER_PROMPT
     db.session.commit()
     return settings
 

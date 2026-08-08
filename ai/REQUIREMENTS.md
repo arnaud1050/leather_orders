@@ -151,6 +151,53 @@ Covered by `tests/test_ai_reply.py`.
 - **R-10** A thread that isn't this company's answers **identically** to
   one that doesn't exist. "Not yours" and "not there" must not be
   distinguishable from outside.
+- **R-11** The sign-off is **appended in code, never asked of the model**.
+  The prompt tells it to end at its last sentence; the signature is added
+  after. Exact by construction, costs no tokens, and can't be paraphrased
+  into someone else's name — a wrong name on outgoing mail is worse than
+  no name. The signature crosses the boundary as a plain string; this
+  module never sees a `User`.
+- **R-12** The shipped default prompt is written for a **one-person
+  atelier** — first person singular, "atelier" not "studio". Changing it
+  is changing `config.DEFAULT_REPLY_PROMPT` *and* appending the old text to
+  `SUPERSEDED_REPLY_PROMPTS`, so §14 can move unedited copies forward.
+
+## 6a. The signature (`SIG-*`)
+
+Covered by `tests/test_signature.py`. The column is a host one
+(`users.signature`) — this module only ever receives its value.
+
+- **SIG-1** A signature belongs to a **user**, not a company or a mailbox.
+  Two people sharing one `studio@` each want their own; a company-level one
+  is wrong the day a second user exists, and per-user with one user is only
+  momentarily redundant.
+- **SIG-2** Blank is a **real value** meaning "no signature", unlike a key
+  or a prompt. Nothing is destroyed by clearing it and there's no other way
+  to say it. Stored as `NULL`, so there's one empty case downstream.
+- **SIG-3** No signature leaves a message **exactly as it was before this
+  feature existed** — `signature_block` is `""`, not a blank line.
+- **SIG-4** The manual compose box is prefilled with it too, so a
+  hand-typed reply signs off the same way a drafted one does.
+
+## 14. Prompt defaults over time (`D-*`)
+
+Covered by `tests/test_ai_migrations.py`.
+
+- **D-1** A stored prompt is a company's own text and is **never
+  overwritten** — except when it is byte-for-byte a *superseded* default,
+  which can only be true if nobody ever edited it.
+- **D-2** That comparison is made on **newline-normalised** text. A browser
+  submits textarea content with CRLF while the shipped defaults use LF, so
+  every row that has been through the settings form differs from the code
+  by line endings alone. A raw equality check misses precisely the rows
+  that need moving — which is what it did against a real database before
+  this was fixed.
+- **D-3** Prompts are **normalised to LF on save**, so new rows don't drift
+  the same way. `services.normalise_newlines` is the one place that
+  happens.
+- **D-4** The refresh is idempotent and runs across every tenant — a
+  boot-time migration has no signed-in user, the same exemption
+  communications' scheduled sync has.
 
 ## 7. Renderings — **not built yet** (`G-*`)
 

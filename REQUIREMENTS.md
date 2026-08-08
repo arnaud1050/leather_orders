@@ -67,6 +67,17 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   category that is, which is why it's its own category rather than a block on
   General. It changes only `current_user`'s row; there's no UI to change
   anyone else's password or to add a user (N2).
+- **CO4d.** The same page holds the user's **email signature**
+  (`users.signature`, posting to `/settings/account/signature`) — per user
+  for the same reason CO4b gives, and more sharply: a signature is written
+  by a person, so two people sharing one mailbox each want their own. Blank
+  is a real value meaning "no signature", stored as `NULL`; unlike an API
+  key there is nothing destructive about clearing it and no other way to say
+  it. It is normalised to LF on save (a browser submits textarea content as
+  CRLF), and read through `User.signature_block`, which is `""` — not a
+  blank line — when unset, so a user without one gets exactly the behaviour
+  that predated the feature. It prefills the compose box and is appended to
+  AI-drafted replies; see [ai/REQUIREMENTS.md](ai/REQUIREMENTS.md) `SIG-*`.
 - **CO4c.** Feedback is a one-shot session message (`password_status`,
   cleared on read like `_take_settings_notice`) rendered as
   `.password-status` — plain text, red on failure, deliberately not the amber

@@ -18,7 +18,18 @@
   <label class="compose-form__field">To<input type="text" name="to" value="{{ to_value or '' }}" placeholder="client@example.com" required></label>
   <label class="compose-form__field">Cc<input type="text" name="cc" placeholder="Optional, comma separated"></label>
   <label class="compose-form__field">Subject<input type="text" name="subject" value="{{ subject_value or '' }}"></label>
-  <label>Message<textarea name="body_text" rows="10" required></textarea></label>
+  {# Prefilled with the signed-in user's signature (Settings → Account), so
+     a hand-typed reply signs off the same way an AI-drafted one does. The
+     message is written above it, in the blank line `signature_block`
+     supplies. Empty when no signature is set, which is exactly how this box
+     behaved before.
+
+     The newline immediately after the opening tag is deliberate and load-
+     bearing: an HTML parser discards the first newline inside a <textarea>,
+     so without it the value would arrive one blank line short and the
+     signature would sit directly under the cursor. #}
+  <label>Message<textarea name="body_text" rows="10" required>
+{{ current_user.signature_block }}</textarea></label>
 
   {# Attaching an order document. Offered only when we know *which* client
      this is (a lead's thread has none yet, and "documents for this client"

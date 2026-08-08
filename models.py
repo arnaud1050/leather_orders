@@ -86,8 +86,27 @@ class User(db.Model, UserMixin):
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    # How this person signs off an email. Per user rather than per company
+    # or per mailbox, because a signature is written by a person: two people
+    # sharing one studio@ address each want their own, and a company-level
+    # one would be wrong the day a second user exists. Used by the compose
+    # box and appended to AI-drafted replies — see `signature_block`.
+    signature = db.Column(db.Text)
 
     company = db.relationship("Company", back_populates="users")
+
+    @property
+    def signature_block(self) -> str:
+        """The signature as it's appended to a message body — a blank line
+        and then the signature, or nothing at all when none is set.
+
+        A property rather than string-building at each call site, because
+        there are three (the compose box, the AI draft, and whatever comes
+        next) and "sometimes two newlines, sometimes none" is exactly the
+        kind of detail that drifts apart between them.
+        """
+        signature = (self.signature or "").strip()
+        return f"\n\n{signature}" if signature else ""
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
@@ -413,6 +432,10 @@ _ADDED_COLUMNS = [
     ("clients", "other_source_detail", "VARCHAR(200)"),
     ("clients", "notes", "TEXT"),
     ("companies", "analytics_layout", "TEXT"),
+    # `users` already shipped, so its new column needs an entry here — and
+    # this one belongs to the root, not to ai/, because User is a host model
+    # (hard rule 12 sends module columns to the module's own file).
+    ("users", "signature", "TEXT"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
