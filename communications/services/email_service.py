@@ -26,6 +26,7 @@ from communications.models import (
     DIRECTION_OUTGOING, DISMISSED_HIDDEN, DISMISSED_TRASHED, AutoCreatedClient,
     EmailMessage, EmailThread, utcnow,
 )
+from communications import config
 from communications.providers import email_provider_for
 from communications.providers.base import ProviderError
 from communications.services import account_service, audit
@@ -247,12 +248,20 @@ def send_email(
     company_id: int, to, subject: str, body_text: str,
     cc=None, account_id: int | None = None,
     thread_id: int | None = None, client_id: int | None = None,
+    attachments=None,
 ) -> EmailMessage:
     """Send a message and record it locally.
 
     Returns the stored EmailMessage. Raises EmailServiceError for anything
-    the user can fix (no mailbox connected, bad address, sending paused)
-    and lets ProviderError through for anything they can't.
+    the user can fix (no mailbox connected, bad address, sending paused,
+    too many megabytes attached) and lets ProviderError through for
+    anything they can't.
+
+    `attachments` is a list of `providers.base.OutgoingAttachment`. This
+    module doesn't know or care where the bytes came from — the compose
+    form's picker resolves an order document into one of these on the host
+    side (see routes.set_document_attachments), which is what keeps a
+    module that sends mail from knowing what an Order is.
 
     **Commits itself**, unlike most of this codebase. Once Gmail has
     accepted the message it has really gone out; a caller that rolled back
@@ -265,6 +274,18 @@ def send_email(
     cc_addresses = _clean_addresses(cc)
     if not (subject or "").strip() and not (body_text or "").strip():
         raise EmailServiceError("A message needs a subject or a body.")
+
+    attachments = list(attachments or [])
+    total_bytes = sum(len(a.data or b"") for a in attachments)
+    if total_bytes > config.MAX_OUTGOING_ATTACHMENT_BYTES:
+        # Refused here rather than let Gmail refuse it: the provider's
+        # error would arrive as an opaque 400 after the whole message has
+        # been built and uploaded, and this one names the actual fix.
+        limit_mb = config.MAX_OUTGOING_ATTACHMENT_BYTES / (1024 * 1024)
+        raise EmailServiceError(
+            f"Attachments total {total_bytes / (1024 * 1024):.1f}MB, over the "
+            f"{limit_mb:.0f}MB limit for one message. Send fewer at a time."
+        )
 
     account = (
         account_service.get_account(company_id, account_id) if account_id
@@ -303,12 +324,20 @@ def send_email(
         cc=cc_addresses,
         reply_to_message_id=reply_to_message_id,
         thread_id=thread.provider_thread_id if thread else None,
+        attachments=attachments,
     )
 
     stored = _store_sent_message(account, thread, sent, client_id)
+    # What was attached is part of what was sent, so it belongs in the
+    # audit line — "we emailed them the pattern" is exactly the question
+    # this log gets read to answer.
+    attached = (
+        " with " + ", ".join(a.filename for a in attachments) if attachments else ""
+    )
     audit.record(
         company_id, AUDIT_EMAIL_SENT,
-        f"From {account.email_address} to {', '.join(recipients)} — {subject or '(no subject)'}",
+        f"From {account.email_address} to {', '.join(recipients)} — "
+        f"{subject or '(no subject)'}{attached}",
     )
     db.session.commit()
     return stored

@@ -275,6 +275,95 @@ def get_order_or_404(order_id: int) -> Order:
 
 documents_routes.register(app, resolve_order=get_order_or_404)
 inventory_routes.register(app, resolve_order=get_order_or_404)
+
+
+def _attachable_documents(company_id: int, client_id: int) -> dict:
+    """This client's orders and the documents filed against each, for the
+    mail compose form's "Attach document" picker.
+
+    The composition root does this join because neither module can: a
+    document belongs to an order (`documents/`), and `communications/` must
+    not learn what an order is. Orders with no documents are dropped —
+    picking one only to find an empty second dropdown is a dead end, so it
+    isn't offered.
+
+    `has_orders` is what's left of the ones dropped, and it's the whole
+    reason this returns a dict rather than the list: an empty picker has
+    two very different fixes ("this client has no orders yet" vs "upload
+    something to one"), and a bare `[]` can't tell the modal which to say.
+
+    Each document carries its type label so the dropdown can group by it,
+    matching the sections the order page already files them under —
+    `documents.services.sections_for_order` builds the same grouping for
+    that page, but around a DocumentType object this side has no business
+    handing to a template it doesn't own.
+
+    Tenant check is `Client.company_id`, the same join `get_order_or_404`
+    uses, applied to the client id the URL supplied rather than trusting it.
+    """
+    orders = (
+        Order.query.join(Client)
+        .filter(Order.client_id == client_id, Client.company_id == company_id)
+        .order_by(Order.due.desc())
+        .all()
+    )
+    rows = []
+    for order in orders:
+        documents = documents_service.list_for_order(order.id)
+        if not documents:
+            continue
+        rows.append({
+            "id": order.id,
+            "label": f"{order.item} — due {order.due.strftime('%b %d, %Y')}",
+            "documents": [
+                {
+                    "id": document.id,
+                    "filename": document.original_filename,
+                    "size": document.size_bytes,
+                    # "Other" is what the order page calls an untyped
+                    # document, so the dropdown's groups read the same.
+                    "type": (
+                        document.document_type.label if document.document_type else "Other"
+                    ),
+                }
+                for document in documents
+            ],
+        })
+    return {"orders": rows, "has_orders": bool(orders)}
+
+
+def _load_attachable_documents(company_id: int, document_ids: list[int]) -> list:
+    """Turn picked document ids back into bytes the mail module can send.
+
+    Every id is re-resolved against this company and anything that doesn't
+    belong to it — or whose file has gone missing off disk — is dropped
+    rather than raising: the ids arrive in a hidden form field, and one
+    stale row shouldn't cost the user the message they just typed.
+    """
+    from communications.providers.base import OutgoingAttachment
+
+    attachments = []
+    for document_id in document_ids:
+        document = documents_service.get_for_company(company_id, document_id)
+        if document is None:
+            continue
+        data = documents_service.read_bytes(document)
+        if data is None:
+            continue
+        attachments.append(OutgoingAttachment(
+            filename=document.original_filename,
+            content_type=document.content_type,
+            data=data,
+        ))
+    return attachments
+
+
+communications_routes.set_document_attachments(
+    list_for_client=_attachable_documents,
+    load=_load_attachable_documents,
+)
+
+
 def _thread_conversation(company_id: int, thread_id: int) -> dict | None:
     """One mail thread as the plain dict `ai/` speaks.
 

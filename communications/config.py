@@ -68,6 +68,16 @@ GOOGLE_REDIRECT_URI = os.environ.get(
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ATTACHMENT_DIR = os.environ.get("ATTACHMENT_DIR", os.path.join(BASE_DIR, "data", "attachments"))
 
+# Ceiling on what one outgoing message may carry, total across every file
+# attached to it. 20MB against Gmail's own 25MB limit: Gmail measures the
+# base64-encoded message, which is about a third larger than the bytes we
+# count here, so a cap set at the advertised figure would let sends through
+# that Gmail then rejects. Checked in email_service.send_email, before a
+# provider is ever asked to build the message.
+MAX_OUTGOING_ATTACHMENT_BYTES = int(
+    os.environ.get("MAX_OUTGOING_ATTACHMENT_BYTES", 20 * 1024 * 1024)
+)
+
 
 # --- Sync defaults ---------------------------------------------------------
 #

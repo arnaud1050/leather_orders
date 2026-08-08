@@ -2627,6 +2627,15 @@ button.chip--event:hover .chip__title {
   width: 100%;
 }
 
+/* Documents picked to go out with the message, above the buttons. A plain
+   .doc-list (so removing one is the app's usual trash icon, not a second
+   convention), capped like .compose-form__field: a filename gains nothing
+   from the width the textarea needs. */
+.compose-form__attachments {
+  max-width: 520px;
+  margin: 12px 0 4px;
+}
+
 /* Send, then (on a reply, with an AI key saved) Suggest response, then the
    status line the suggestion writes into. Wraps rather than squeezing on a
    narrow screen, same as .field-row. */

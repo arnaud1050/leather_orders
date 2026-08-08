@@ -29,6 +29,21 @@ class FetchedAttachment:
 
 
 @dataclass
+class OutgoingAttachment:
+    """A file to send *with* a message — the mirror of FetchedAttachment.
+
+    Bytes in hand rather than an id to fetch later: whatever the caller is
+    attaching (today, a document filed against one of the client's orders)
+    lives outside this module, so the provider is handed the content and
+    knows nothing about where it came from.
+    """
+
+    filename: str
+    content_type: str | None = None
+    data: bytes = b""
+
+
+@dataclass
 class FetchedMessage:
     """One message, normalised.
 
@@ -139,13 +154,18 @@ class EmailProvider(ABC):
     @abstractmethod
     def send_email(
         self, to, subject, body_text, cc=None, bcc=None,
-        reply_to_message_id=None, thread_id=None,
+        reply_to_message_id=None, thread_id=None, attachments=None,
     ) -> FetchedMessage:
         """Send, and return the sent message as the provider recorded it.
 
         Returning the sent message (rather than None) is what lets the
         caller store it in the right thread without waiting for the next
         sync to discover it.
+
+        `attachments` is a list of OutgoingAttachment. Whether they fit
+        inside the provider's own size limit is the caller's problem — the
+        service checks it before building them, so a provider only has to
+        put the bytes on the wire.
         """
 
     @abstractmethod

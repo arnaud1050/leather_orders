@@ -43,6 +43,36 @@ bp = Blueprint(
 )
 
 
+# Host hooks for the compose form's "Attach document" picker. A document
+# belongs to an *order*, and this module has no idea what an order is —
+# nor may it import one (see CLAUDE.md's one-way module rule). So the host
+# supplies both halves at registration: what's attachable for a client, and
+# how to turn the ids it offered back into bytes. Same late-bound-hook
+# shape as billing_migrations.set_subtotal_resolver, and set from the same
+# place in app.py, next to the other modules' register() calls.
+#
+# Left unset — a deployment that doesn't have the documents module wired up
+# — the picker route 404s and the compose form never renders the button.
+_list_client_documents = None
+_load_documents = None
+
+
+def set_document_attachments(*, list_for_client, load) -> None:
+    global _list_client_documents, _load_documents
+    _list_client_documents = list_for_client
+    _load_documents = load
+
+
+def document_attachments_available() -> bool:
+    """For templates: whether to offer "Attach document" at all.
+
+    Injected as a callable into the Jinja context (see register), the same
+    arrangement as ai/'s `ai_reply_available` on this very form — a value
+    would be computed on every page whether or not the form is on it.
+    """
+    return _list_client_documents is not None
+
+
 @bp.before_request
 def _protect():
     """CSRF on every unsafe request into this blueprint, by default.
@@ -532,6 +562,28 @@ def convert_lead(thread_id: int):
     return redirect(url_for("client_page", client_id=client.id))
 
 
+@bp.route("/mail/attachable-documents/<int:client_id>")
+@login_required
+def attachable_documents(client_id: int):
+    """The compose form's picker data: this client's orders, each with the
+    documents filed against it.
+
+    JSON rather than rendering the whole tree into every page carrying a
+    compose form — a client with twenty orders would otherwise ship every
+    one of their document lists to a page that usually attaches nothing.
+    Fetched once, when the modal is first opened.
+
+    The host hook does the tenant check (it's the half that knows what an
+    order is); this route only passes `current_user.company_id`, never
+    anything from the URL. Its answer is passed straight through: what an
+    order is, and what distinguishes "none yet" from "none with documents",
+    are both its business rather than this module's.
+    """
+    if _list_client_documents is None:
+        abort(404)
+    return _list_client_documents(current_user.company_id, client_id)
+
+
 @bp.route("/mail/send", methods=["POST"])
 @login_required
 def send_message():
@@ -544,6 +596,17 @@ def send_message():
     thread_id = request.form.get("thread_id")
     client_id = request.form.get("client_id")
 
+    # Ids from a hidden field the browser can rewrite, so they're treated
+    # as a request, not as a fact: the hook re-resolves each one against
+    # this company and silently drops whatever doesn't belong to it.
+    document_ids = [
+        int(value) for value in request.form.getlist("document_id") if value.isdigit()
+    ]
+    attachments = (
+        _load_documents(current_user.company_id, document_ids)
+        if document_ids and _load_documents is not None else []
+    )
+
     try:
         email_service.send_email(
             current_user.company_id,
@@ -553,12 +616,20 @@ def send_message():
             cc=request.form.get("cc"),
             thread_id=int(thread_id) if thread_id and thread_id.isdigit() else None,
             client_id=int(client_id) if client_id and client_id.isdigit() else None,
+            attachments=attachments,
         )
     except (email_service.EmailServiceError, ProviderError) as exc:
         _flash(str(exc), "error")
         return redirect(return_to)
 
-    _flash("Message sent.", "success")
+    # Naming the count is the only confirmation that the picker's chips
+    # turned into real attachments — nothing else on the page they land
+    # back on shows what went out until the next sync.
+    if attachments:
+        noun = "document" if len(attachments) == 1 else "documents"
+        _flash(f"Message sent with {len(attachments)} {noun} attached.", "success")
+    else:
+        _flash("Message sent.", "success")
     return redirect(return_to)
 
 
@@ -938,10 +1009,16 @@ def register(app) -> None:
     Also exposes csrf_token() to Jinja — module templates call it in every
     form, and a template global beats threading it through each
     render_template call — plus the `local_datetime` filter its templates use
-    for every time they print. Both are registered here rather than in app.py
-    so the module carries what its own templates need.
+    for every time they print, and `document_attachments_available()` so the
+    compose form can ask whether the host wired up the attachment picker.
+    All registered here rather than in app.py so the module carries what its
+    own templates need — and the last one as a *callable*, because
+    `set_document_attachments` runs after this does.
     """
     app.jinja_env.globals.setdefault("csrf_token", csrf_token)
+    app.jinja_env.globals.setdefault(
+        "document_attachments_available", document_attachments_available
+    )
     app.jinja_env.filters.setdefault("local_datetime", _local_datetime)
     app.jinja_env.filters.setdefault("local_time", _local_time)
     app.register_blueprint(bp)

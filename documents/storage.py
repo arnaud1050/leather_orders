@@ -61,6 +61,20 @@ def path_for(company_id: int, stored_filename: str | None, *, subdir: str | None
     return path if os.path.exists(path) else None
 
 
+def read(company_id: int, stored_filename: str | None, *, subdir: str | None = None) -> bytes | None:
+    """The stored bytes, or None if the file is missing.
+
+    Used where the file has to be handed to something other than the
+    browser (mailing a document out as an attachment); serving one to the
+    browser still goes through `path_for` + `send_file`, which streams.
+    """
+    path = path_for(company_id, stored_filename, subdir=subdir)
+    if path is None:
+        return None
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
 def delete(company_id: int, stored_filename: str | None, *, subdir: str | None = None) -> None:
     path = path_for(company_id, stored_filename, subdir=subdir)
     if path:

@@ -91,11 +91,11 @@ class FakeEmailProvider(base.EmailProvider):
         return type(self).trash_state.get(thread_id, True)
 
     def send_email(self, to, subject, body_text, cc=None, bcc=None,
-                   reply_to_message_id=None, thread_id=None):
+                   reply_to_message_id=None, thread_id=None, attachments=None):
         record = {
             "to": list(to), "subject": subject, "body_text": body_text,
             "cc": list(cc or []), "reply_to_message_id": reply_to_message_id,
-            "thread_id": thread_id,
+            "thread_id": thread_id, "attachments": list(attachments or []),
         }
         self.sent.append(record)
         SENT_LOG.append(record)

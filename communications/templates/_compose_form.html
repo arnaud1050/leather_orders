@@ -19,9 +19,29 @@
   <label class="compose-form__field">Cc<input type="text" name="cc" placeholder="Optional, comma separated"></label>
   <label class="compose-form__field">Subject<input type="text" name="subject" value="{{ subject_value or '' }}"></label>
   <label>Message<textarea name="body_text" rows="10" required></textarea></label>
+
+  {# Attaching an order document. Offered only when we know *which* client
+     this is (a lead's thread has none yet, and "documents for this client"
+     is meaningless without one) and only when the host wired the picker up
+     — `document_attachments_available` is a callable injected by this
+     module's register(), true once app.py has called
+     set_document_attachments. Same `is defined` guard as the AI button
+     below, for a deployment where that never happens. #}
+  {% set attach_client = client if client is defined and client else none %}
+  {% set offer_attachments = attach_client and document_attachments_available is defined and document_attachments_available() %}
+  {% if offer_attachments %}
+  {# Filled by the picker. Each row carries its own hidden document_id, so
+     what the eye sees and what the POST carries are the same list. #}
+  <ul class="doc-list compose-form__attachments" id="doc-attachment-list" hidden></ul>
+  {% endif %}
+
   {% set offer_suggestion = thread and ai_reply_available is defined and ai_reply_available() %}
   <div class="compose-form__actions">
     <button type="submit" class="btn-primary">{{ 'Send reply' if thread else 'Send' }}</button>
+    {% if offer_attachments %}
+    <button type="button" class="btn-secondary" id="doc-attach-btn"
+            data-endpoint="{{ url_for('communications.attachable_documents', client_id=attach_client.id) }}">Attach document</button>
+    {% endif %}
     {# Only on a reply, and only with a key saved. A new message from the
        client page has no conversation to draft from, and a suggestion built
        from nothing would be a form letter — so it simply isn't offered
@@ -37,6 +57,224 @@
     {% endif %}
   </div>
 </form>
+
+{% if offer_attachments %}
+{# Outside the form on purpose: a <dialog> nested in it would put the
+   picker's own <select>s inside the thing being submitted. Nothing here is
+   named, so even if that changed the picker couldn't post anything —
+   only the hidden inputs the script writes into the list above do. #}
+<dialog id="doc-attach-modal" class="modal">
+  <div class="modal__body">
+    <h2 class="modal__title">Attach document</h2>
+    <p class="modal__hint">Files uploaded against this client's orders. Pick the order first.</p>
+    {# Hidden as a pair whenever there's nothing to pick, and until the
+       first fetch answers: two empty dropdowns above an explanation read
+       as something failing to load. #}
+    <div id="doc-attach-fields" hidden>
+      <label class="modal__field">Order
+        <select id="doc-attach-order"></select>
+      </label>
+      <label class="modal__field">Document
+        <select id="doc-attach-document"></select>
+      </label>
+    </div>
+    <p class="modal__hint" id="doc-attach-status" role="status" aria-live="polite">Loading…</p>
+    {# The way out of both empty states, and the reason they're worth
+       distinguishing: with no orders the fix is to create one, with no
+       documents it's to upload against the one that's there. Either way
+       this is the page it happens on. #}
+    <p class="modal__hint" id="doc-attach-empty" hidden>
+      <a class="modal__link" href="{{ url_for('client_orders', client_id=attach_client.id, return_to=request.path) }}">Open this client's orders &rarr;</a>
+    </p>
+    <div class="modal__actions">
+      <div class="modal__buttons">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        {# Hidden, not disabled, whenever there's nothing to attach —
+           including while loading. A greyed-out primary button next to
+           "this client has no orders yet" reads as something that ought
+           to work; Cancel alone reads as the only thing to do here. #}
+        <button type="button" class="btn-primary" id="doc-attach-confirm" hidden>Attach</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+{# One attached-document row. A <template> rather than string-building in
+   JS so the markup stays with the rest of the markup — and so the trash
+   icon is the app's real one. The path is inline rather than imported from
+   inventory/_icons.html: a communications template reaching into another
+   module's templates would be exactly the cross-module dependency the
+   layout exists to prevent, and this is nine bytes of SVG. #}
+<template id="doc-attachment-row">
+  <li class="doc-list__item">
+    <input type="hidden" name="document_id" value="">
+    <span class="doc-list__label"></span>
+    <span class="doc-list__filename"></span>
+    <div class="doc-list__actions">
+      <button type="button" class="icon-btn icon-btn--danger" title="Remove" aria-label="Remove this attachment">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 6h11M8 6V4.5h4V6M6 6l.6 9.2c.04.7.62 1.3 1.32 1.3h4.16c.7 0 1.28-.6 1.32-1.3L14 6"/>
+        </svg>
+      </button>
+    </div>
+  </li>
+</template>
+
+<script>
+  // The attachment picker. Two dependent dropdowns over one fetch: the
+  // client's orders that have documents, each carrying its own document
+  // list. Attaching adds a row (and its hidden document_id) to the form;
+  // nothing is uploaded or sent until Send is pressed.
+  (function () {
+    var button = document.getElementById('doc-attach-btn');
+    var modal = document.getElementById('doc-attach-modal');
+    var orderSelect = document.getElementById('doc-attach-order');
+    var documentSelect = document.getElementById('doc-attach-document');
+    var confirm = document.getElementById('doc-attach-confirm');
+    var status = document.getElementById('doc-attach-status');
+    var fields = document.getElementById('doc-attach-fields');
+    var empty = document.getElementById('doc-attach-empty');
+    var list = document.getElementById('doc-attachment-list');
+    var rowTemplate = document.getElementById('doc-attachment-row');
+    if (!button || !modal) { return; }
+
+    var orders = null;  // null until the first open; [] means "none to offer"
+
+    function readableSize(bytes) {
+      if (bytes >= 1048576) { return (bytes / 1048576).toFixed(1) + ' MB'; }
+      if (bytes >= 1024) { return Math.round(bytes / 1024) + ' KB'; }
+      return bytes + ' bytes';
+    }
+
+    function attachedIds() {
+      return Array.prototype.map.call(
+        list.querySelectorAll('input[name="document_id"]'), function (input) { return input.value; }
+      );
+    }
+
+    function fillOrders() {
+      orderSelect.innerHTML = '';
+      orders.forEach(function (order) {
+        var option = document.createElement('option');
+        option.value = order.id;
+        option.textContent = order.label;
+        orderSelect.appendChild(option);
+      });
+    }
+
+    function showDocuments() {
+      var order = orders.find(function (o) { return String(o.id) === orderSelect.value; });
+      var already = attachedIds();
+      // An already-attached document is dropped from the list rather than
+      // shown and refused: the same file twice on one email is never what
+      // was meant, and a disabled option invites a second click.
+      var available = (order ? order.documents : []).filter(function (doc) {
+        return already.indexOf(String(doc.id)) === -1;
+      });
+
+      // Grouped under the same document types the order page files them
+      // under (with "Other" for untyped), so a studio that's set up
+      // Mockups/Renderings sees its own sections here too. The server
+      // returns them in the order page's order, so first-seen is that
+      // order — no sorting, which would disagree with it.
+      documentSelect.innerHTML = '';
+      var groups = {};
+      available.forEach(function (doc) {
+        if (!groups[doc.type]) {
+          groups[doc.type] = document.createElement('optgroup');
+          groups[doc.type].label = doc.type;
+          documentSelect.appendChild(groups[doc.type]);
+        }
+        var option = document.createElement('option');
+        option.value = doc.id;
+        option.textContent = doc.filename + ' · ' + readableSize(doc.size);
+        // The attached row shows the filename alone, so carry it
+        // separately rather than parsing it back out of the label.
+        option.dataset.filename = doc.filename;
+        groups[doc.type].appendChild(option);
+      });
+
+      var has = available.length > 0;
+      fields.hidden = false;
+      documentSelect.disabled = !has;
+      confirm.hidden = !has;
+      status.textContent = has ? '' : 'Every document on this order is already attached.';
+    }
+
+    function showEmpty(message) {
+      fields.hidden = true;
+      empty.hidden = false;
+      confirm.hidden = true;
+      status.textContent = message;
+    }
+
+    function load() {
+      status.textContent = 'Loading…';
+      fetch(button.dataset.endpoint, { credentials: 'same-origin' })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+          orders = data.orders || [];
+          if (!orders.length) {
+            // Two different problems with two different fixes — a
+            // document is uploaded *against an order*, so with no order
+            // there's nowhere to have uploaded one yet.
+            showEmpty(data.has_orders
+              ? 'No documents have been uploaded to this client\'s orders yet.'
+              : 'This client has no orders yet, and documents are uploaded against an order.');
+            return;
+          }
+          fields.hidden = false;
+          empty.hidden = true;
+          fillOrders();
+          showDocuments();
+        })
+        .catch(function () {
+          orders = null;  // so the next open retries rather than staying broken
+          // Not showEmpty(): the orders link isn't the fix for a request
+          // that didn't arrive, and offering it would misdescribe this.
+          fields.hidden = true;
+          confirm.hidden = true;
+          status.textContent = 'Couldn\'t load documents. Try again.';
+        });
+    }
+
+    button.addEventListener('click', function () {
+      modal.showModal();
+      if (orders === null) { load(); } else if (orders.length) { showDocuments(); }
+    });
+
+    orderSelect.addEventListener('change', showDocuments);
+
+    confirm.addEventListener('click', function () {
+      var selected = documentSelect.options[documentSelect.selectedIndex];
+      if (!selected) { return; }
+      var row = rowTemplate.content.cloneNode(true);
+      row.querySelector('input[name="document_id"]').value = selected.value;
+      row.querySelector('.doc-list__label').textContent = selected.dataset.filename;
+      row.querySelector('.doc-list__filename').textContent =
+        orderSelect.options[orderSelect.selectedIndex].textContent;
+      list.appendChild(row);
+      list.hidden = false;
+      modal.close();
+    });
+
+    list.addEventListener('click', function (event) {
+      var remove = event.target.closest('.icon-btn');
+      if (!remove) { return; }
+      remove.closest('.doc-list__item').remove();
+      list.hidden = list.children.length === 0;
+    });
+
+    modal.querySelector('[data-close-modal]').addEventListener('click', function () {
+      modal.close();
+    });
+    // Clicking the backdrop closes it, same as the timeline's modals.
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) { modal.close(); }
+    });
+  })();
+</script>
+{% endif %}
 
 {% if offer_suggestion %}
 <script>

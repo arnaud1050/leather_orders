@@ -210,7 +210,7 @@ class GmailProvider(_GoogleBase, EmailProvider):
 
     def send_email(
         self, to, subject, body_text, cc=None, bcc=None,
-        reply_to_message_id=None, thread_id=None,
+        reply_to_message_id=None, thread_id=None, attachments=None,
     ) -> FetchedMessage:
         """Send via Gmail, so it lands in the studio's real Sent Mail.
 
@@ -218,6 +218,11 @@ class GmailProvider(_GoogleBase, EmailProvider):
         recipient's client as well as Gmail's own view — Gmail requires the
         In-Reply-To/References headers to match too, which is why they're
         set from the message being replied to rather than left off.
+
+        Attachments go through `messages().send`'s `raw` body like the rest
+        of the message: Gmail's resumable upload endpoint only earns its
+        complexity past ~5MB, and the service caps a send well below that
+        (config.MAX_OUTGOING_ATTACHMENT_BYTES).
         """
         message = MimeMessage()
         message["To"] = ", ".join(to) if isinstance(to, (list, tuple)) else to
@@ -231,6 +236,17 @@ class GmailProvider(_GoogleBase, EmailProvider):
             message["In-Reply-To"] = reply_to_message_id
             message["References"] = reply_to_message_id
         message.set_content(body_text or "")
+
+        for attachment in attachments or []:
+            maintype, _, subtype = (
+                attachment.content_type or "application/octet-stream"
+            ).partition("/")
+            message.add_attachment(
+                attachment.data,
+                maintype=maintype or "application",
+                subtype=subtype or "octet-stream",
+                filename=attachment.filename or "attachment",
+            )
 
         body = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
         if thread_id:

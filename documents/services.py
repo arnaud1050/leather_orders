@@ -25,6 +25,22 @@ def get_for_order(order_id: int, document_id: int) -> Document | None:
     return Document.query.filter_by(id=document_id, order_id=order_id).first()
 
 
+def get_for_company(company_id: int, document_id: int) -> Document | None:
+    """One document by id, tenant-checked without needing the order.
+
+    The order-scoped `get_for_order` is what the order page uses; this is
+    for callers holding an id from somewhere else entirely (the mail
+    compose form's attachment picker), where company is the only trusted
+    thing about the request.
+    """
+    return Document.query.filter_by(id=document_id, company_id=company_id).first()
+
+
+def read_bytes(document: Document) -> bytes | None:
+    """The document's own bytes, or None if the file has gone missing."""
+    return storage.read(document.company_id, document.stored_filename)
+
+
 def usage_for_company(company_id: int) -> int:
     total = db.session.query(db.func.sum(Document.size_bytes)).filter(
         Document.company_id == company_id
