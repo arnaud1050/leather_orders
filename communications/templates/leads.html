@@ -27,7 +27,7 @@
     {% if not has_accounts %}
     <p class="warning-note legend-row__note">
       No mailbox is connected, so there's nothing to sync. Connect one under
-      <a href="{{ url_for('communications.integrations') }}">Settings → Integrations</a>.
+      <a href="{{ url_for('communications.integrations') }}">Settings → Email/Calendar</a>.
     </p>
     {% elif not scheduler_enabled %}
     <p class="detail-note legend-row__note">

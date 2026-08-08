@@ -43,6 +43,12 @@ from models import (  # noqa: E402
 # Self-contained module: its own models, services, blueprint and templates
 # (see billing/__init__.py). billing_adapter.py is the only file that knows
 # an "order" is what this app bills for.
+# Self-contained module: its own model, services, blueprint and templates
+# (see ai/__init__.py). It holds a company's vendor API keys and prompts and
+# never sees a host model — everything it needs about an order, a document
+# or a mail thread arrives through a hook registered here.
+import ai.migrations as ai_migrations  # noqa: E402
+import ai.routes as ai_routes  # noqa: E402
 import billing.migrations as billing_migrations  # noqa: E402
 import billing.routes as billing_routes  # noqa: E402
 import billing_adapter  # noqa: E402
@@ -158,6 +164,11 @@ with app.app_context():
     # inventory_items, order_materials, order_material_others), nothing to
     # migrate yet since every one is brand new.
     inventory_migrations.run_migrations()
+    # Same arrangement again: its own table (ai_settings), brand new, so
+    # ADDED_COLUMNS is empty and the call is a no-op — it's wired up now so
+    # this module's first column migration lands in its own file rather than
+    # the root one (hard rule 12).
+    ai_migrations.run_migrations()
     # Bootstrap only — one company, its admin user, and the SourceOption /
     # OrderType starter lists. Deliberately no sample clients or orders: a
     # production deployment starts empty. To load the demo dataset in a test
@@ -264,6 +275,10 @@ def get_order_or_404(order_id: int) -> Order:
 
 documents_routes.register(app, resolve_order=get_order_or_404)
 inventory_routes.register(app, resolve_order=get_order_or_404)
+# No hooks yet — phase 1 is the settings page alone. The reply and render
+# features register `resolve_thread_context` / `load_document` / `save_render`
+# here, the same way documents and inventory take `resolve_order`.
+ai_routes.register(app)
 
 
 def _parse_amount(raw: str | None) -> float | None:
@@ -637,6 +652,64 @@ def _save_order_columns(company_id: int, columns: list[dict]) -> None:
         {"key": c["key"], "visible": c["visible"]} for c in columns
     ])
     db.session.commit()
+
+
+# Canonical Analytics layout: section key -> (heading, ordered card keys).
+# Same role as ORDER_COLUMNS above — the fallback order for a company that's
+# never dragged anything, and the whitelist a saved layout is filtered
+# against. A card belongs to exactly one section and can't be dragged into
+# another: "Clients" and "Revenue" are what the headings promise, and a card
+# under the wrong one would be a mislabelled stat, not a preference.
+ANALYTICS_SECTIONS = {
+    "clients": ("Clients", ("avg_value", "top_clients", "sources")),
+    "revenue": ("Revenue", ("total_revenue", "revenue_ytd", "outstanding",
+                            "by_method", "tax_ytd")),
+}
+
+
+def _analytics_layout_for(company_id: int) -> list[dict]:
+    """This company's Analytics sections and cards, in the order it saved.
+
+    Stored as one JSON blob on Company.analytics_layout, for the same reason
+    ORDER_COLUMNS is: a fixed set of known keys, not an open-ended list a user
+    names. Merged against ANALYTICS_SECTIONS the same way too, so a section or
+    card added to the app later appears (at the end) for a company with an
+    older saved blob, and one since removed silently drops out instead of
+    erroring.
+    """
+    company = db.session.get(Company, company_id)
+    saved = []
+    if company.analytics_layout:
+        try:
+            saved = json.loads(company.analytics_layout)
+        except (ValueError, TypeError):
+            saved = []
+
+    saved_cards = {
+        entry["key"]: entry.get("cards", [])
+        for entry in saved
+        if isinstance(entry, dict) and entry.get("key") in ANALYTICS_SECTIONS
+    }
+    section_order = [key for key in saved_cards]
+    section_order += [key for key in ANALYTICS_SECTIONS if key not in saved_cards]
+
+    layout = []
+    for key in section_order:
+        heading, canonical_cards = ANALYTICS_SECTIONS[key]
+        cards = [c for c in dict.fromkeys(saved_cards.get(key, []))
+                 if c in canonical_cards]
+        cards += [c for c in canonical_cards if c not in cards]
+        layout.append({"key": key, "heading": heading, "cards": cards})
+    return layout
+
+
+def _save_analytics_layout(company_id: int, layout: list[dict]) -> None:
+    company = db.session.get(Company, company_id)
+    company.analytics_layout = json.dumps([
+        {"key": s["key"], "cards": s["cards"]} for s in layout
+    ])
+    db.session.commit()
+
 
 CLIENT_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
@@ -1599,8 +1672,43 @@ def analytics():
         tax_collected_ytd=sorted(
             tax_collected_ytd, key=lambda pair: pair[1], reverse=True
         ),
+        layout=_analytics_layout_for(current_user.company_id),
         active_view="analytics",
     )
+
+
+# The one route on the Analytics page that writes, and it writes presentation
+# only — never a figure. A JSON fetch fired on `dragend`, the same shape as
+# reorder_order_columns above, so a drop saves immediately with no Save
+# button. The page posts its whole layout (sections and each section's cards)
+# rather than one list at a time, since either kind of drag leaves the DOM
+# holding the complete answer anyway.
+@app.route("/analytics/layout/reorder", methods=["POST"])
+@login_required
+def reorder_analytics_layout():
+    payload = request.get_json(silent=True) or {}
+    sections = payload.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return ("", 204)
+
+    layout = []
+    for entry in sections:
+        if not isinstance(entry, dict) or entry.get("key") not in ANALYTICS_SECTIONS:
+            continue
+        _, canonical_cards = ANALYTICS_SECTIONS[entry["key"]]
+        cards = entry.get("cards")
+        cards = cards if isinstance(cards, list) else []
+        layout.append({
+            "key": entry["key"],
+            "cards": [c for c in dict.fromkeys(cards) if c in canonical_cards],
+        })
+    if not layout:
+        return ("", 204)
+    # Anything the client didn't send back is filled in by
+    # _analytics_layout_for's merge on the next read, so a partial payload
+    # degrades to "these moved, the rest keep their default place".
+    _save_analytics_layout(current_user.company_id, layout)
+    return ("", 204)
 
 
 if __name__ == "__main__":

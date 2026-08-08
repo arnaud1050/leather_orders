@@ -110,6 +110,15 @@ Current tokens (top of `style.css`):
   dropped from `base.html`'s Google Fonts `<link>`. Don't reintroduce mono
   anywhere without checking first.
 
+- **`.detail-form` caps at 360px**, which is right for a name, a date or an
+  amount and wrong for prose. Two places override it rather than widening the
+  base rule: `.compose-form` (the email reply box) and `.ai-form` (Settings →
+  AI's prompt boxes). Both use the identical arrangement — the form runs full
+  width so the textarea does, and a `__field` modifier caps the short inputs
+  beside it back to 360px. **If a third form needs a wide textarea, copy that
+  pattern**; don't raise `.detail-form`'s cap, which would stretch every
+  single-line field in the app.
+
 **When extending the UI:** match the current restrained, high-contrast, no-flourish
 look. Don't add serif/display fonts, decorative stitching, or brownish/muted accent
 colors without checking first — all three have been explicitly removed once already.

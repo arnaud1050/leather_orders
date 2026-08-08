@@ -1,104 +1,227 @@
 {% extends "base.html" %}
 {% block title %}Analytics — Atelier Order Book{% endblock %}
 {% block content %}
+
+{# The six-dot handle, same shape as the Settings source lists. Only the grip
+   is draggable, not the whole card — a stat card holds links and figures
+   worth selecting, and making the card itself the drag source would take
+   both away. data-item tells the one dragstart handler below which ancestor
+   it's moving, so sections and cards need no separate listeners. #}
+{% macro grip(item, label) %}
+<span class="analytics-grip" draggable="true" data-item="{{ item }}"
+      role="button" tabindex="0" aria-label="{{ label }}" title="{{ label }}">
+  <svg viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+    <circle cx="2" cy="2" r="1.3"/>
+    <circle cx="8" cy="2" r="1.3"/>
+    <circle cx="2" cy="8" r="1.3"/>
+    <circle cx="8" cy="8" r="1.3"/>
+    <circle cx="2" cy="14" r="1.3"/>
+    <circle cx="8" cy="14" r="1.3"/>
+  </svg>
+</span>
+{% endmacro %}
+
+{# One branch per card key in ANALYTICS_SECTIONS — an if/elif chain rather
+   than a generic lookup, for the same reason orders_list.html uses one:
+   every card renders differently. #}
+{% macro stat_card(key) %}
+{% if key == 'avg_value' %}
+<div class="stat-card" data-card="avg_value">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__value">${{ '%.2f'|format(avg_value_per_client) }}</span>
+  <span class="stat-card__label">Avg. value per client</span>
+</div>
+
+{% elif key == 'top_clients' %}
+<div class="stat-card stat-card--list" data-card="top_clients">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__label">Top 5 paying clients</span>
+  {% if top_clients %}
+  <ul class="stat-card__ranked-list">
+    {% for client in top_clients %}
+    <li>
+      <a href="{{ url_for('client_page', client_id=client.id) }}">{{ client.name }}</a>
+      <span>${{ '%.2f'|format(client.lifetime_value) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="detail-note">No orders on file yet.</p>
+  {% endif %}
+</div>
+
+{% elif key == 'sources' %}
+<div class="stat-card stat-card--list" data-card="sources">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__label">Client sources</span>
+  {% if source_breakdown %}
+  <ul class="stat-card__ranked-list">
+    {% for label, pct in source_breakdown %}
+    <li>
+      <span>{{ label }}</span>
+      <span>{{ '%.0f'|format(pct) }}%</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="detail-note">No sources recorded yet.</p>
+  {% endif %}
+</div>
+
+{% elif key == 'total_revenue' %}
+<div class="stat-card" data-card="total_revenue">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__value">${{ '%.2f'|format(total_revenue) }}</span>
+  <span class="stat-card__label">Total revenue to date</span>
+</div>
+
+{% elif key == 'revenue_ytd' %}
+<div class="stat-card" data-card="revenue_ytd">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__value">${{ '%.2f'|format(revenue_ytd) }}</span>
+  <span class="stat-card__label">Revenue YTD</span>
+</div>
+
+{% elif key == 'outstanding' %}
+<div class="stat-card" data-card="outstanding">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__value">${{ '%.2f'|format(outstanding) }}</span>
+  <span class="stat-card__label">Outstanding on issued invoices</span>
+</div>
+
+{% elif key == 'by_method' %}
+<div class="stat-card stat-card--list" data-card="by_method">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__label">Revenue by payment method</span>
+  {% if method_breakdown %}
+  <ul class="stat-card__ranked-list">
+    {% for label, amount in method_breakdown %}
+    <li>
+      <span>{{ label }}</span>
+      <span>${{ '%.2f'|format(amount) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="detail-note">No payments recorded yet.</p>
+  {% endif %}
+</div>
+
+{% elif key == 'tax_ytd' %}
+<div class="stat-card stat-card--list" data-card="tax_ytd">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__label">Tax billed YTD</span>
+  {% if tax_collected_ytd %}
+  <ul class="stat-card__ranked-list">
+    {% for label, amount in tax_collected_ytd %}
+    <li>
+      <span>{{ label }}</span>
+      <span>${{ '%.2f'|format(amount) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="detail-note">No tax billed this year.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
 <div class="ledger">
 
   <header class="detail-header">
     <h1>Analytics</h1>
-    <p class="detail-subtitle">Company overview</p>
+    <p class="detail-subtitle">
+      Company overview — drag a section or a card by its handle to reorder it.
+      The layout saves as you drop it.
+    </p>
   </header>
 
-  <section class="analytics-section">
-    <h2>Clients</h2>
-    <div class="analytics-grid">
-      <div class="stat-card">
-        <span class="stat-card__value">${{ '%.2f'|format(avg_value_per_client) }}</span>
-        <span class="stat-card__label">Avg. value per client</span>
+  <div id="analytics-layout">
+    {% for section in layout %}
+    <section class="analytics-section" data-section="{{ section.key }}">
+      <h2 class="analytics-section__heading">
+        {{ grip('.analytics-section', 'Drag to reorder section') }}
+        {{ section.heading }}
+      </h2>
+      <div class="analytics-grid">
+        {% for key in section.cards %}{{ stat_card(key) }}{% endfor %}
       </div>
-
-      <div class="stat-card stat-card--list">
-        <span class="stat-card__label">Top 5 paying clients</span>
-        {% if top_clients %}
-        <ul class="stat-card__ranked-list">
-          {% for client in top_clients %}
-          <li>
-            <a href="{{ url_for('client_page', client_id=client.id) }}">{{ client.name }}</a>
-            <span>${{ '%.2f'|format(client.lifetime_value) }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="detail-note">No orders on file yet.</p>
-        {% endif %}
-      </div>
-
-      <div class="stat-card stat-card--list">
-        <span class="stat-card__label">Client sources</span>
-        {% if source_breakdown %}
-        <ul class="stat-card__ranked-list">
-          {% for label, pct in source_breakdown %}
-          <li>
-            <span>{{ label }}</span>
-            <span>{{ '%.0f'|format(pct) }}%</span>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="detail-note">No sources recorded yet.</p>
-        {% endif %}
-      </div>
-    </div>
-  </section>
-
-  <section class="analytics-section">
-    <h2>Revenue</h2>
-    <div class="analytics-grid">
-      <div class="stat-card">
-        <span class="stat-card__value">${{ '%.2f'|format(total_revenue) }}</span>
-        <span class="stat-card__label">Total revenue to date</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-card__value">${{ '%.2f'|format(revenue_ytd) }}</span>
-        <span class="stat-card__label">Revenue YTD</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-card__value">${{ '%.2f'|format(outstanding) }}</span>
-        <span class="stat-card__label">Outstanding on issued invoices</span>
-      </div>
-
-      <div class="stat-card stat-card--list">
-        <span class="stat-card__label">Revenue by payment method</span>
-        {% if method_breakdown %}
-        <ul class="stat-card__ranked-list">
-          {% for label, amount in method_breakdown %}
-          <li>
-            <span>{{ label }}</span>
-            <span>${{ '%.2f'|format(amount) }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="detail-note">No payments recorded yet.</p>
-        {% endif %}
-      </div>
-
-      <div class="stat-card stat-card--list">
-        <span class="stat-card__label">Tax billed YTD</span>
-        {% if tax_collected_ytd %}
-        <ul class="stat-card__ranked-list">
-          {% for label, amount in tax_collected_ytd %}
-          <li>
-            <span>{{ label }}</span>
-            <span>${{ '%.2f'|format(amount) }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <p class="detail-note">No tax billed this year.</p>
-        {% endif %}
-      </div>
-    </div>
-  </section>
+    </section>
+    {% endfor %}
+  </div>
 
 </div>
+
+<script>
+  // Native HTML5 drag-and-drop, saved with a JSON fetch on `dragend` — the
+  // same shape as the Orders-list column reorder in settings.html. Two
+  // nested sortable lists (sections, and the cards inside each) share one
+  // set of listeners: the grip's data-item says which ancestor is moving,
+  // and a drop is only accepted inside the element's own parent, so a card
+  // can never be dragged out of its section.
+  (function () {
+    var root = document.getElementById('analytics-layout');
+    if (!root) return;
+    var dragged = null;
+
+    root.addEventListener('dragstart', function (e) {
+      var grip = e.target.closest('.analytics-grip');
+      if (!grip) return;
+      dragged = grip.closest(grip.dataset.item);
+      dragged.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox won't start a drag at all without setData.
+      e.dataTransfer.setData('text/plain', dragged.dataset.section || dragged.dataset.card);
+      // Without this the drag image is the 10px grip rather than the thing
+      // being moved.
+      if (e.dataTransfer.setDragImage) {
+        e.dataTransfer.setDragImage(dragged, 24, 16);
+      }
+    });
+
+    root.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      var target = e.target.closest('.stat-card, .analytics-section');
+      // Sections contain cards, so a dragover on a card also reports the
+      // section — the parent check keeps each drag in its own list.
+      if (!target || target === dragged || target.parentNode !== dragged.parentNode) return;
+      e.preventDefault();
+      var rect = target.getBoundingClientRect();
+      var draggedRect = dragged.getBoundingClientRect();
+      // Cards sit side by side in a grid, so within a row the meaningful
+      // midpoint is horizontal; sections stack, and so do grid cards once
+      // the grid wraps to one column.
+      var sameRow = Math.abs(rect.top - draggedRect.top) < rect.height / 2;
+      var before = sameRow
+        ? (e.clientX - rect.left) < rect.width / 2
+        : (e.clientY - rect.top) < rect.height / 2;
+      target.parentNode.insertBefore(dragged, before ? target : target.nextSibling);
+    });
+
+    root.addEventListener('drop', function (e) {
+      e.preventDefault();
+    });
+
+    root.addEventListener('dragend', function () {
+      if (!dragged) return;
+      dragged.classList.remove('is-dragging');
+      dragged = null;
+
+      var sections = [].slice.call(root.querySelectorAll('.analytics-section'))
+        .map(function (section) {
+          return {
+            key: section.dataset.section,
+            cards: [].slice.call(section.querySelectorAll('.stat-card'))
+              .map(function (card) { return card.dataset.card; }),
+          };
+        });
+      fetch("{{ url_for('reorder_analytics_layout') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sections: sections }),
+      });
+    });
+  })();
+</script>
 {% endblock %}

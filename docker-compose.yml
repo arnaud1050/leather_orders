@@ -31,6 +31,12 @@ services:
       # 2 workers here, and two schedulers would sync every mailbox twice.
       # Left off, "Sync now" on the integrations page still works.
       - RUN_SCHEDULER=${RUN_SCHEDULER:-0}
+      # --- AI module (see ai/) ---
+      # Encrypts the vendor API keys a company saves under Settings → AI.
+      # Same fallback and same consequence as COMMS_ENCRYPTION_KEY above,
+      # and generated the same way — a separate variable so either can be
+      # rotated without invalidating the other's stored secrets.
+      - AI_ENCRYPTION_KEY=${AI_ENCRYPTION_KEY:-}
       # Set to 1 once this is behind TLS, so the session cookie is Secure.
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
       # Set to 1 only if this sits behind a reverse proxy that sets

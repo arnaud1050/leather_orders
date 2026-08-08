@@ -31,6 +31,10 @@ os.environ["SECRET_KEY"] = "test-secret-key"
 # SECRET_KEY-derived dev fallback. Fixed rather than generated so a failure
 # is reproducible.
 os.environ["COMMS_ENCRYPTION_KEY"] = "8ZQq1kzXKQ0Y9m4pJvVQ0j7cQ0K9zX2mQ8dHn1tYb3E="
+# The AI module's own box, for the same reason — and deliberately a
+# *different* key from the one above, so a test that accidentally encrypted
+# under the wrong box would fail rather than round-trip.
+os.environ["AI_ENCRYPTION_KEY"] = "pQ3vN8xR1sT6yU9wA2dF5gH0jK4lZ7mB1nC8vX3zQ5E="
 # Set explicitly rather than popped. app.py calls load_dotenv() during import,
 # and while that never *overrides* an existing variable (which is what keeps
 # the values above authoritative), it does fill in ones we left unset — so a

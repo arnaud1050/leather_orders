@@ -55,6 +55,16 @@ via a shared base file.
   changing it later requires deleting `data-demo/atelier.db` and restarting so it
   re-bootstraps, or resetting the password directly via a Python shell. `.env` is
   already gitignored.
+- **Two separate encryption keys**, both passed through by both compose files and
+  both optional: **`COMMS_ENCRYPTION_KEY`** (OAuth tokens, `communications/`) and
+  **`AI_ENCRYPTION_KEY`** (vendor API keys, `ai/`). Generate either with
+  `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+  Left unset, each is derived from `SECRET_KEY` — which works, and means
+  **rotating `SECRET_KEY` makes those stored secrets permanently unreadable**
+  (accounts have to be reconnected, API keys re-entered). Both pages say so when
+  running on the derived key. They're deliberately separate variables so either
+  can be rotated without invalidating the other's data; the shared mechanics live
+  in the root `crypto.py`.
 - **A fresh deployment starts empty** — no sample clients or orders, and a blank
   invoice letterhead to fill in from /settings. The demo dataset is loaded by hand
   and only where it's wanted (the demo deployment, or a local test), by running

@@ -1853,6 +1853,43 @@ dialog.modal::backdrop {
   margin: 0 0 14px;
 }
 
+.analytics-section__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Drag handle for the reorderable Analytics sections and cards. Same
+   six-dot mark as .settings-source-list__grip, but this one sits on a page
+   that isn't a settings list, so it stays faint until the thing it moves is
+   hovered rather than reading as page furniture. */
+.analytics-grip {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 10px;
+  color: var(--ink-soft);
+  cursor: grab;
+  opacity: 0.35;
+  transition: opacity 0.12s ease;
+}
+
+.analytics-section:hover > .analytics-section__heading > .analytics-grip,
+.stat-card:hover > .analytics-grip,
+.analytics-grip:focus-visible {
+  opacity: 1;
+}
+
+.stat-card > .analytics-grip {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+}
+
+.is-dragging {
+  opacity: 0.4;
+}
+
 .analytics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1860,10 +1897,11 @@ dialog.modal::backdrop {
 }
 
 .stat-card {
+  position: relative;  /* the drag grip is pinned to the top-right corner */
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 18px 20px;
+  padding: 18px 34px 18px 20px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   background: var(--paper);
@@ -2567,6 +2605,24 @@ button.chip--event:hover .chip__title {
 }
 
 .compose-form textarea {
+  font-family: var(--font-body);
+  width: 100%;
+}
+
+/* Settings → AI. Exactly the .compose-form arrangement and for the same
+   reason: .detail-form caps at 360px, which is right for a name or an
+   amount and wrong for a paragraph of prompt instructions. The form runs
+   full width so the prompt box does, and the key/model inputs — which
+   gain nothing from the width — are capped back. */
+.ai-form {
+  max-width: none;
+}
+
+.ai-form__field {
+  max-width: 360px;
+}
+
+.ai-form textarea {
   font-family: var(--font-body);
   width: 100%;
 }

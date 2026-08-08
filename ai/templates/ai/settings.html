@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}AI — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Settings</h1>
+    <p class="detail-subtitle">Company preferences</p>
+  </header>
+
+  {% include "_settings_nav.html" %}
+
+  {% if notice %}
+  <p class="detail-note">{{ notice }}</p>
+  {% endif %}
+
+  {% if using_derived_key %}
+  <p class="warning-note">
+    API keys are being encrypted with a key derived from SECRET_KEY,
+    the development fallback. Set AI_ENCRYPTION_KEY before saving a real
+    key — otherwise changing SECRET_KEY makes every stored key unreadable
+    and each one has to be entered again.
+  </p>
+  {% endif %}
+
+  {# Two sections, one per feature, each posting to its own endpoint. A
+     section only ever submits its own fields, and every field it doesn't
+     render is left alone server-side (hard rule 9) — so saving one can't
+     disturb the other. #}
+
+  <section class="detail-orders">
+    <h2>Inquiry replies</h2>
+    <p class="detail-note">
+      With an OpenAI key saved, replying to a lead or a client offers a
+      <strong>Suggest response</strong> button that drafts a reply from the
+      whole conversation and the prompt below. It fills the message box for
+      editing — nothing is ever sent for you. Charges land on the OpenAI
+      account the key belongs to; a suggestion costs roughly a fraction of a
+      cent, but there's no spending cap here, only theirs.
+    </p>
+
+    {% if settings.has_text_key %}
+    <ul class="settings-source-list">
+      <li class="settings-source-list__item">
+        <span class="settings-source-list__label">
+          API key saved
+          {% if settings.text_key_hint %}<span class="checkbox-group__hidden-tag">({{ settings.text_key_hint }})</span>{% endif %}
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('ai.delete_reply_key') }}">
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+        </div>
+      </li>
+    </ul>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('ai.save_replies') }}" class="detail-form ai-form">
+      {# Always rendered blank: a saved key is never sent back to the
+         browser. Submitting this section without retyping it therefore
+         means "keep the key I have", not "clear it" — deleting is the
+         button above. #}
+      <label class="ai-form__field">OpenAI API key
+        <input type="password" name="api_key" autocomplete="off" spellcheck="false"
+               placeholder="{{ 'Enter a new key to replace the saved one' if settings.has_text_key else 'sk-…' }}">
+      </label>
+      <label class="ai-form__field">Model
+        <input type="text" name="model" value="{{ settings.text_model }}" spellcheck="false"
+               placeholder="{{ default_text_model }}">
+      </label>
+      <label>Prompt
+        <textarea name="prompt" rows="12">{{ settings.reply_prompt }}</textarea>
+      </label>
+      <p class="detail-note">
+        The conversation is added below this at send time — write it as
+        instructions, not as a template. Saving it blank restores the
+        default.
+      </p>
+      <div>
+        <button type="submit" class="btn-primary">Save reply settings</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Renderings</h2>
+    <p class="detail-note">
+      With a Google AI Studio key saved, any JPEG or PNG attached to an
+      order offers a <strong>Render</strong> action that generates a product
+      rendering from it. A render is a draft until it's saved into the
+      order's documents, and each one is billed by Google — regenerating is
+      a fresh charge every time.
+    </p>
+
+    {% if settings.has_image_key %}
+    <ul class="settings-source-list">
+      <li class="settings-source-list__item">
+        <span class="settings-source-list__label">
+          API key saved
+          {% if settings.image_key_hint %}<span class="checkbox-group__hidden-tag">({{ settings.image_key_hint }})</span>{% endif %}
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('ai.delete_render_key') }}">
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+        </div>
+      </li>
+    </ul>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('ai.save_renders') }}" class="detail-form ai-form">
+      <label class="ai-form__field">Google AI Studio API key
+        <input type="password" name="api_key" autocomplete="off" spellcheck="false"
+               placeholder="{{ 'Enter a new key to replace the saved one' if settings.has_image_key else 'AIza…' }}">
+      </label>
+      <label class="ai-form__field">Model
+        <input type="text" name="model" value="{{ settings.image_model }}" spellcheck="false"
+               placeholder="{{ default_image_model }}">
+      </label>
+      <label>Prompt
+        <textarea name="prompt" rows="10">{{ settings.render_prompt }}</textarea>
+      </label>
+      <p class="detail-note">
+        Used for every render. The per-project details typed into the render
+        window are added to this rather than replacing it. Saving it blank
+        restores the default.
+      </p>
+      <div>
+        <button type="submit" class="btn-primary">Save rendering settings</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

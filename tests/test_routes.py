@@ -507,9 +507,19 @@ def test_callback_surfaces_a_failure_instead_of_500ing(logged_in, company, monke
 
 # --- navigation -----------------------------------------------------------
 
-def test_settings_nav_includes_integrations_on_every_settings_page(logged_in):
-    for path in ("/settings/general", "/settings/invoicing", "/settings/orders", "/settings/clients", "/settings/integrations"):
-        assert "Integrations" in logged_in.get(path).get_data(as_text=True)
+def test_settings_nav_includes_every_module_category_on_every_settings_page(logged_in):
+    """The nav is shared (templates/_settings_nav.html) precisely so a
+    module-owned category can't go missing from one page. "Email/Calendar"
+    is what the mail integration's link now reads — it was "Integrations"
+    while it was the only one, and stopped being that when AI arrived
+    beside it. The endpoint is deliberately still
+    `communications.integrations`."""
+    for path in ("/settings/general", "/settings/invoicing", "/settings/orders",
+                 "/settings/clients", "/settings/integrations", "/settings/ai"):
+        body = logged_in.get(path).get_data(as_text=True)
+        assert "/settings/integrations" in body
+        assert "/settings/ai" in body
+        assert "Integrations" not in body
 
 
 def test_client_nav_includes_the_emails_tab_on_every_client_tab(logged_in, client_record):

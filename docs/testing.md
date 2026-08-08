@@ -53,6 +53,22 @@ The four money files, and the single rule each exists to defend:
   "self-contained" is an intention rather than a property: one `from models
   import Order` added for convenience would go unnoticed by every other test.
 
+- **`tests/test_ai_boundary.py`** — the same trick for `ai/`, which claims a
+  stricter boundary than any other module: it never sees a host model at all,
+  since it's wired to three different host concepts (orders, documents, mail
+  threads) and a foreign key to any one would tie it to all three. It also
+  pins the *one* allowance — the root `crypto.py` — by asserting that file
+  imports nothing but the standard library and `cryptography`. That assertion
+  is what stops the allowance quietly widening into "modules may import host
+  helpers".
+- **`tests/test_ai_settings.py`** — API keys at rest, and the two form rules
+  that would otherwise destroy data. Its sharpest test reads the raw column
+  and asserts the key isn't in it: a round-trip test passes just as happily
+  against a plaintext column. The others cover "a blank key field means keep
+  the saved key" (the input is always rendered blank, so treating blank as a
+  clear would wipe the key on every prompt edit) and the page still rendering
+  after an encryption-key rotation, when the value can no longer be decrypted.
+
 `tests/test_inventory.py` covers the newer `inventory/` module on the same
 per-file-per-rule principle, even though it isn't one of the four money files
 above — its rule is the opposite one: **cost-tracking must never touch

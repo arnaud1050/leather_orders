@@ -215,7 +215,8 @@ form.
 into categories with their own sub-nav (`.settings-nav`, styled as underlined tabs,
 distinct from the top-level `.view-switch`), each a real route rather than a
 same-page anchor/JS tab-switch. The nav, and the order the categories were split
-in, is **General → Orders → Inventory → Clients → Invoicing → Integrations**:
+in, is **General → Orders → Inventory → Clients → Invoicing →
+Email/Calendar → AI**:
 
 - `/settings` (`settings()`) is content-free — it just redirects to
   `settings_general`, so the nav's "Settings" link and any bookmark still work.
@@ -261,9 +262,25 @@ in, is **General → Orders → Inventory → Clients → Invoicing → Integrat
   the invoice letterhead — company info without invoicing context (or vice versa)
   didn't make sense as separate categories. Last in the nav since it's the
   category touched least often, once initially filled in.
+- **`/settings/integrations`** (`communications.integrations()`) — connected
+  mailboxes, sync intervals, sender rules, the audit trail. Module-owned: it
+  renders the module's own template, sharing `_settings_nav.html`. Its link
+  reads **Email/Calendar**; it read "Integrations" until `ai/` added a second
+  integration category beside it, at which point the generic name stopped
+  distinguishing anything — and "Email" alone would have hidden the calendar
+  half this page also configures. **The endpoint and URL are deliberately
+  unchanged**, so every `url_for('communications.integrations')` and every
+  bookmark still works: renaming a route to match a label is churn without a
+  behavioural gain.
+- **`/settings/ai`** (`ai.settings()`) — the two vendor API keys and the two
+  prompts, one section per feature. Also module-owned. Last in the nav, and
+  the only category where saving one section must provably not disturb the
+  other's fields — see [ai/CLAUDE.md](../ai/CLAUDE.md).
 
-All categories render the same `settings.html`, switched on a `section` context
-var ("general" / "orders" / "clients" / "invoicing") — same pattern as
+The first five categories render the same `settings.html`, switched on a `section` context
+var ("general" / "orders" / "clients" / "invoicing"); the two
+module-owned categories pass their own ("integrations" / "ai") to the
+shared nav from their own templates — same pattern as
 `active_view`, just page-local rather than top-nav-level; the `{% if/elif %}`
 chain in the template is ordered to match the nav, not alphabetically or by
 when a section was added. Note `update_preferences()` is a `POST` at the same
@@ -276,9 +293,10 @@ same shape: a new `GET` route + section in `settings.html`, a new link in
 `.settings-nav` in the position it should sort, and any POST actions
 redirecting back to that new route.
 
-**Analytics** (`/analytics`) — company-wide read-only stats, `analytics()` in
-`app.py`, two sections of bordered `.stat-card`s (`.analytics-grid`) laid out with
-`analytics.html`:
+**Analytics** (`/analytics`) — company-wide stats (every *figure* read-only; see
+the layout note at the end of this entry for the one thing the page writes),
+`analytics()` in `app.py`, two sections of bordered `.stat-card`s
+(`.analytics-grid`) laid out with `analytics.html`:
 - *Clients*: avg. value per client, top 5 paying clients, client sources breakdown
   (percentage of all clients tagged with each `SourceOption` — **includes hidden
   options**, since a hidden-but-historically-used source should still show up here;
@@ -297,6 +315,31 @@ redirecting back to that new route.
   dominant method reads first) and **outstanding on issued invoices** — the latter
   counts invoiced work only, since an order that hasn't been billed isn't money
   anyone owes yet.
+
+*Layout* — both sections and the cards inside each are drag-reorderable in
+place on the page itself, rather than through a Settings editor like the
+Orders-list columns: "make the analytics page customizable" is about the page,
+and a settings screen listing eight card names out of context would be harder
+to use than dragging the card you're looking at. The persistence is the
+Orders-columns pattern verbatim, though — one JSON blob on
+`Company.analytics_layout` (so a layout is the *company's*, matching
+`order_columns`, not per-user), merged against the canonical
+`ANALYTICS_SECTIONS` dict on every read by `_analytics_layout_for()` so a
+section or card added to the app later appears at the end for a company with
+an older blob and one since removed drops out silently.
+**`/analytics/layout/reorder`** is a JSON `fetch` on `dragend` — same shape as
+`reorder_order_columns`, saving the instant something is dropped. Two
+differences from the settings lists: only the six-dot grip is `draggable`, not
+the whole card (a stat card holds links and figures worth selecting, and
+making the card the drag source would take both away); and the grid's
+insertion test picks its axis per drag — horizontal midpoint between two cards
+sharing a row, vertical otherwise, since `.analytics-grid` is a wrapping grid
+rather than a stack. Sections and cards are two nested sortable lists sharing
+one set of listeners: the grip's `data-item` says which ancestor is moving,
+and `dragover` refuses any target that isn't a sibling of it, which is what
+stops a card being dragged out of its section (a card under the wrong heading
+would be a mislabelled stat, not a preference — the route re-checks this
+server-side rather than trusting the payload).
 
 **View switch**: a small nav in `base.html` (`.view-switch`) links between the top-level
 views, driven by an `active_view` context var ("timeline" / "calendar" / "orders" /

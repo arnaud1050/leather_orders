@@ -9,11 +9,19 @@
   <a href="{{ url_for('settings_orders') }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
   <a href="{{ url_for('settings_inventory') }}" class="settings-nav__link {{ 'is-active' if section == 'inventory' else '' }}">Inventory</a>
   <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
+  {# Reads "Email/Calendar" rather than "Integrations": it was the only
+     integration when it was named, and stopped being one once AI arrived
+     beside it. Both halves are in the label because this page configures
+     both Gmail and Google Calendar, and "Email" alone hid the second. The
+     endpoint and URL are deliberately left as `integrations` — renaming a
+     route to match a label churns every url_for and every bookmark for no
+     behavioural gain. #}
   {# Carries the same alert badge as the top nav's Settings link, so the trail
      from "something's wrong" to the page that says what continues here. #}
   <a href="{{ url_for('communications.integrations') }}" class="settings-nav__link {{ 'is-active' if section == 'integrations' else '' }}">
-    Integrations
+    Email/Calendar
     {% set failing_integrations = integration_alert_count() %}
     {% if failing_integrations %}<span class="nav-badge nav-badge--alert" title="{{ failing_integrations }} integration{{ 's' if failing_integrations != 1 }} stopped syncing">!</span>{% endif %}
   </a>
+  <a href="{{ url_for('ai.settings') }}" class="settings-nav__link {{ 'is-active' if section == 'ai' else '' }}">AI</a>
 </nav>

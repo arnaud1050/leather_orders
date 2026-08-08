@@ -31,6 +31,10 @@ services:
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://demo.arnaudrouillot.com/integrations/google/callback}
       # One process only — see docker-compose.yml.
       - RUN_SCHEDULER=${RUN_SCHEDULER:-0}
+      # --- AI module (see ai/) ---
+      # Encrypts the vendor API keys saved under Settings → AI. See
+      # docker-compose.yml for what it costs to leave unset.
+      - AI_ENCRYPTION_KEY=${AI_ENCRYPTION_KEY:-}
       # This deployment sits behind nginx with TLS, so the session cookie
       # should be Secure by default here (unlike the local one).
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}

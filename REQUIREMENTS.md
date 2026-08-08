@@ -435,8 +435,10 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 
 ## 13. Analytics
 
-- **AN1.** `/analytics` is company-wide and **read-only** — no route on this
-  page ever writes data.
+- **AN1.** `/analytics` is company-wide, and every figure on it is
+  **read-only** — no route on this page ever writes a client, order, payment
+  or invoice. The single exception writes presentation and nothing else:
+  `/analytics/layout/reorder` (AN10).
 - **AN2.** "Avg. value per client" = average `Client.lifetime_value` across
   clients who have **at least one order** — not diluted by leads with zero
   orders, and not the same as average order price.
@@ -465,6 +467,23 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   been paid — the accrual-basis figure a Canadian remittance is filed on.
   A prior-year invoice is excluded, and with none this year the card shows
   its empty state.
+- **AN10.** The page's sections and the cards within each section are
+  reorderable by drag-and-drop, saved per **company** (not per user) as a
+  JSON blob on `Company.analytics_layout` by `/analytics/layout/reorder`, a
+  JSON POST fired on `dragend` — the layout saves the instant something is
+  dropped, with no Save button (same interaction as the Orders-list column
+  reorder, CO-`reorder_order_columns`).
+- **AN11.** A card belongs to exactly one section and **cannot** be dragged
+  into another — a card under the wrong heading would be a mislabelled stat,
+  not a preference. The drop handler rejects a target outside the dragged
+  element's own list, and `reorder_analytics_layout` filters each posted
+  section's cards against that section's entry in `ANALYTICS_SECTIONS`.
+- **AN12.** A saved layout is merged against `ANALYTICS_SECTIONS` on every
+  read (`_analytics_layout_for`), exactly as `_order_columns_for` merges
+  against `ORDER_COLUMNS`: a section or card added to the app after a
+  company last saved appears at the end of its list, one since removed from
+  the app silently drops out, and an unparseable or empty blob falls back to
+  the canonical order rather than erroring.
 
 ## 14. Explicit non-requirements
 

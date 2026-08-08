@@ -215,7 +215,7 @@ answered none of them correctly.
 ## 9. Contact-form field mapping
 
 The labels are **configuration, not code** — entered per rule under
-Settings → Integrations, because every site words its form differently.
+Settings → Email/Calendar, because every site words its form differently.
 
 | # | Rule | Why | Tested in |
 |---|---|---|---|
