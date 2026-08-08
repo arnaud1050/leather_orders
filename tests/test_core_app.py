@@ -17,6 +17,9 @@ import pytest
 import app as app_module
 from models import Client, Company, Order, OrderLine, OrderType, Payment, SourceOption, db
 
+from billing.services import invoicing
+from billing_adapter import billable_for
+
 # ---------------------------------------------------------------------------
 # Tenancy & auth (CO2-CO6)
 # ---------------------------------------------------------------------------
@@ -870,3 +873,51 @@ def test_analytics_method_breakdown_sorted_by_amount_descending(logged_in, clien
     response = logged_in.get("/analytics").data.decode()
 
     assert response.index("Square") < response.index("Cash")
+
+
+def _issue_invoice(company, order, issued_on):
+    """Raise an invoice on `order` and take it out of draft, dated `issued_on`.
+
+    Goes through the billing service the same way the app's own
+    `create_invoice()` route does, so the frozen `InvoiceTaxLine` rows the
+    analytics card reads actually get written."""
+    billable = billable_for(order)
+    invoice = invoicing.create_invoice(
+        company.id, billable, display_name=company.name, today=issued_on)
+    invoicing.set_status(
+        company.id, invoice, "sent", billable, display_name=company.name)
+    db.session.flush()
+    return invoice
+
+
+def test_analytics_tax_billed_ytd_shows_frozen_tax_for_the_current_year(
+    logged_in, company, client_record
+):
+    # company is GST-registered; client_record is in QC -> one 5% GST line.
+    # 5% of 246.80 = 12.34, a figure that appears nowhere else on the page.
+    order = _make_order(client_record, "Briefcase", 246.80, date(2026, 8, 1))
+    db.session.flush()
+    _issue_invoice(company, order, date.today())
+    db.session.commit()
+
+    response = logged_in.get("/analytics").data.decode()
+
+    assert "Tax billed YTD" in response
+    assert "GST" in response
+    assert "12.34" in response
+
+
+def test_analytics_tax_billed_ytd_excludes_invoices_issued_in_prior_years(
+    logged_in, company, client_record
+):
+    # Same invoice, but issued years ago: it must not count toward YTD, and
+    # the card falls back to its empty state.
+    order = _make_order(client_record, "Old briefcase", 246.80, date(2020, 8, 1))
+    db.session.flush()
+    _issue_invoice(company, order, date(2020, 8, 1))
+    db.session.commit()
+
+    response = logged_in.get("/analytics").data.decode()
+
+    assert "No tax billed this year." in response
+    assert "12.34" not in response

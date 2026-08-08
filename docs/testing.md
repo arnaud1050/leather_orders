@@ -11,7 +11,22 @@ Orders tab's table — its status pill, its fixed columns, sorting, and the
 invoice-or-dash cell), not the page as a whole. The Settings letterhead POST
 routes are `tests/test_settings_company.py`, order-line add/delete is
 `tests/test_order_lines.py`, and the two option lists' hide-vs-hard-delete
-guard is in `tests/test_settings_options.py`. What's still thin: the Gmail API
+guard is in `tests/test_settings_options.py`.
+
+**`tests/test_seeding.py`** defends the bootstrap/sample-data split (`CO9a`–
+`CO9c`, hard rule 16): that `seed_if_empty()` creates a tenant and *no* clients,
+orders, invoices or letterhead; that `sample_data.seed_sample_data()` inserts the
+demo dataset but refuses a company that already has clients; and — by parsing
+`app.py` and `models.py` with `ast`, the same trick `test_billing_boundary.py`
+uses — that **neither imports `sample_data`**. That last one is the real
+regression guard: a single import added for convenience would put ten fake
+clients back into every production deployment, and no other test would notice.
+The same file covers the relative-date rules (`CO9d`, `CO9e`) by seeding at a
+pinned future date — 2029, 2031, 2033 — and asserting the timeline still has
+past, current and upcoming orders, that no payment or invoice lands after the
+seed day, and that nothing unstarted claims to be ready or delivered.
+
+What's still thin: the Gmail API
 wrapper (`communications/providers/gmail_provider.py`, substituted by
 `tests/fakes.py` rather than run) and the PDF thumbnail path (needs `poppler`).
 

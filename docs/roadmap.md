@@ -97,9 +97,13 @@
   re-billed, but the order page will then show line items that don't add up to the
   invoice. The order page says so in a note; properly, adding or removing lines
   should be blocked once `order.is_issued`.
-- **No tax-collected report.** `InvoiceTaxLine` exists as a real table precisely so
-  remittance figures can be summed per period, but `/analytics` doesn't show them
-  yet — an obvious next addition alongside the revenue cards.
+- ~~**No tax-collected report.**~~ *Done.* `/analytics`'s Revenue section now
+  carries a **Tax billed YTD** card, one row per tax (GST, QST, …), summed
+  from the frozen `InvoiceTaxLine` rows via `invoicing.tax_collected(company_id,
+  since=Jan 1)`. It's labelled "billed" (accrual basis — every issued, non-void
+  invoice, paid or not), which is how a Canadian remittance is normally filed. A
+  cash-basis version and a per-period (quarter/custom range) view are both still
+  open if a real remittance workflow is ever wanted.
 - **Client-level documents**: the `documents/` module attaches files to an
   **order** only. Documents belonging to a client generally (a signed contract, a
   measurements sheet) were discussed and left out of scope — see

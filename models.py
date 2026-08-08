@@ -1,14 +1,18 @@
 """
-SQLAlchemy models + seed data.
+SQLAlchemy models + first-boot bootstrap.
 
 Company is the tenant boundary: everything else (users, clients, and
 transitively orders/documents) hangs off a company_id. Today only one
-company is seeded ("By Monsieur"), but scoping queries by company_id from
+company is created on first boot, but scoping queries by company_id from
 the start means adding a second tenant later is additive, not a rewrite.
+
+`seed_if_empty()` below creates *only* that company, its admin user and the
+per-company option lists — no sample clients, orders or invoices, so a
+production deployment starts empty. The demo dataset lives in
+`sample_data.py`, loaded on demand by `scripts/seed_sample_data.py`.
 """
 
 import re
-from datetime import date
 
 import sqlalchemy as sa
 from flask_login import UserMixin
@@ -503,87 +507,20 @@ def _migrate_order_price_to_lines() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Seed data — same sample clients/orders the in-memory prototype used to
-# hardcode, now inserted into SQLite on first run. Real order documents are
-# a separate module (see documents/) and aren't seeded here — a fresh
-# company just starts with none, same as it would in real use.
-# ---------------------------------------------------------------------------
-
-# Provinces are spread across QC / BC / ON on purpose: tax is charged at
-# the client's province's rate, so the sample data exercises GST+QST,
-# GST+PST and HST. Two clients (6, 8) have no address at all, which is
-# what an order with uncalculable tax looks like — see Order.tax_status.
-_SAMPLE_CLIENTS = [
-    {"id": 1, "first_name": "Marie", "last_name": "Alarie", "email": "m.alarie@example.com", "phone": "514-555-0142", "street": "1240 rue Saint-Denis", "city": "Montréal", "province": "QC", "postal_code": "H2X 3J5"},
-    {"id": 2, "first_name": "Sarah", "last_name": "Okafor", "email": "s.okafor@example.com", "phone": "604-555-0198", "street": "780 Bute St, Apt 1104", "city": "Vancouver", "province": "BC", "postal_code": "V6E 1Y9"},
-    {"id": 3, "first_name": "Ryan", "last_name": "Chen", "email": "r.chen@example.com", "phone": "778-555-0110", "street": "3355 Cambie St", "city": "Vancouver", "province": "BC", "postal_code": "V5Z 2W6"},
-    {"id": 4, "first_name": "Lucas", "last_name": "Beaumont", "email": "l.beaumont@example.com", "phone": "438-555-0176", "street": "55 avenue Laurier O", "city": "Montréal", "province": "QC", "postal_code": "H2T 2N4"},
-    {"id": 5, "first_name": "Anna", "last_name": "Novak", "email": "a.novak@example.com", "phone": "416-555-0133", "street": "914 Queen St W", "city": "Toronto", "province": "ON", "postal_code": "M6J 1G6"},
-    {"id": 6, "first_name": "Thomas", "last_name": "Iverson", "email": "t.iverson@example.com", "phone": "604-555-0121", "street": None, "city": None, "province": None, "postal_code": None},
-    {"id": 7, "first_name": "Pierre", "last_name": "Dubois", "email": "p.dubois@example.com", "phone": "514-555-0187", "street": "203 rue Ontario E", "city": "Montréal", "province": "QC", "postal_code": "H2X 1H5"},
-    {"id": 8, "first_name": "Hannah", "last_name": "Solberg", "email": "h.solberg@example.com", "phone": "778-555-0165", "street": None, "city": None, "province": None, "postal_code": None},
-    {"id": 9, "first_name": "Giulia", "last_name": "Marchetti", "email": "g.marchetti@example.com", "phone": "416-555-0154", "street": "62 Ossington Ave", "city": "Toronto", "province": "ON", "postal_code": "M6J 2Y7"},
-    {"id": 10, "first_name": "Nadia", "last_name": "Petrova", "email": "n.petrova@example.com", "phone": "604-555-0109", "street": None, "city": None, "province": None, "postal_code": None},
-]
-
-# Dates start August 1st and later (shifted a month forward from the
-# original July-clustered set, at the studio's request, so a fresh seed
-# always lands in the future relative to "today" instead of needing
-# updating). client_id 1 and 3 each get a second order below, so they show
-# up as "returning" clients in the seeded data.
+# Bootstrap data — the minimum an empty database needs to be a working
+# install: one company, one admin user, and the two option lists the app's
+# own forms read from. **No sample clients, orders or invoices.** Those live
+# in `sample_data.py`, which nothing here imports — they're loaded on purpose
+# by `scripts/seed_sample_data.py`, so a production deployment starts empty.
 #
-# "lines" is (description, quantity, unit_price) — an order's value is the
-# sum of these, there's no separate price field. "payments" is optional per
-# order: orders without it have no deposit recorded yet (matches real
-# orders that haven't been confirmed with a deposit). Where present,
-# amounts are rough ~50% deposits, not full payment, except the one
-# delivered order (fully settled, as it would be by pickup). Payment
-# methods are mixed across cash / e-transfer / Square on purpose, since
-# reconciling those three against one invoice is the point.
-_SAMPLE_ORDERS = [
-    {"id": 1, "client_id": 1, "item": "Full-grain briefcase", "start": date(2026, 8, 1), "due": date(2026, 8, 15), "status": "delivered", "notes": "Horween Chromexcel, brass hardware", "order_type": "Custom Order",
-     "lines": [("Full-grain briefcase, Horween Chromexcel", 1, 760.00), ("Brass hardware upgrade", 1, 90.00)],
-     "payments": [(425.00, date(2026, 8, 1), "square", "sq:9F2K-4471"), (425.00, date(2026, 8, 15), "cash", None)]},
-    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": date(2026, 8, 8), "due": date(2026, 8, 29), "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim",
-     "lines": [("Weekender duffel, veg-tan trim", 1, 560.00), ("Waxed canvas panels", 1, 60.00)],
-     "payments": [(310.00, date(2026, 8, 8), "etransfer", "e-tfr CA8821")]},
-    {"id": 3, "client_id": 3, "item": "Bifold wallet (monogram)", "start": date(2026, 8, 15), "due": date(2026, 8, 24), "status": "ready", "notes": "Hand-stitched, gold foil initials",
-     "lines": [("Bifold wallet, hand-stitched", 1, 110.00), ("Gold foil monogram", 1, 30.00)],
-     "payments": [(70.00, date(2026, 8, 15), "cash", None)]},
-    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": date(2026, 8, 18), "due": date(2026, 8, 30), "status": "rush", "notes": "Client travels on the 31st", "order_type": "Custom Order",
-     "lines": [("Messenger bag", 1, 430.00), ("Rush surcharge", 1, 50.00)],
-     "payments": [(240.00, date(2026, 8, 18), "square", "sq:7T1B-9930")]},
-    {"id": 5, "client_id": 5, "item": "Belt, 38mm", "start": date(2026, 8, 20), "due": date(2026, 8, 27), "status": "in_progress", "notes": "English bridle leather",
-     "lines": [("Belt, 38mm English bridle", 1, 95.00)]},
-    {"id": 6, "client_id": 6, "item": "Camera strap", "start": date(2026, 8, 19), "due": date(2026, 8, 25), "status": "ready", "notes": "Padded, nickel rivets",
-     "lines": [("Camera strap, padded", 1, 95.00), ("Nickel rivets", 1, 15.00)],
-     "payments": [(55.00, date(2026, 8, 19), "etransfer", "e-tfr CA9014")]},
-    {"id": 7, "client_id": 7, "item": "Tote bag", "start": date(2026, 8, 17), "due": date(2026, 9, 1), "status": "in_progress", "notes": "Natural veg-tan, will patina", "order_type": "White Label",
-     "lines": [("Tote bag, natural veg-tan", 1, 310.00)]},
-    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": date(2026, 8, 22), "due": date(2026, 8, 28), "status": "in_progress", "notes": "Gift for anniversary",
-     "lines": [("Passport holder", 2, 65.00)],
-     "payments": [(65.00, date(2026, 8, 22), "cash", None)]},
-    {"id": 9, "client_id": 8, "item": "Watch strap", "start": date(2026, 8, 24), "due": date(2026, 8, 29), "status": "rush", "notes": "Custom buckle from client's own", "order_type": "Custom Order",
-     "lines": [("Watch strap, client's own buckle", 1, 85.00)]},
-    {"id": 10, "client_id": 9, "item": "Laptop sleeve", "start": date(2026, 8, 23), "due": date(2026, 8, 31), "status": "in_progress", "notes": "13-inch, felt lining",
-     "lines": [("Laptop sleeve, 13-inch", 1, 145.00), ("Felt lining", 1, 20.00)]},
-    {"id": 11, "client_id": 10, "item": "Card holder", "start": date(2026, 8, 26), "due": date(2026, 9, 2), "status": "in_progress", "notes": "Minimalist, 3-slot",
-     "lines": [("Card holder, 3-slot", 1, 75.00)]},
-    {"id": 12, "client_id": 3, "item": "Travel journal cover", "start": date(2026, 8, 21), "due": date(2026, 8, 27), "status": "ready", "notes": "Refillable, brass corners", "order_type": "Consulting/Sampling",
-     "lines": [("Travel journal cover, refillable", 1, 105.00), ("Brass corners", 1, 15.00)],
-     "payments": [(60.00, date(2026, 8, 21), "etransfer", "e-tfr CA9127")]},
-]
-
-# Only some orders are invoiced — matching reality, where an invoice gets
-# raised when work is confirmed rather than the moment an order is booked.
-# order 1 is fully paid (so it renders as "Paid" without the status saying
-# so), 2 and 4 are sent-and-partly-paid, 12 is still a draft.
-_SAMPLE_INVOICES = [
-    {"subject_id": 1, "number": "BM-2026-0001", "issued_date": date(2026, 8, 1), "due_date": date(2026, 8, 15), "status": "sent", "notes": None},
-    {"subject_id": 2, "number": "BM-2026-0002", "issued_date": date(2026, 8, 8), "due_date": date(2026, 8, 29), "status": "sent", "notes": "50% deposit taken on issue."},
-    {"subject_id": 4, "number": "BM-2026-0003", "issued_date": date(2026, 8, 18), "due_date": date(2026, 8, 30), "status": "sent", "notes": "Rush order — balance due at pickup."},
-    {"subject_id": 12, "number": "BM-2026-0004", "issued_date": date(2026, 8, 21), "due_date": None, "status": "draft", "notes": None},
-]
+# Fixed reference data the app can't work without — province tax rates
+# (billing/tax.py), the inventory unit catalog (inventory/config.py) — isn't
+# seeded at all: it's code constants, present in every deployment. Anything
+# per-company that's fixed rather than configurable is created lazily on
+# first use (the billing letterhead via `profile_for()`, the "Each" unit via
+# `_ensure_default_unit()`), which covers a company created after this
+# function ever ran.
+# ---------------------------------------------------------------------------
 
 # Default "how did you hear about us" options, matching the checkboxes on
 # the bymonsieur.ca contact form. Editable per-company from /settings once
@@ -612,39 +549,36 @@ _DEFAULT_ORDER_TYPES = [
 
 
 def seed_if_empty(admin_password: str = "changeme") -> None:
-    """Populate a fresh database with the sample "By Monsieur" tenant."""
+    """Create the one company an empty database needs, and nothing else.
+
+    Bootstrap only — a company, its admin user, and the two option lists the
+    app's own forms read from. **No clients, orders or invoices**: a fresh
+    deployment is meant to be genuinely empty, so the first real order
+    entered is order #1. The demo dataset lives in `sample_data.py` and is
+    loaded on purpose by running `scripts/seed_sample_data.py`.
+
+    The company's name is a starting value only — it's editable from
+    /settings, and this never overwrites it.
+
+    Runs on every boot and returns immediately once a company exists, so
+    it's never a reset mechanism.
+    """
     if Company.query.count() > 0:
         return
 
-    # Address and registration numbers here are placeholders in the right
-    # shape, NOT the studio's real ones — same caveat as prices and lead
-    # times. Replace them from /settings before issuing anything real.
-    # BC charges GST + PST (not QST/NEQ, which are Quebec-specific), so
-    # qst_number/neq are left unset entirely rather than blanked strings —
-    # same "blank registrations don't print" path the sample data has always
-    # exercised, just via the BC side of it now.
     from billing.services import invoicing
 
     company = Company(name="By Monsieur")
     db.session.add(company)
     db.session.flush()  # assigns company.id
 
-    # The letterhead belongs to the billing module now, so it's seeded
-    # through that module's API rather than as columns on Company.
-    invoicing.update_profile(
-        company.id, display_name=company.name,
-        invoice_prefix="BM",
-        street="Laurel Street, Studio 3",
-        city="Vancouver",
-        province="BC",
-        postal_code="V6H 3P7",
-        gst_number="123456789 RT0001",
-        pst_number="PST-1234-5678",
-        payment_instructions=(
-            "E-transfer to payments@example.com — no security question needed.\n"
-            "Cash accepted at pickup. Cheques payable to By Monsieur."
-        ),
-    )
+    # The letterhead belongs to the billing module now, so it's created
+    # through that module's API rather than as columns on Company. Empty
+    # apart from the name: the address and tax registrations are things
+    # only the studio can fill in, from /settings, and a placeholder that
+    # looks plausible would be worse than a blank that prompts for one.
+    # `update_profile` supplies the "INV" number prefix.
+    invoicing.update_profile(company.id, display_name=company.name)
 
     admin = User(company_id=company.id, username="admin")
     admin.set_password(admin_password)
@@ -653,63 +587,7 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
     for i, label in enumerate(_DEFAULT_SOURCE_OPTIONS):
         db.session.add(SourceOption(company_id=company.id, label=label, sort_order=i))
 
-    order_types = {}
     for i, label in enumerate(_DEFAULT_ORDER_TYPES):
-        order_type = OrderType(company_id=company.id, label=label, sort_order=i)
-        db.session.add(order_type)
-        order_types[label] = order_type
-    db.session.flush()  # assigns order_type.id, needed below
-
-    for c in _SAMPLE_CLIENTS:
-        client = Client(
-            id=c["id"], company_id=company.id,
-            first_name=c["first_name"], last_name=c["last_name"],
-            email=c["email"], phone=c["phone"],
-            street=c["street"], city=c["city"],
-            province=c["province"], postal_code=c["postal_code"],
-        )
-        db.session.add(client)
-
-    for o in _SAMPLE_ORDERS:
-        order_type = order_types.get(o.get("order_type"))
-        order = Order(
-            id=o["id"], client_id=o["client_id"], item=o["item"],
-            start=o["start"], due=o["due"],
-            status=o["status"], notes=o["notes"],
-            order_type_id=order_type.id if order_type else None,
-        )
-        db.session.add(order)
-        db.session.flush()  # assigns order.id if not already set
-        for i, (description, quantity, unit_price) in enumerate(o["lines"]):
-            db.session.add(OrderLine(
-                order_id=order.id, description=description,
-                quantity=quantity, unit_price=unit_price, sort_order=i,
-            ))
-        for amount, paid_date, method, reference in o.get("payments", []):
-            db.session.add(Payment(
-                order_id=order.id, amount=amount, paid_date=paid_date,
-                method=method, reference=reference,
-            ))
-
-    db.session.flush()  # assigns order ids, needed by the adapter below
-
-    # Raised and frozen through the billing module's own API, so the sample
-    # data is never in a state the running app couldn't reach.
-    from billing_adapter import billable_for
-
-    for spec in _SAMPLE_INVOICES:
-        order = db.session.get(Order, spec["subject_id"])
-        billable = billable_for(order)
-        invoice = invoicing.create_invoice(
-            company.id, billable, due_date=spec["due_date"],
-            display_name=company.name, today=spec["issued_date"],
-        )
-        invoice.number = spec["number"]  # fixed numbers keep the sample stable
-        invoice.notes = spec["notes"]
-        invoicing.set_status(
-            company.id, invoice, spec["status"], billable,
-            notes=spec["notes"] or "", due_date=spec["due_date"],
-            display_name=company.name,
-        )
+        db.session.add(OrderType(company_id=company.id, label=label, sort_order=i))
 
     db.session.commit()

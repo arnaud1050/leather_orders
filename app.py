@@ -158,6 +158,10 @@ with app.app_context():
     # inventory_items, order_materials, order_material_others), nothing to
     # migrate yet since every one is brand new.
     inventory_migrations.run_migrations()
+    # Bootstrap only — one company, its admin user, and the SourceOption /
+    # OrderType starter lists. Deliberately no sample clients or orders: a
+    # production deployment starts empty. To load the demo dataset in a test
+    # environment, run scripts/seed_sample_data.py.
     seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
 
 # Background mailbox/calendar sync. A no-op unless RUN_SCHEDULER=1 — with
@@ -1576,9 +1580,12 @@ def analytics():
         doc.balance_due for doc in documents
         if doc.status != "void" and not doc.is_settled
     )
-    # Tax actually collected, straight out of the frozen invoice rows —
-    # what a GST/QST remittance is.
-    tax_collected = invoicing.tax_collected(company_id)
+    # Tax actually collected this year, straight out of the frozen invoice
+    # rows — what a GST/QST remittance is. Windowed on issued_date so it lines
+    # up with Revenue YTD above; one (label, amount) row per tax charged.
+    tax_collected_ytd = invoicing.tax_collected(
+        company_id, since=date(this_year, 1, 1)
+    )
 
     return render_template(
         "analytics.html",
@@ -1589,7 +1596,9 @@ def analytics():
         revenue_ytd=revenue_ytd,
         method_breakdown=method_breakdown,
         outstanding=outstanding,
-        tax_collected=sorted(tax_collected, key=lambda pair: pair[1], reverse=True),
+        tax_collected_ytd=sorted(
+            tax_collected_ytd, key=lambda pair: pair[1], reverse=True
+        ),
         active_view="analytics",
     )
 

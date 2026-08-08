@@ -53,8 +53,16 @@ via a shared base file.
   (`${ADMIN_PASSWORD:-changeme}`), which only takes effect the *first* time that
   deployment's database is created (see `seed_if_empty()` in [docs/data-model.md](data-model.md)) —
   changing it later requires deleting `data-demo/atelier.db` and restarting so it
-  reseeds, or resetting the password directly via a Python shell. `.env` is already
-  gitignored.
+  re-bootstraps, or resetting the password directly via a Python shell. `.env` is
+  already gitignored.
+- **A fresh deployment starts empty** — no sample clients or orders, and a blank
+  invoice letterhead to fill in from /settings. The demo dataset is loaded by hand
+  and only where it's wanted (the demo deployment, or a local test), by running
+  `scripts/seed_sample_data.py` inside the container:
+
+  ```bash
+  docker compose -f docker-compose-demo.yml exec demo python scripts/seed_sample_data.py
+  ```
 - **`.dockerignore`**: excludes `venv/`, `.git`, `data/`, `CLAUDE.md`, etc. from the
   build context (shared by both Dockerfiles' build contexts). Update this if you add
   other local-only folders (e.g. `.vscode/`).

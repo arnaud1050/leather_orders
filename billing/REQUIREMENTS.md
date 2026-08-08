@@ -483,7 +483,7 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | D8 | `test_lifetime_value_is_tax_inclusive` |
 | D9 | `test_a_taxless_order_still_totals_its_subtotal` |
 | D10 | — gap — *(`is_outstanding` itself is unasserted; the list total that uses the same predicate is covered by D7)* |
-| D11 | `test_tax_collected_sums_the_frozen_rows`, `test_tax_collected_excludes_voided_invoices`, `test_tax_collected_is_scoped_to_the_tenant` — gap: the `since`/`until` window has no test |
+| D11 | `test_tax_collected_sums_the_frozen_rows`, `test_tax_collected_excludes_voided_invoices`, `test_tax_collected_is_scoped_to_the_tenant`, `test_tax_collected_windows_on_the_issued_date` (the `since`/`until` window) |
 | D12 | `test_invoiced_subject_ids` |
 | AD1 | `test_full_address_uses_the_canada_post_layout` |
 | AD2 | `test_street_only`, `test_city_and_province_only`, `test_city_only`, `test_province_and_postal_without_a_city` |
@@ -525,15 +525,24 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | U11 | — gap — *(would need a template scan like `test_billing_boundary.py` does for Python)* |
 | Z1–Z10 | *(non-requirements — nothing to test)* |
 
-### Known inconsistency
+### The tax-collected report
 
-`analytics()` in `app.py` computes `invoicing.tax_collected(company_id)` and
-passes it to `analytics.html`, which **doesn't render it**. So the query runs
-on every analytics page load and the figure is never shown — D11 is
-implemented and tested at the service layer, but the remittance report it
-exists for isn't on the page yet. Either render it or stop computing it;
-`docs/roadmap.md`'s "No tax-collected report" gap is describing this half-finished
-state.
+`analytics()` in `app.py` computes
+`invoicing.tax_collected(company_id, since=date(this_year, 1, 1))` and renders
+it in `analytics.html`'s Revenue section as a **Tax billed YTD** card — one
+`(label, amount)` row per tax charged (GST, QST, …), the shape a remittance
+takes. It exercises the `since` window of D11 (previously a gap), and is
+scoped `issued_date >= Jan 1` so it lines up with the Revenue YTD figure beside
+it. This closes `docs/roadmap.md`'s "No tax-collected report" gap, which
+described the earlier half-finished state where the figure was computed but
+never shown.
+
+The card is labelled **"Tax billed"**, not "collected", on purpose: it sums the
+frozen tax on every issued, non-void invoice regardless of whether it's been
+paid — the **accrual-basis** figure a Canadian GST/HST/QST remittance is
+normally filed on. A cash-basis figure (tax only on invoices whose payments
+cover the total) would be a different, more involved computation and isn't
+built.
 
 Everything marked "manually verified in the browser only" was exercised by
 hand during development but has no regression protection — a future change to

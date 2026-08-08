@@ -407,6 +407,30 @@ def test_tax_collected_is_scoped_to_the_tenant(registered, other_company, client
     assert invoicing.tax_collected(other_company.id) == []
 
 
+def test_tax_collected_windows_on_the_issued_date(registered, client_record):
+    """The since/until window filters on issued_date — this is what turns a
+    per-period remittance (a quarter, a year) into a single query, and is
+    what the analytics "Tax billed YTD" card leans on."""
+    old = issue(registered, make_order(client_record, 1000.0))
+    old.issued_date = date(2025, 6, 1)
+    new = issue(registered, make_order(client_record, 1000.0))
+    new.issued_date = date(2026, 6, 1)
+    db.session.flush()
+
+    # No window: every non-void invoice, both years summed.
+    assert dict(invoicing.tax_collected(registered.id))["GST"] == pytest.approx(100.0)
+    # since only: the current year and forward.
+    assert dict(invoicing.tax_collected(
+        registered.id, since=date(2026, 1, 1)))["GST"] == pytest.approx(50.0)
+    # until only: everything up to and including the bound.
+    assert dict(invoicing.tax_collected(
+        registered.id, until=date(2025, 12, 31)))["GST"] == pytest.approx(50.0)
+    # Both bounds: a closed period that catches only the 2025 invoice.
+    assert dict(invoicing.tax_collected(
+        registered.id, since=date(2025, 1, 1),
+        until=date(2025, 12, 31)))["GST"] == pytest.approx(50.0)
+
+
 def test_invoiced_subject_ids(registered, client_record):
     order = make_order(client_record)
     make_order(client_record)  # left uninvoiced

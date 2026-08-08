@@ -81,6 +81,22 @@
         <p class="detail-note">No payments recorded yet.</p>
         {% endif %}
       </div>
+
+      <div class="stat-card stat-card--list">
+        <span class="stat-card__label">Tax billed YTD</span>
+        {% if tax_collected_ytd %}
+        <ul class="stat-card__ranked-list">
+          {% for label, amount in tax_collected_ytd %}
+          <li>
+            <span>{{ label }}</span>
+            <span>${{ '%.2f'|format(amount) }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="detail-note">No tax billed this year.</p>
+        {% endif %}
+      </div>
     </div>
   </section>
 

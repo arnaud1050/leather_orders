@@ -63,7 +63,7 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   toggle is hidden and the links render as the same horizontal row as
   always. Both elements exist regardless of viewport — only CSS decides
   which is visible.
-- **CO6.** There is exactly one seeded company today (no signup flow, no
+- **CO6.** There is exactly one company created on first boot today (no signup flow, no
   tenant switcher) — `CO1`–`CO3` are enforced as schema-and-query-level
   guarantees anyway, so a second company can be added later without an audit
   of query logic.
@@ -81,8 +81,38 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   list, never falls through to storing something unresolvable.
 - **CO9.** `run_migrations()` runs on every boot, is a no-op once a given
   change is applied, and runs safely against both a fresh and an
-  already-populated database. `seed_if_empty()` only ever inserts sample data
-  into a database with zero rows — it is not a reset mechanism.
+  already-populated database. `seed_if_empty()` returns immediately once any
+  company exists — it is not a reset mechanism.
+- **CO9a.** `seed_if_empty()` inserts **bootstrap data only**: one `Company`
+  ("By Monsieur", a starting value that /settings can change), one
+  admin `User`, and the `_DEFAULT_SOURCE_OPTIONS` / `_DEFAULT_ORDER_TYPES`
+  starter lists. It creates **no** clients, orders, invoices or payments, and
+  leaves the billing letterhead **empty** apart from the display name — a
+  production deployment starts with nothing in it but the tenant.
+- **CO9b.** Fixed reference data — province tax rates (`billing/tax.py`), the
+  inventory `UNIT_CATALOG` (`inventory/config.py`) — is code, not seed rows,
+  so every deployment has it without any insert. Per-company rows that are
+  fixed rather than configurable are created lazily on first use
+  (`invoicing.profile_for()`, `inventory.services._ensure_default_unit()`),
+  never at seed time, so a company created by any other path gets them too.
+- **CO9c.** The demo dataset (ten clients, twelve orders, four invoices, a
+  placeholder letterhead) lives in `sample_data.py`, is imported by nothing at
+  startup, and is inserted only by running `scripts/seed_sample_data.py` by
+  hand. `seed_sample_data()` refuses (returns `False`, inserts nothing) when
+  the company already has at least one `Client` — like `seed_if_empty()` it
+  fills an empty install, it never resets a populated one.
+- **CO9d.** Every date in the demo dataset is stored as a **day offset from
+  the seed date** and resolved when it runs, never as a calendar date. The
+  spread is fixed: at least one order already delivered, several straddling
+  the seed day, several not yet started, and the whole set inside ±30 days —
+  so the timeline (the landing page) opens on current and future work
+  whenever the demo is seeded, not on an archive.
+- **CO9e.** Two consistency rules follow from CO9d, since the dates move and
+  the rest doesn't: no `Payment.paid_date` or `Invoice.issued_date` is later
+  than the seed date, and no order that hasn't started yet carries a status
+  of `delivered` or `ready`. Invoice numbers come from the billing module's
+  own per-year sequence rather than being hardcoded, because the year moves
+  with the seed date.
 
 ## 3. Client & SourceOption
 
@@ -428,6 +458,13 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **AN8.** "Outstanding on issued invoices" counts **invoiced work only**
   (delegating to `billing` for what counts as issued/outstanding) — an
   order that hasn't been billed yet isn't money anyone is owed.
+- **AN9.** "Tax billed YTD" sums the frozen `InvoiceTaxLine` rows per tax
+  (via `billing`'s `tax_collected`, windowed on `issued_date >= Jan 1`),
+  one row per tax charged (GST, QST, …). It is labelled **billed**, not
+  collected: it counts every issued, non-void invoice whether or not it's
+  been paid — the accrual-basis figure a Canadian remittance is filed on.
+  A prior-year invoice is excluded, and with none this year the card shows
+  its empty state.
 
 ## 14. Explicit non-requirements
 
@@ -441,15 +478,20 @@ each.
   short of a Python shell.
 - **N3.** No signup flow or tenant switcher — `Company` is schema-ready for
   multiple tenants (CO1–CO3) but only one is ever seeded.
-- **N4.** No tax-collected report on `/analytics` — `InvoiceTaxLine` exists
-  specifically to make this queryable later, but nothing sums it yet.
+- ~~**N4.** No tax-collected report on `/analytics`.~~ *Built* — see AN9;
+  `/analytics` now carries a "Tax billed YTD" card. A cash-basis version and
+  a per-period (quarter/custom range) view remain unbuilt.
 - **N5.** Nothing blocks editing an issued order's line items after
   invoicing — the invoice total itself is safely frozen (`billing`'s
   concern), but the order page can then show lines that don't add up to
   what was billed. The page notes this; blocking it outright is a known
   follow-up.
-- **N6.** `start` dates and `price` values in seed/sample data are
-  estimates, not real client-provided numbers.
+- **N6.** The `price` values in `sample_data.py` are estimates, not real
+  client-provided numbers — as are the letterhead address and tax
+  registration numbers, which are the right *shape* and nothing more. The
+  dates aren't even that: they're offsets resolved at seed time (CO9d), so
+  no date in the demo set means anything beyond its position relative to
+  the others. None of it reaches a production database (CO9a, CO9c).
 
 ---
 
@@ -470,7 +512,12 @@ has no regression test.
 | CO6 | — gap — (single-tenant-seed is a deployment fact, not asserted by a test) |
 | CO7 | — gap — (asserted implicitly by every billing test reading `BillingProfile` instead of `Company`, but not stated as a `Company`-shape rule directly) |
 | CO8 | — gap — |
-| CO9 | `tests/test_migrations.py` (covers the modules' own migrations; core-app `run_migrations()` itself has no dedicated test) |
+| CO9 | `tests/test_migrations.py` (covers the modules' own migrations; core-app `run_migrations()` itself has no dedicated test), `test_seed_if_empty_is_not_a_reset_mechanism` (`tests/test_seeding.py`) |
+| CO9a | `test_seed_if_empty_creates_one_company_with_an_admin`, `test_seed_if_empty_names_the_company_from_its_argument`, `test_seed_if_empty_creates_the_option_lists_forms_read_from`, `test_seed_if_empty_creates_no_clients_orders_or_invoices`, `test_seed_if_empty_leaves_the_letterhead_blank` (`tests/test_seeding.py`) |
+| CO9b | — gap — (`billing/tax.py` and `inventory/config.py` being constants is structural; the lazy-creation half is covered by `tests/test_inventory.py`'s `_ensure_default_unit` tests and every billing test calling `profile_for`) |
+| CO9c | `test_seed_sample_data_adds_clients_orders_and_invoices`, `test_seed_sample_data_writes_the_placeholder_letterhead`, `test_seed_sample_data_refuses_a_company_that_has_clients`, `test_seed_sample_data_does_nothing_without_a_company`, `test_the_app_never_imports_the_sample_data` (`tests/test_seeding.py`) |
+| CO9d | `test_sample_orders_straddle_the_day_they_were_seeded`, `test_seeding_a_year_later_shifts_every_date_by_a_year` (`tests/test_seeding.py`) |
+| CO9e | `test_no_sample_payment_or_invoice_is_dated_in_the_future`, `test_no_sample_order_is_ready_or_delivered_before_it_starts`, `test_sample_invoice_numbers_follow_the_seed_year` (`tests/test_seeding.py`) |
 | CL1 | `test_client_name_is_first_plus_last` |
 | CL2 | `test_client_is_returning_only_with_two_or_more_orders`, `test_client_lifetime_value_sums_order_totals` |
 | CL3 | — gap — |
@@ -533,6 +580,7 @@ has no regression test.
 | AN5–AN6 | `test_analytics_revenue_counts_recorded_payments_not_order_total`, `test_analytics_revenue_ytd_filters_to_the_current_year` |
 | AN7 | `test_analytics_method_breakdown_sorted_by_amount_descending` |
 | AN8 | — gap — (outstanding-on-issued-invoices is exercised from the billing side by `tests/test_invoicing.py`, not asserted from `/analytics` itself) |
+| AN9 | `test_analytics_tax_billed_ytd_shows_frozen_tax_for_the_current_year`, `test_analytics_tax_billed_ytd_excludes_invoices_issued_in_prior_years`; the underlying window is `tests/test_invoicing.py::test_tax_collected_windows_on_the_issued_date` |
 
 Everything still marked "— gap —" is either client-side JS/markup behavior
 (no route test can see it — same limitation `inventory/REQUIREMENTS.md`

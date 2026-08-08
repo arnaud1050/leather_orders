@@ -7,9 +7,27 @@
 ## Data model (SQLite via SQLAlchemy, `models.py`)
 
 `db = SQLAlchemy()` is defined in `models.py` and initialized against `app` in
-`app.py` (`db.init_app(app)`). Tables are created and seeded automatically on
-startup (`db.create_all()` + `seed_if_empty()` — only inserts sample data the first
-time the database is empty, so it's safe to import repeatedly).
+`app.py` (`db.init_app(app)`). Tables are created and bootstrapped automatically on
+startup (`db.create_all()` + `seed_if_empty()` — which returns immediately once a
+company exists, so it's safe to import repeatedly).
+
+**`seed_if_empty()` creates the tenant, not a dataset.** One `Company` ("By
+Monsieur", renameable from /settings), one admin `User`, and the two
+company-configurable option lists (`_DEFAULT_SOURCE_OPTIONS`,
+`_DEFAULT_ORDER_TYPES`) — no clients, orders or invoices, and an *empty* billing
+letterhead. A production deployment is meant to start genuinely empty, so the first
+real order entered is order #1. The demo dataset — ten sample clients, twelve
+orders, four invoices and a placeholder letterhead — lives in `sample_data.py` and
+is loaded only by running `scripts/seed_sample_data.py` by hand (see **Sample
+data** below).
+
+Fixed reference data the app can't work without is **not seeded at all**: province
+tax rates (`billing/tax.py`) and the inventory unit catalog (`inventory/config.py`)
+are code constants, present in every deployment. Per-company rows that are fixed
+rather than configurable are created lazily on first use instead — the billing
+letterhead (`invoicing.profile_for()`) and the "Each" unit
+(`inventory.services._ensure_default_unit()`) — so a company created any other way
+than through `seed_if_empty()` gets them too.
 
 ```python
 Company(id, name, timezone,                                     # tenant boundary; letterhead moved
@@ -47,7 +65,8 @@ about the people it makes things for. If you're grepping old commits or docs for
 `Client` directly, `Order`/`Document` transitively through `Client`/`Order`).
 This is schema-only prep for a possible future SaaS product where each studio is its
 own company with one or more logins — there's no tenant switcher or signup flow, and
-today exactly one company is seeded ("By Monsieur"). Every query in `app.py` filters
+today exactly one company is created on first boot ("By Monsieur" unless
+renamed from /settings). Every query in `app.py` filters
 by `current_user.company_id` (see `get_order_or_404` / `get_client_or_404` /
 `orders_by_day` / `timeline_window`) so a second tenant can be added later without
 touching query logic elsewhere — just don't add a query that skips this filter.
@@ -341,9 +360,35 @@ free text printed under **How to pay**, and only when there's still a balance ow
 and the invoice isn't void — it exists because cash and e-transfer have no hosted
 payment page to send anyone to.
 
-**Reseeding:** `seed_if_empty()` only runs against an empty database. To reset to
-fresh sample data during development, stop the server and delete
-`data/atelier.db` — it'll be recreated and reseeded on next startup.
+**Sample data (dev/demo only):** `sample_data.py` holds the demo clients, orders,
+invoices and placeholder letterhead that `seed_if_empty()` used to insert.
+Nothing imports it at startup — load it deliberately:
+
+```bash
+python scripts/seed_sample_data.py
+```
+
+It writes to whatever database the app itself would use, so set `DATABASE_URL` in
+the environment first (**before** the script imports `app` — hard rule 13) to point
+it at a throwaway file rather than your real one. It refuses to run if the company
+already has clients: it fills an empty install, it never resets a populated one.
+
+**The dates are computed, not written down.** Every `start`, `due`, payment date and
+invoice issue date in `sample_data.py` is stored as a *day offset* from the day the
+seed runs (`seed_sample_data(today=...)` pins it, for tests). The spread is fixed
+and deliberate: one order already delivered, several straddling today, several not
+yet started, everything inside ±30 days. The timeline is the landing page, so a
+demo seeded a year from now has to open on current and upcoming work rather than an
+empty window with everything in the past — which is exactly what the old hardcoded
+August-2026 dates would have produced. Two consequences worth knowing if you edit
+the set: no payment or invoice may be dated after the seed day, and an order that
+hasn't started yet can't be `delivered` or `ready` (`CO9d`, `CO9e`). Invoice
+numbers come from billing's own per-year sequence for the same reason — the year
+moves.
+
+**Starting over during development:** stop the server, delete `data/atelier.db`,
+restart (which re-bootstraps an empty tenant), then run the script above if you
+want the sample data back.
 
 ## Migrations
 
@@ -365,9 +410,10 @@ every boot and on a fresh database.
   *tables* (like `order_types` itself) don't need an entry — `db.create_all()`
   already creates any table it hasn't seen before, migrations only cover columns
   added to a table that already existed. Note this means an *existing* database
-  gets the `order_types` table but no rows in it — `_DEFAULT_ORDER_TYPES` only seeds
-  a brand new company via `seed_if_empty()`, same as `_DEFAULT_SOURCE_OPTIONS`
-  always has; a studio already running the app adds its own types from `/settings`.
+  gets the `order_types` table but no rows in it — `_DEFAULT_ORDER_TYPES` is only
+  written when `seed_if_empty()` creates a brand new company, same as
+  `_DEFAULT_SOURCE_OPTIONS` always has; a studio already running the app adds its
+  own types from `/settings`.
 - **`_migrate_free_text_address(table)`** runs for each of `_SPLIT_ADDRESS_TABLES`
   (`companies`, `clients`) and moves an old single `address` text column into
   `street`/`city`/`province`/`postal_code`, then drops it. Best effort: a last line
