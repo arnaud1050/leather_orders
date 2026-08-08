@@ -51,9 +51,16 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   `get_client_or_404`) rather than leaking a "not found, try again" flow that
   might imply the row exists elsewhere.
 - **CO4.** Every view route requires an authenticated session
-  (`@login_required`); `/login` and `/logout` are the only exceptions.
-  `/login` redirects to `next` on success; an unauthenticated request to any
-  other route redirects to `/login?next=...`.
+  (`@login_required`); `/login`, `/privacy` and `/terms` are the only
+  exceptions. `/login` redirects to `next` on success; an unauthenticated
+  request to any other route redirects to `/login?next=...`.
+- **CO4b.** `/privacy` and `/terms` are publicly reachable, render no
+  tenant data, and are linked from the footer of every page including the
+  login screen. Google's OAuth verification requires a policy URL a
+  signed-out reviewer can open on the app's own domain; putting either
+  behind the login wall fails the review. Their "last updated" date is
+  `LEGAL_UPDATED` in `app.py`, bumped in the same commit as any wording
+  change.
 - **CO4a.** A signed-in user can change their own password at
   Settings → Account (`/settings/account`, posting to
   `/settings/account/password`). The current password is required — the

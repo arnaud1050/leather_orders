@@ -83,7 +83,16 @@
   {% endif %}
   {% block content %}{% endblock %}
   <footer class="site-footer">
-    <p>v0.7.0</p>
+    {# The legal links are public, and render on every page including the login
+       screen: Google's OAuth verification checks that both are reachable
+       without signing in. #}
+    <p class="site-footer__legal">
+      <span class="site-footer__version">v0.7.0</span>
+      <span aria-hidden="true">·</span>
+      <a href="{{ url_for('privacy') }}">Privacy Policy</a>
+      <span aria-hidden="true">·</span>
+      <a href="{{ url_for('terms') }}">Terms of Service</a>
+    </p>
   </footer>
 </body>
 </html>

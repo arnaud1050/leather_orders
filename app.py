@@ -557,6 +557,33 @@ def logout():
 
 
 # ---------------------------------------------------------------------------
+# Legal pages
+#
+# Deliberately NOT @login_required, and deliberately the only routes besides
+# /login that aren't: Google's OAuth verification requires the privacy policy
+# URL to be publicly reachable and on the same domain as the app, and a
+# reviewer hitting a sign-in wall fails the review. They read nothing from the
+# database, so there's no tenant to filter on.
+#
+# LEGAL_UPDATED is the date shown on both pages. Bump it in the same commit as
+# any wording change — a policy whose date doesn't move is a policy nobody can
+# tell has changed.
+# ---------------------------------------------------------------------------
+
+LEGAL_UPDATED = "8 August 2026"
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html", updated=LEGAL_UPDATED, active_view=None)
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html", updated=LEGAL_UPDATED, active_view=None)
+
+
+# ---------------------------------------------------------------------------
 # Calendar view — month grid via Python's stdlib calendar module
 # (calendar.Calendar), no external dependency. Orders shown as chips on
 # their due date.

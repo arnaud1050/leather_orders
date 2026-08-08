@@ -701,6 +701,114 @@ body {
   font-style: italic;
 }
 
+/* One line: version · Privacy Policy · Terms of Service. The links are not
+   italic — the version's italic reads as an aside, where a link needs to read
+   as something to click. */
+.site-footer__legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-style: normal !important;
+}
+
+.site-footer__version {
+  font-style: italic;
+}
+
+.site-footer__legal a {
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.site-footer__legal a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------
+   Legal pages (privacy policy, terms of service)
+   --------------------------------------------------------------------- */
+
+/* Long-form prose, so it gets a reading measure rather than the app's full
+   1200px grid width. */
+.legal-doc {
+  max-width: 760px;
+  padding-bottom: 40px;
+}
+
+.legal-doc h2 {
+  margin: 32px 0 10px;
+  font-size: 1.02rem;
+  font-weight: 600;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--paper-deep);
+}
+
+.legal-doc h3 {
+  margin: 22px 0 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.legal-doc p,
+.legal-doc li {
+  font-size: 0.86rem;
+  line-height: 1.65;
+}
+
+.legal-doc ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.legal-doc li {
+  margin-bottom: 7px;
+}
+
+.legal-doc a {
+  color: var(--status-progress);
+}
+
+.legal-lede {
+  color: var(--ink-soft);
+}
+
+.legal-doc code {
+  font-family: inherit;
+  font-weight: 500;
+  background: var(--paper-deep);
+  padding: 1px 4px;
+  border-radius: var(--radius);
+}
+
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.legal-table th,
+.legal-table td {
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.83rem;
+  line-height: 1.6;
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--paper-deep);
+}
+
+.legal-table th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.legal-crosslink {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ink);
+  font-size: 0.8rem;
+}
+
 /* ---------------------------------------------------------------------
    Modals (customer / order quick view, opened from the timeline)
    --------------------------------------------------------------------- */

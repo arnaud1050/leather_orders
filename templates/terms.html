@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Terms of Service — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger legal-doc">
+
+  <header class="detail-header">
+    <h1>Terms of Service</h1>
+    <p class="detail-subtitle">Atelier Order Book — last updated {{ updated }}</p>
+  </header>
+
+  <p class="legal-lede">
+    These terms govern your use of Atelier Order Book (the "service"), operated
+    by Arnaud Rouillot Consulting, a sole proprietorship registered in British
+    Columbia, Canada ("we", "us"). By signing in you agree to them. If you do
+    not agree, do not use the service.
+  </p>
+
+  <h2>1. What the service is</h2>
+  <p>
+    Atelier Order Book is web-based software for small leather-goods studios:
+    an order timeline and calendar, client records, invoicing, inventory
+    tracking, order documents, and optional integrations with Gmail, Google
+    Calendar and third-party AI models. Features may be added, changed or
+    removed as the software develops.
+  </p>
+
+  <h2>2. Accounts</h2>
+  <ul>
+    <li>An account is issued to a studio and to the individuals it names. You
+      are responsible for everything done under your account.</li>
+    <li>Keep your password confidential and change it from the default. Tell us
+      promptly if you believe an account has been compromised.</li>
+    <li>You must be at least 16 years old and legally able to enter a contract.</li>
+    <li>Do not share one account among people who should have their own.</li>
+  </ul>
+
+  <h2>3. Your data stays yours</h2>
+  <p>
+    You keep all rights to the clients, orders, invoices, documents, mail and
+    other content you put into the service. You grant us only the limited
+    licence needed to store, process and display that content in order to
+    operate the service for you. We claim no ownership of it and do not use it
+    to train AI models.
+  </p>
+  <p>
+    You are responsible for having the right to enter the data you enter —
+    including your own clients' personal information — and for meeting your own
+    obligations to them under applicable privacy law.
+  </p>
+
+  <h2>4. Connected Google accounts</h2>
+  <ul>
+    <li>Connecting Gmail or Google Calendar is optional and requires your
+      explicit consent through Google's own screen. You choose which
+      permissions to grant, and features are enabled only for permissions
+      actually granted.</li>
+    <li>You may disconnect at any time in Settings → Email/Calendar, or revoke
+      access directly at
+      <a href="https://myaccount.google.com/permissions" rel="noopener">
+      myaccount.google.com/permissions</a>.</li>
+    <li>Your use of Gmail and Google Calendar remains subject to Google's own
+      terms. Our handling of data from them is described in the
+      <a href="{{ url_for('privacy') }}">Privacy Policy</a> and follows the
+      Google API Services User Data Policy, including its Limited Use
+      requirements.</li>
+    <li>The service never sends a message you have not composed and submitted
+      yourself, and holds no permission capable of permanently deleting
+      mail.</li>
+  </ul>
+
+  <h2>5. Acceptable use</h2>
+  <p>You agree not to:</p>
+  <ul>
+    <li>Use the service to send spam, bulk unsolicited mail, or anything
+      unlawful, fraudulent or harassing;</li>
+    <li>Attempt to access another studio's data, or probe, scan or interfere
+      with the service's security;</li>
+    <li>Reverse engineer, resell or sublicense the service, or use it to build a
+      competing product;</li>
+    <li>Automate access in a way that degrades the service for others, or
+      circumvent rate limits;</li>
+    <li>Upload malware, or content you have no right to upload.</li>
+  </ul>
+  <p>
+    We may suspend an account that breaches this section, with notice where
+    circumstances allow.
+  </p>
+
+  <h2>6. AI features</h2>
+  <p>
+    Suggested replies and generated images are produced by third-party models
+    and can be wrong, misleading or unsuitable. They are drafts. You are
+    responsible for reviewing anything generated before you send, publish or
+    rely on it. Enabling these features requires you to supply your own vendor
+    API key, and your use of that vendor is subject to the vendor's terms and
+    charges.
+  </p>
+
+  <h2>7. Invoices and tax</h2>
+  <p>
+    The service calculates Canadian sales tax and produces invoices from the
+    rates and settings you configure. Those figures are a convenience, not
+    accounting or tax advice. You remain responsible for the accuracy of what
+    you issue to your clients and for your own tax compliance. Once an invoice
+    leaves draft, the service deliberately freezes what it says.
+  </p>
+
+  <h2>8. Availability, backups and beta status</h2>
+  <p>
+    The service is provided on an "as is" and "as available" basis, without
+    warranty of any kind, express or implied, including any warranty of
+    merchantability, fitness for a particular purpose or non-infringement. It
+    is early-stage software: there may be downtime, defects and breaking
+    changes. We do not guarantee uninterrupted availability, and you should
+    keep your own backups of anything you cannot afford to lose.
+  </p>
+
+  <h2>9. Limitation of liability</h2>
+  <p>
+    To the fullest extent permitted by law, we are not liable for indirect,
+    incidental, special, consequential or punitive damages, or for lost profits,
+    lost revenue, lost business or lost data, arising from your use of the
+    service. Our total liability for any claim relating to the service is
+    limited to the greater of the amount you paid us for the service in the
+    twelve months before the claim, or CAD $100. Nothing in these terms limits
+    liability that cannot be limited under applicable law, including under
+    consumer protection legislation.
+  </p>
+
+  <h2>10. Termination</h2>
+  <p>
+    You may stop using the service at any time and ask us to delete your
+    account and its data (see the Privacy Policy, section 7). We may terminate
+    or suspend an account for breach of these terms, or discontinue the service
+    entirely, with reasonable notice and an opportunity to export your data
+    where feasible.
+  </p>
+
+  <h2>11. Changes to these terms</h2>
+  <p>
+    We may revise these terms as the service changes. The "last updated" date
+    above reflects the current version, and material changes will be announced
+    in the service before they take effect. Continuing to use the service after
+    a change takes effect means you accept the revised terms.
+  </p>
+
+  <h2>12. Governing law</h2>
+  <p>
+    These terms are governed by the laws of the Province of British Columbia
+    and the federal laws of Canada applicable there, without regard to
+    conflict-of-laws rules. Disputes are subject to the exclusive jurisdiction
+    of the courts of British Columbia, except where mandatory local consumer
+    law gives you the right to bring proceedings elsewhere.
+  </p>
+
+  <h2>13. Contact</h2>
+  <p>
+    Arnaud Rouillot Consulting<br>
+    British Columbia, Canada<br>
+    <a href="mailto:arnaud.rouillot@gmail.com">arnaud.rouillot@gmail.com</a>
+  </p>
+
+  <p class="legal-crosslink">
+    See also the <a href="{{ url_for('privacy') }}">Privacy Policy</a>.
+  </p>
+
+</div>
+{% endblock %}
