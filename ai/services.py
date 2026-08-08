@@ -7,9 +7,14 @@ predicates that say whether each feature can be offered. Generating a reply
 and rendering an image land on top of this.
 """
 
-from ai import config, conversation as conversation_text, crypto, openai_client
+from datetime import timedelta
+
+from ai import (
+    config, conversation as conversation_text, crypto, google_image_client,
+    openai_client, storage,
+)
 from ai.errors import AIError
-from ai.models import AISettings
+from ai.models import AISettings, RenderDraft, _utcnow
 from models import db
 
 
@@ -116,6 +121,148 @@ def suggest_reply(company_id: int, conversation: dict, signature: str = "") -> s
         timeout=config.TEXT_TIMEOUT_SECONDS,
     )
     return draft + (f"\n\n{signature.strip()}" if signature.strip() else "")
+
+
+# ---------------------------------------------------------------------------
+# Renderings. A draft is scratch until someone saves it (`G-1`) — it isn't a
+# document, doesn't touch the company's storage quota, and expires on its own.
+# ---------------------------------------------------------------------------
+
+def _image_key(company_id: int) -> tuple[AISettings, str]:
+    settings = settings_for(company_id)
+    try:
+        api_key = settings.image_api_key if settings.has_image_key else None
+    except crypto.KeyDecryptionError as exc:
+        raise AIError(
+            "The saved Google key can't be decrypted — AI_ENCRYPTION_KEY or "
+            "SECRET_KEY changed since it was saved. Enter the key again "
+            "under Settings → AI."
+        ) from exc
+    if not api_key:
+        raise AIError("No Google AI Studio API key is saved. Add one under "
+                      "Settings → AI.")
+    return settings, api_key
+
+
+def render_prompt_for(company_id: int, extra_prompt: str = "") -> str:
+    """The company prompt with this project's details **added, not
+    substituted** (`G-2`).
+
+    Separate from `render_from_document` so the modal can show exactly what
+    will be sent before anything is charged for, and so the composition is
+    testable without a vendor.
+    """
+    settings = settings_for(company_id)
+    extra = normalise_newlines(extra_prompt).strip()
+    return f"{settings.render_prompt}\n\n{extra}" if extra else settings.render_prompt
+
+
+def render_from_document(
+    company_id: int, order_id: int, document_id: int,
+    source_image: bytes, source_content_type: str, extra_prompt: str = "",
+) -> RenderDraft:
+    """Generate one image from one source, and keep it as a draft.
+
+    The source arrives as bytes from a host hook — this module never reads
+    another module's storage, the same way it never writes to it (`G-4`).
+
+    Raises `AIError` on every failure path, including a source image that's
+    too large or the wrong type. Those two are checked **before** the vendor
+    call rather than after: they're the cases where a charge would be
+    incurred for something we already know won't work.
+    """
+    if source_content_type not in config.SOURCE_IMAGE_CONTENT_TYPES:
+        raise AIError("Only JPEG and PNG images can be rendered from.")
+    if len(source_image) > config.MAX_SOURCE_IMAGE_BYTES:
+        limit_mb = config.MAX_SOURCE_IMAGE_BYTES // (1024 * 1024)
+        raise AIError(f"That image is too large to send — the limit is {limit_mb}MB.")
+
+    settings, api_key = _image_key(company_id)
+    data, content_type = google_image_client.generate_image(
+        api_key=api_key,
+        model=settings.image_model,
+        instructions=render_prompt_for(company_id, extra_prompt),
+        source_image=source_image,
+        source_content_type=source_content_type,
+        timeout=config.IMAGE_TIMEOUT_SECONDS,
+    )
+
+    draft = RenderDraft(
+        company_id=company_id, order_id=order_id, source_document_id=document_id,
+        extra_prompt=normalise_newlines(extra_prompt).strip(),
+        stored_filename=storage.save(company_id, data, content_type),
+        content_type=content_type, size_bytes=len(data),
+    )
+    db.session.add(draft)
+    db.session.commit()
+    return draft
+
+
+def drafts_for_document(company_id: int, document_id: int) -> list[RenderDraft]:
+    """Every attempt for one source document, newest first — which is what
+    makes comparing the third against the first possible (`G-3`)."""
+    return (
+        RenderDraft.query.filter_by(company_id=company_id, source_document_id=document_id)
+        .order_by(RenderDraft.created_at.desc(), RenderDraft.id.desc())
+        .all()
+    )
+
+
+def get_draft(company_id: int, draft_id: int) -> RenderDraft | None:
+    return RenderDraft.query.filter_by(id=draft_id, company_id=company_id).first()
+
+
+def draft_bytes(draft: RenderDraft) -> bytes | None:
+    return storage.read(draft.company_id, draft.stored_filename)
+
+
+def discard_draft(company_id: int, draft_id: int) -> bool:
+    """Throw one away. The file goes with the row — a draft nobody kept
+    shouldn't leave bytes on the disk behind it."""
+    draft = get_draft(company_id, draft_id)
+    if draft is None:
+        return False
+    storage.delete(draft.company_id, draft.stored_filename)
+    db.session.delete(draft)
+    db.session.commit()
+    return True
+
+
+def mark_saved(draft: RenderDraft) -> None:
+    """Record that this draft became a document.
+
+    The file and row are deliberately **kept**: the bytes now live in
+    `documents/` as well, and keeping the draft is what lets the modal say
+    "saved" instead of offering to save the same image twice. The pruner
+    collects it on the normal schedule.
+    """
+    draft.saved_at = _utcnow()
+    db.session.commit()
+
+
+def prune_expired_drafts(company_id: int | None = None) -> int:
+    """Delete drafts past `config.DRAFT_RETENTION_HOURS`, files and all.
+
+    `company_id=None` means every tenant — the housekeeping view, and the
+    one place a query here legitimately isn't tenant-scoped, same exemption
+    communications' scheduled sync has. Returns how many went.
+
+    Saved drafts are pruned too: the image itself survives as a `Document`,
+    and keeping the draft forever would mean the same bytes stored twice
+    indefinitely.
+    """
+    cutoff = _utcnow() - timedelta(hours=config.DRAFT_RETENTION_HOURS)
+    query = RenderDraft.query.filter(RenderDraft.created_at < cutoff)
+    if company_id is not None:
+        query = query.filter(RenderDraft.company_id == company_id)
+
+    expired = query.all()
+    for draft in expired:
+        storage.delete(draft.company_id, draft.stored_filename)
+        db.session.delete(draft)
+    if expired:
+        db.session.commit()
+    return len(expired)
 
 
 def using_derived_key() -> bool:

@@ -73,6 +73,7 @@ import documents.migrations as documents_migrations  # noqa: E402
 import documents.routes as documents_routes  # noqa: E402
 from documents import config as documents_config  # noqa: E402
 from documents import services as documents_service  # noqa: E402
+from documents import storage as documents_storage  # noqa: E402
 # Self-contained module: its own tables, migrations, blueprint and templates
 # (see inventory/__init__.py). Cost-tracking only — nothing here ever
 # touches Order.total/OrderLine/the invoice.
@@ -405,7 +406,51 @@ def _thread_conversation(company_id: int, thread_id: int) -> dict | None:
     }
 
 
-ai_routes.register(app, resolve_thread_context=_thread_conversation)
+def _load_order_document(company_id: int, order_id: int, document_id: int) -> dict | None:
+    """One document's bytes for `ai/` to render from, or None.
+
+    Tenant-checked twice over, and both checks are load-bearing: the
+    document must belong to this order (documents' own scoping), and the
+    row's `company_id` must match the session's — the order_id in the URL
+    is user input, and this hook is reached without going through
+    `get_order_or_404`.
+    """
+    document = documents_service.get_for_order(order_id, document_id)
+    if document is None or document.company_id != company_id:
+        return None
+    data = documents_storage.read(document.company_id, document.stored_filename)
+    if data is None:
+        return None
+    return {
+        "filename": document.original_filename,
+        "content_type": document.content_type,
+        "data": data,
+    }
+
+
+def _save_rendered_document(company_id: int, order_id: int, filename: str,
+                            content_type: str, data: bytes) -> str | None:
+    """Store a render as a real document. Returns an error message, or None.
+
+    Goes through `documents.services.upload()` rather than writing a row —
+    so validation, content sniffing and the per-company storage quota all
+    still apply to an image that came from a vendor exactly as they would to
+    one someone dragged in.
+    """
+    result = documents_service.upload(company_id, order_id, [(filename, data)])
+    if result.errors:
+        return " ".join(result.errors)
+    if not result.saved:
+        return "The rendering couldn't be saved."
+    return None
+
+
+ai_routes.register(
+    app,
+    resolve_thread_context=_thread_conversation,
+    load_document=_load_order_document,
+    save_render=_save_rendered_document,
+)
 
 
 def _parse_amount(raw: str | None) -> float | None:

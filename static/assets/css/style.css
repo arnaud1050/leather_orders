@@ -2677,6 +2677,73 @@ button.chip--event:hover .chip__title {
   width: 100%;
 }
 
+/* The rendering window. Wider than a form dialog because the point of it is
+   looking at images side by side, and capped by viewport so a tall column of
+   attempts scrolls inside the dialog rather than off it. */
+.ai-render {
+  max-width: min(900px, 92vw);
+}
+
+.ai-render .modal__body {
+  max-height: 82vh;
+  overflow-y: auto;
+}
+
+/* Same component as .compose-form__ai-status, and deliberately not a
+   .warning-note: transient feedback about one button press, not a standing
+   condition of the page. */
+.ai-render__status {
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.ai-render__status--error {
+  color: var(--day-today);
+}
+
+/* auto-fit rather than a fixed count: one attempt fills the width, three sit
+   side by side, and nothing needs a media query. */
+.ai-render__results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.ai-render__result {
+  margin: 0;
+}
+
+.ai-render__result img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--hairline);
+}
+
+.ai-render__result figcaption {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.ai-render__used-prompt {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.ai-render__result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-render__saved {
+  align-self: center;
+  color: var(--ink-soft);
+}
+
 /* A heading *within* a section, below the section's own <h2>. */
 .detail-subheading {
   margin: 24px 0 8px;

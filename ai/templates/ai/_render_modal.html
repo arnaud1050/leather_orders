@@ -1,0 +1,202 @@
+{# The rendering window, included **once** by order_page.html rather than
+   once per document — the wand buttons in documents/_explorer.html carry a
+   data-render-document id, and this dialog retargets itself on open. One
+   dialog per image would mean N copies of this script on an order with
+   twenty photos.
+
+   Context expected: order. Guarded by the caller on `ai_can_render`. #}
+<dialog id="ai-render-modal" class="modal ai-render">
+  <div class="modal__body">
+    <h2 class="modal__title">Render an image</h2>
+    <p class="modal__subtitle" id="ai-render-source">From this mockup.</p>
+
+    <label class="modal__field">Details for this piece
+      <textarea id="ai-render-prompt" rows="4"
+                placeholder="e.g. tan bridle leather, antique brass hardware, natural edge"></textarea>
+    </label>
+    <p class="modal__hint">
+      Added to the rendering prompt in Settings → AI, not a replacement for
+      it. Each render is a separate charge.
+    </p>
+
+    <div class="modal__actions">
+      <div class="modal__buttons">
+        <button type="button" class="btn-secondary" data-close-modal>Close</button>
+        <button type="button" class="btn-primary" id="ai-render-go">Render image</button>
+      </div>
+    </div>
+
+    <p class="ai-render__status" id="ai-render-status" role="status" aria-live="polite"></p>
+
+    {# Newest first. Kept across renders on purpose: comparing the third
+       attempt with the first is the whole reason to regenerate. #}
+    <div class="ai-render__results" id="ai-render-results"></div>
+  </div>
+</dialog>
+
+<script>
+  (function () {
+    var modal = document.getElementById('ai-render-modal');
+    if (!modal) { return; }
+
+    var promptBox = document.getElementById('ai-render-prompt');
+    var status = document.getElementById('ai-render-status');
+    var results = document.getElementById('ai-render-results');
+    var goButton = document.getElementById('ai-render-go');
+    var sourceLabel = document.getElementById('ai-render-source');
+    var orderId = {{ order.id }};
+    var documentId = null;
+
+    function say(message, isError) {
+      status.textContent = message || '';
+      status.className = 'ai-render__status' + (isError ? ' ai-render__status--error' : '');
+    }
+
+    function card(draft) {
+      var wrapper = document.createElement('figure');
+      wrapper.className = 'ai-render__result';
+      wrapper.dataset.draftId = draft.id;
+
+      var image = document.createElement('img');
+      image.src = draft.url;
+      image.alt = 'Generated rendering';
+      wrapper.appendChild(image);
+
+      var caption = document.createElement('figcaption');
+      if (draft.extra_prompt) {
+        var used = document.createElement('span');
+        used.className = 'ai-render__used-prompt';
+        // textContent, not innerHTML — this is text a user typed.
+        used.textContent = draft.extra_prompt;
+        caption.appendChild(used);
+      }
+
+      var actions = document.createElement('div');
+      actions.className = 'ai-render__result-actions';
+
+      if (draft.saved) {
+        var savedNote = document.createElement('span');
+        savedNote.className = 'ai-render__saved';
+        savedNote.textContent = 'Saved to documents';
+        actions.appendChild(savedNote);
+      } else {
+        var save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'btn-primary';
+        save.textContent = 'Save to documents';
+        save.addEventListener('click', function () { saveDraft(draft.id, save); });
+        actions.appendChild(save);
+      }
+
+      var discard = document.createElement('button');
+      discard.type = 'button';
+      discard.className = 'btn-secondary';
+      discard.textContent = 'Discard';
+      discard.addEventListener('click', function () { discardDraft(draft.id); });
+      actions.appendChild(discard);
+
+      caption.appendChild(actions);
+      wrapper.appendChild(caption);
+      return wrapper;
+    }
+
+    function show(drafts) {
+      results.innerHTML = '';
+      drafts.forEach(function (draft) { results.appendChild(card(draft)); });
+    }
+
+    function readJson(response) {
+      return response.json().catch(function () { return {}; });
+    }
+
+    function load() {
+      fetch('/orders/' + orderId + '/documents/' + documentId + '/renders', {
+        credentials: 'same-origin'
+      }).then(readJson).then(function (data) {
+        show(data.drafts || []);
+      });
+    }
+
+    function render() {
+      goButton.disabled = true;
+      say('Rendering… this takes a moment.');
+      fetch('/orders/' + orderId + '/documents/' + documentId + '/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ extra_prompt: promptBox.value })
+      }).then(readJson).then(function (data) {
+        if (data.draft) {
+          say('');
+          // Newest first, prepended rather than reloading the list — the
+          // images already on screen keep their decoded state.
+          results.insertBefore(card(data.draft), results.firstChild);
+        } else {
+          say(data.error || 'Something went wrong. Try again.', true);
+        }
+      }).catch(function () {
+        say('Couldn\'t reach the server. Try again.', true);
+      }).then(function () {
+        goButton.disabled = false;
+      });
+    }
+
+    function saveDraft(draftId, button) {
+      button.disabled = true;
+      say('Saving…');
+      fetch('/ai/renders/' + draftId + '/save', {
+        method: 'POST', credentials: 'same-origin'
+      }).then(readJson).then(function (data) {
+        if (data.saved) {
+          // The order page behind the modal is now out of date — the
+          // Documents area doesn't have this file in it. Reloading is the
+          // honest way to show that without duplicating documents/'s
+          // rendering of a document card here.
+          say('Saved. Reloading the page…');
+          window.location.reload();
+        } else {
+          say(data.error || 'Couldn\'t save that image.', true);
+          button.disabled = false;
+        }
+      }).catch(function () {
+        say('Couldn\'t reach the server. Try again.', true);
+        button.disabled = false;
+      });
+    }
+
+    function discardDraft(draftId) {
+      fetch('/ai/renders/' + draftId + '/discard', {
+        method: 'POST', credentials: 'same-origin'
+      }).then(readJson).then(function (data) {
+        if (data.discarded) {
+          var card = results.querySelector('[data-draft-id="' + draftId + '"]');
+          if (card) { card.remove(); }
+          say('');
+        } else {
+          say(data.error || 'Couldn\'t discard that image.', true);
+        }
+      });
+    }
+
+    goButton.addEventListener('click', render);
+
+    document.querySelectorAll('[data-render-document]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        documentId = button.dataset.renderDocument;
+        sourceLabel.textContent = 'From ' + button.dataset.filename + '.';
+        promptBox.value = '';
+        say('');
+        results.innerHTML = '';
+        modal.showModal();
+        load();
+      });
+    });
+
+    modal.querySelectorAll('[data-close-modal]').forEach(function (element) {
+      element.addEventListener('click', function () { modal.close(); });
+    });
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) { modal.close(); }
+    });
+  })();
+</script>

@@ -1,11 +1,23 @@
 """
-Table: `ai_settings`.
+Tables: `ai_settings`, `ai_render_drafts`.
 
-One row per company, holding two vendor API keys and two prompts. No
-foreign key to `companies` and no relationship on `Company` — this module
-never sees a host model, so `company_id` is a plain integer here, the same
-way `billing/` treats its subject ids. Every query filters on it, which is
-what a real FK would have bought us anyway.
+One `AISettings` row per company, holding two vendor API keys and two
+prompts. No foreign key to `companies` and no relationship on `Company` —
+this module never sees a host model, so `company_id` is a plain integer
+here, the same way `billing/` treats its subject ids. Every query filters
+on it, which is what a real FK would have bought us anyway.
+
+`RenderDraft` carries `order_id` and `source_document_id` the same way, and
+that's a sharper choice than it looks: `documents/` and `inventory/` both
+hold a *real* foreign key into `orders`, because neither has a circular
+import to break. This module could too, and doesn't — a real FK would make
+it importable only into a project that has an `orders` table, which is the
+one thing a vendor key and a prompt should never require.
+
+The cost is that a deleted order leaves drafts behind. That's acceptable
+because a draft is scratch by definition and already expires on a timer
+(`config.DRAFT_RETENTION_HOURS`) — the pruner is the thing that collects
+them, not the database.
 
 **Keys are stored as Fernet ciphertext and never as plaintext.** The
 `_encrypted` columns are the storage; the `text_api_key` / `image_api_key`
@@ -126,3 +138,48 @@ class AISettings(db.Model):
             return _hint(self.image_api_key)
         except crypto.KeyDecryptionError:
             return None
+
+
+class RenderDraft(db.Model):
+    """One generated image, before anyone decided to keep it.
+
+    **A draft is not a document** (`G-1`). It doesn't appear in the order's
+    Documents area, doesn't count against the company's 1GB quota, and
+    disappears on its own after `config.DRAFT_RETENTION_HOURS`. Saving is
+    what turns one into a real `Document`, through a host hook — this module
+    never writes into another module's storage (`G-4`).
+
+    Drafts accumulate per source document on purpose: "render, look, adjust,
+    render again" is the actual workflow, and comparing the third attempt
+    against the first is the whole reason to keep them around (`G-3`). They
+    are ordered newest first everywhere they're shown.
+    """
+
+    __tablename__ = "ai_render_drafts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, nullable=False, index=True)
+    # Plain integers, not foreign keys — see the module docstring.
+    order_id = db.Column(db.Integer, nullable=False, index=True)
+    source_document_id = db.Column(db.Integer, nullable=False, index=True)
+
+    # What was asked for, kept so a draft worth keeping can be traced back
+    # to the wording that produced it — the thing you most want when the
+    # fourth attempt is worse than the second. The company-wide prompt is
+    # *not* stored: it's one row away, and duplicating it per draft would
+    # make "what changed between these two?" harder to read, not easier.
+    extra_prompt = db.Column(db.Text, nullable=False, default="")
+
+    stored_filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(100), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False, default=0)
+
+    # Set when this draft became a Document, so the modal can say so rather
+    # than offering to save it twice. Nullable — most drafts never are.
+    saved_at = db.Column(db.DateTime)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=_utcnow, index=True)
+
+    @property
+    def is_saved(self) -> bool:
+        return self.saved_at is not None

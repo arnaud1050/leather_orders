@@ -12,7 +12,11 @@ than one. **If Flask-WTF is ever added app-wide, this module and
 `communications/security.py` should both defer to `CSRFProtect`.**
 """
 
-from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+import io
+
+from flask import (
+    Blueprint, jsonify, redirect, render_template, request, send_file, session, url_for,
+)
 from flask_login import current_user, login_required
 
 from ai import config, services
@@ -21,24 +25,35 @@ from ai.errors import AIError
 bp = Blueprint("ai", __name__, template_folder="templates")
 
 _resolve_thread_context = None
+_load_document = None
+_save_render = None
 
 
-def register(app, *, resolve_thread_context=None) -> None:
+def register(app, *, resolve_thread_context=None, load_document=None, save_render=None) -> None:
     """Attach the blueprint.
 
-    `resolve_thread_context(company_id, thread_id) -> dict | None` is
-    supplied by the host (app.py) rather than imported, the same hook shape
-    `documents.routes.register(resolve_order=...)` uses — and here it's what
-    keeps this module from ever importing `communications`. It returns the
-    plain dict `ai.conversation.render` expects, or None when the thread
-    isn't this company's.
+    Three host-supplied hooks, all optional and all the same shape
+    `documents.routes.register(resolve_order=...)` uses — passed in rather
+    than imported, which is what keeps this module from ever importing
+    `communications/` or `documents/`. A hook left unwired disables its
+    feature with a message, rather than failing at startup.
 
-    Optional, so a host that doesn't wire it up gets a settings page and a
-    button that says the feature isn't available, rather than an import
-    error at startup.
+    - `resolve_thread_context(company_id, thread_id) -> dict | None` — the
+      conversation `ai.conversation.render` expects, or None when the thread
+      isn't this company's.
+    - `load_document(company_id, order_id, document_id) -> dict | None` —
+      `{"filename", "content_type", "data"}` for the image to render from,
+      already tenant-checked, or None.
+    - `save_render(company_id, order_id, filename, content_type, data) ->
+      str | None` — store this image as a real document; returns an error
+      message, or None on success. **This module never writes into another
+      module's storage** (`G-4`), so quota and validation still apply on the
+      far side.
     """
-    global _resolve_thread_context
+    global _resolve_thread_context, _load_document, _save_render
     _resolve_thread_context = resolve_thread_context
+    _load_document = load_document
+    _save_render = save_render
     app.register_blueprint(bp)
 
 
@@ -61,7 +76,21 @@ def _inject_availability():
         except Exception:  # noqa: BLE001 — an optional feature never breaks a page
             return False
 
-    return {"ai_reply_available": ai_reply_available}
+    def ai_can_render(content_type) -> bool:
+        """Whether *this* document gets a Render action — the key is saved
+        **and** the file is something an image model can be given (`A-3`).
+        Called once per document row, so it's a predicate rather than a
+        flag the explorer would have to compute itself."""
+        if _load_document is None or _save_render is None:
+            return False
+        if not current_user.is_authenticated:
+            return False
+        try:
+            return services.can_render_document(current_user.company_id, content_type)
+        except Exception:  # noqa: BLE001
+            return False
+
+    return {"ai_reply_available": ai_reply_available, "ai_can_render": ai_can_render}
 
 
 def _flash(message: str) -> None:
@@ -110,6 +139,126 @@ def suggest_reply():
         return jsonify(error=str(exc)), 502
 
     return jsonify(suggestion=suggestion)
+
+
+# ---------------------------------------------------------------------------
+# Renderings. JSON in, JSON out, like suggest_reply — the modal drives all
+# of it with fetch, so there's no page navigation and nothing to redirect to.
+# ---------------------------------------------------------------------------
+
+def _draft_json(draft) -> dict:
+    return {
+        "id": draft.id,
+        "url": url_for("ai.render_image", draft_id=draft.id),
+        "extra_prompt": draft.extra_prompt,
+        "saved": draft.is_saved,
+    }
+
+
+@bp.route("/orders/<int:order_id>/documents/<int:document_id>/renders")
+@login_required
+def render_history(order_id: int, document_id: int):
+    """Every attempt so far for this source image, newest first — what the
+    modal shows when it opens, so a comparison survives closing it.
+
+    Expired drafts are pruned here, tenant-scoped, rather than by a
+    scheduled job. This module deliberately has no `jobs.py`: the app's only
+    scheduler is opt-in (`RUN_SCHEDULER=1`, off by default and off in both
+    Docker deployments), so anything hung on it would in practice never run.
+    Opening this window is the moment a company's drafts are provably being
+    looked at, which makes it the honest place to collect the ones that
+    aged out — and it's self-limiting, since a company that stops rendering
+    stops accumulating.
+    """
+    services.prune_expired_drafts(current_user.company_id)
+    drafts = services.drafts_for_document(current_user.company_id, document_id)
+    return jsonify(
+        drafts=[_draft_json(d) for d in drafts if d.order_id == order_id],
+        prompt=services.render_prompt_for(current_user.company_id),
+    )
+
+
+@bp.route("/orders/<int:order_id>/documents/<int:document_id>/render", methods=["POST"])
+@login_required
+def render_document(order_id: int, document_id: int):
+    if _load_document is None:
+        return jsonify(error="Rendering isn't wired up on this deployment."), 501
+
+    payload = request.get_json(silent=True) or request.form
+    source = _load_document(current_user.company_id, order_id, document_id)
+    if source is None:
+        # Another company's document, or one that's gone. Same answer for
+        # both — "not yours" and "not there" must not be distinguishable.
+        return jsonify(error="That document isn't available."), 404
+
+    try:
+        draft = services.render_from_document(
+            current_user.company_id, order_id, document_id,
+            source_image=source["data"],
+            source_content_type=source["content_type"],
+            extra_prompt=payload.get("extra_prompt", "") or "",
+        )
+    except AIError as exc:
+        return jsonify(error=str(exc)), 502
+
+    return jsonify(draft=_draft_json(draft))
+
+
+@bp.route("/ai/renders/<int:draft_id>/image")
+@login_required
+def render_image(draft_id: int):
+    """Serve a draft's bytes.
+
+    Served from memory rather than by path: `send_file` with a path would
+    work, but a draft is small, short-lived and read at most a handful of
+    times, and going through `services.draft_bytes` keeps storage layout
+    behind one function. Only ever an image content type this module wrote
+    itself, so inline rendering is safe here in a way it isn't for uploads.
+    """
+    draft = services.get_draft(current_user.company_id, draft_id)
+    if draft is None:
+        return jsonify(error="That render isn't available."), 404
+    data = services.draft_bytes(draft)
+    if data is None:
+        return jsonify(error="That render's file is missing."), 404
+    return send_file(io.BytesIO(data), mimetype=draft.content_type)
+
+
+@bp.route("/ai/renders/<int:draft_id>/save", methods=["POST"])
+@login_required
+def save_render(draft_id: int):
+    """Turn a draft into a real document, through the host hook (`G-4`)."""
+    if _save_render is None:
+        return jsonify(error="Rendering isn't wired up on this deployment."), 501
+
+    draft = services.get_draft(current_user.company_id, draft_id)
+    if draft is None:
+        return jsonify(error="That render isn't available."), 404
+
+    data = services.draft_bytes(draft)
+    if data is None:
+        return jsonify(error="That render's file is missing."), 404
+
+    extension = "jpg" if draft.content_type == "image/jpeg" else "png"
+    error = _save_render(
+        current_user.company_id, draft.order_id,
+        f"rendering-{draft.id}.{extension}", draft.content_type, data,
+    )
+    if error:
+        # Quota, validation — decided by documents/, reported verbatim,
+        # because that module's messages are already written for a person.
+        return jsonify(error=error), 400
+
+    services.mark_saved(draft)
+    return jsonify(saved=True, draft=_draft_json(draft))
+
+
+@bp.route("/ai/renders/<int:draft_id>/discard", methods=["POST"])
+@login_required
+def discard_render(draft_id: int):
+    if not services.discard_draft(current_user.company_id, draft_id):
+        return jsonify(error="That render isn't available."), 404
+    return jsonify(discarded=True)
 
 
 @bp.route("/settings/ai")

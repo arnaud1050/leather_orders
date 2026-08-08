@@ -85,8 +85,14 @@ def test_ai_never_imports_the_host_or_a_sibling_module(path):
 # Third-party libraries are not a boundary concern — the rule is about what
 # of *this app* the module reaches into. Listed explicitly rather than
 # waved through, so adding a dependency is a visible decision.
-THIRD_PARTY = {"flask", "flask_login", "sqlalchemy", "openai"}
-STDLIB = {"os", "base64", "hashlib", "logging", "datetime", "dataclasses", "builtins"}
+THIRD_PARTY = {"flask", "flask_login", "sqlalchemy", "openai", "google"}
+STDLIB = {"os", "io", "uuid", "base64", "hashlib", "logging", "datetime",
+          "dataclasses", "builtins"}
+
+# Each vendor library, and the one file allowed to know it exists. Adding a
+# vendor means adding a line here — which is the point: the containment is
+# the design, not an accident of who imported what first.
+VENDOR_FILES = {"openai": "openai_client.py", "google": "google_image_client.py"}
 
 
 def test_the_only_host_helper_is_crypto():
@@ -98,32 +104,40 @@ def test_the_only_host_helper_is_crypto():
             assert root in allowed, f"{path.name} imports {module!r}"
 
 
-def test_only_one_file_knows_the_vendor_exists():
+@pytest.mark.parametrize("vendor,owner", sorted(VENDOR_FILES.items()))
+def test_only_one_file_knows_each_vendor_exists(vendor, owner):
     """The containment `communications/providers/gmail_provider.py` gives
-    Gmail, without the registry machinery: everything above `openai_client`
-    speaks prompts and strings, so swapping the vendor is one file plus one
-    call site. A second `import openai` anywhere would quietly end that."""
+    Gmail, without the registry machinery: everything above these two files
+    speaks prompts, strings and bytes, so swapping a vendor is one file plus
+    one call site. A second `import openai` anywhere would quietly end
+    that."""
     for path in ai_sources():
         for module, _ in imports_in(path):
-            if module.split(".")[0] == "openai":
-                assert path.name == "openai_client.py", (
-                    f"{path.name} imports the vendor library directly. Only "
-                    "openai_client.py may know OpenAI exists."
+            if module.split(".")[0] == vendor:
+                assert path.name == owner, (
+                    f"{path.name} imports {vendor!r} directly. Only {owner} "
+                    f"may know that vendor exists."
                 )
 
 
-def test_the_vendor_import_is_lazy():
+@pytest.mark.parametrize("vendor,owner", sorted(VENDOR_FILES.items()))
+def test_every_vendor_import_is_lazy(vendor, owner):
     """The app has to boot, Settings → AI has to render and every other
-    feature has to work on a machine where `openai` isn't installed — only
-    pressing the button finds out. A module-level import would turn that
-    into a startup crash."""
+    feature has to work on a machine where these aren't installed — only
+    pressing the button finds out, and it says so. A module-level import
+    would turn that into a startup crash."""
     import ast
 
-    tree = ast.parse((AI / "openai_client.py").read_text(encoding="utf-8"))
+    tree = ast.parse((AI / owner).read_text(encoding="utf-8"))
     for node in tree.body:  # top level only
-        assert not isinstance(node, (ast.Import, ast.ImportFrom)) or (
-            (node.module or "").split(".")[0] != "openai"
-        ), "openai is imported at module level; it must be inside the function"
+        if isinstance(node, ast.ImportFrom):
+            assert (node.module or "").split(".")[0] != vendor, (
+                f"{owner} imports {vendor!r} at module level; it must be "
+                "inside the function")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                assert alias.name.split(".")[0] != vendor, (
+                    f"{owner} imports {vendor!r} at module level")
 
 
 def test_the_shared_crypto_helper_drags_nothing_in_behind_it():
@@ -148,6 +162,8 @@ def test_services_are_the_public_surface():
         services.can_render_document, services.save_reply_settings,
         services.save_render_settings, services.clear_text_key,
         services.clear_image_key, services.suggest_reply,
+        services.render_from_document, services.render_prompt_for,
+        services.drafts_for_document, services.get_draft, services.discard_draft,
     ]
     for function in scoped:
         first = list(inspect.signature(function).parameters)[0]

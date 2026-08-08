@@ -101,6 +101,16 @@ The four money files, and the single rule each exists to defend:
   classes would defeat the lazy import), and a library rename would
   otherwise silently downgrade every message to the generic one.
 
+- **`tests/test_ai_render.py`** — image rendering, with the same two-level
+  vendor doubling. Its load-bearing assertions are the ones about what a
+  *draft* is: a rendered image must not appear in the order's Documents
+  area or consume the company's 1GB quota until someone saves it, and
+  saving must go through `documents.services.upload()` so validation and
+  quota apply to a vendor's image exactly as to a dragged-in one. It also
+  pins the two pre-flight refusals (wrong type, oversized source) as
+  happening *before* the vendor call — those are the cases where getting it
+  wrong costs money rather than correctness, and no other test would notice.
+
 `tests/test_inventory.py` covers the newer `inventory/` module on the same
 per-file-per-rule principle, even though it isn't one of the four money files
 above — its rule is the opposite one: **cost-tracking must never touch

@@ -199,22 +199,49 @@ Covered by `tests/test_ai_migrations.py`.
   boot-time migration has no signed-in user, the same exemption
   communications' scheduled sync has.
 
-## 7. Renderings — **not built yet** (`G-*`)
+## 7. Renderings (`G-*`)
+
+Covered by `tests/test_ai_render.py`.
 
 - **G-1** A render is a **draft** until someone saves it. It does not
-  become a document, and does not consume the company's 1GB document
-  quota, until then.
+  become a document, does not appear in the order's Documents area, and
+  does not consume the company's 1GB document quota, until then.
 - **G-2** The per-project text typed into the render window is **added to**
-  the company prompt, not a replacement for it.
-- **G-3** Regenerating keeps previous drafts visible for comparison, and
-  each regeneration is a fresh vendor charge — the UI says so.
+  the company prompt, not a replacement for it. Replacing it would silently
+  drop every standing instruction the moment someone typed a colour into
+  the box.
+- **G-3** Regenerating keeps previous drafts visible for comparison —
+  newest first — and each regeneration is a fresh vendor charge, which the
+  window says.
 - **G-4** Saving a draft goes through `documents.services.upload()` via a
-  host hook, so validation, quota and the per-company storage root all
-  still apply. This module never writes into another module's storage.
-- **G-5** Unsaved drafts are pruned after `config.DRAFT_RETENTION_HOURS`.
-- **G-6** The source image is capped at `config.MAX_SOURCE_IMAGE_BYTES` —
-  tighter than documents' own per-file limit, because it's uploaded to a
-  third party rather than only stored.
+  host hook, so validation, content sniffing, quota and the per-company
+  storage root all still apply. **This module never writes into another
+  module's storage.**
+- **G-5** Drafts are pruned after `config.DRAFT_RETENTION_HOURS`, files and
+  rows together — including saved ones, whose image survives as a
+  `Document`. A draft nobody kept must not leave bytes behind. Pruning
+  happens when the render window is opened, **not on a schedule**: the
+  app's only scheduler is opt-in (`RUN_SCHEDULER=1`, off by default and in
+  both Docker deployments), so a job hung on it would in practice never
+  run.
+- **G-6** The source image is capped at `config.MAX_SOURCE_IMAGE_BYTES` and
+  restricted to JPEG/PNG — both checked **before** the vendor call, because
+  those are the cases where a charge would be incurred for something we
+  already know won't work.
+- **G-7** A saved draft reports itself as saved, so the window says so
+  rather than offering to save the same image twice.
+- **G-8** The render window is rendered **once per page**, not once per
+  document; the wand buttons retarget it. An order with twenty photos must
+  not mean twenty copies of the dialog and its script.
+- **G-9** A response with no image in it is reported as a **refusal, not a
+  breakage** — "try again" is wrong advice for a request that will be
+  refused again. A response shape we don't recognise reads as "no image"
+  rather than raising.
+- **G-10** Only the image parts of a response are used. The model often
+  narrates what it did, and the narration isn't the deliverable.
+- **G-11** A failed render leaves **no draft** — no row, no file.
+- **G-12** A draft belonging to another company is not served, saved or
+  discarded, and answers exactly as a nonexistent one does.
 
 ## 8. Deliberately not built
 
@@ -227,6 +254,12 @@ Covered by `tests/test_ai_migrations.py`.
   provider was a real prospect; a second AI vendor is not, and a registry
   for one implementation is a guess about the future dressed as
   architecture. The service functions are the seam if that changes.
+- **No background job.** Nothing here runs on the scheduler, deliberately —
+  see `G-5`. Draft pruning rides on the one request that proves someone is
+  looking.
+- **No editing a saved rendering**, and no rendering *from* a rendering.
+  Both are plausible and neither was asked for; a render's source is always
+  an uploaded document.
 - **No streaming.** A suggestion arrives whole or fails whole. Streaming
   into a textarea the user may already be editing is a race with no upside
   here.

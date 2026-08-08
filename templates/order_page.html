@@ -56,6 +56,16 @@
     {% include "documents/_explorer.html" %}
   </section>
 
+  {# The rendering window, owned by ai/ and included once for the whole
+     page — the wand buttons inside the explorer above retarget it. Included
+     here rather than from documents/_explorer.html so neither module's
+     template has to know about the other's; app.py is the composition root
+     for templates too. `is defined` covers a deployment without the ai
+     blueprint registered. #}
+  {% if ai_can_render is defined and ai_can_render('image/png') %}
+  {% include "ai/_render_modal.html" %}
+  {% endif %}
+
   {% elif section == 'materials' %}
 
   {% include "inventory/_order_materials.html" %}

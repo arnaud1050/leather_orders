@@ -31,6 +31,25 @@
       </svg>
     </a>
     {% endif %}
+    {# Rendering, owned by ai/. `ai_can_render` is a callable injected by
+       that blueprint's context processor — so this template never imports
+       it, and `is defined` keeps the explorer working on a deployment where
+       that blueprint isn't registered. It answers both halves of the
+       question at once: a key is configured, and this file is a raster
+       image an image model can be given. The modal itself is included once
+       by order_page.html, not once per document. #}
+    {% if ai_can_render is defined and ai_can_render(doc.content_type) %}
+    <button type="button" class="icon-btn" data-render-document="{{ doc.id }}"
+            data-filename="{{ doc.original_filename }}"
+            title="Render" aria-label="Render an image from {{ doc.original_filename }}">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 16 13.5 6.5"/>
+        <path d="M12 5l3 3"/>
+        <path d="M6.5 3.2 7 4.8l1.6.5-1.6.5-.5 1.6-.5-1.6L4.4 5.3l1.6-.5z"/>
+        <path d="M15.5 12.2l.5 1.6 1.6.5-1.6.5-.5 1.6-.5-1.6-1.6-.5 1.6-.5z"/>
+      </svg>
+    </button>
+    {% endif %}
     <form method="post" action="{{ url_for('documents.delete', order_id=order.id, document_id=doc.id) }}" class="doc-explorer__delete-form">
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ doc.original_filename }}">

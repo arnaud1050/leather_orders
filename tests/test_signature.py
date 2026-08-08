@@ -28,7 +28,7 @@ from tests.test_ai_reply import FakeVendor, _message, _thread
 
 @pytest.fixture
 def signed(user):
-    user.signature = "Arnaud\nBy Monsieur"
+    user.signature = "Jane Doe\nMy Awesome Studio"
     db.session.commit()
     return user
 
@@ -42,7 +42,7 @@ def test_no_signature_is_an_empty_block(user):
 
 
 def test_a_signature_is_offset_by_a_blank_line(signed):
-    assert signed.signature_block == "\n\nArnaud\nBy Monsieur"
+    assert signed.signature_block == "\n\nJane Doe\nMy Awesome Studio"
 
 
 def test_a_whitespace_only_signature_counts_as_none(user):
@@ -51,15 +51,15 @@ def test_a_whitespace_only_signature_counts_as_none(user):
 
 
 def test_surrounding_whitespace_is_trimmed(user):
-    user.signature = "\n\n  Arnaud  \n\n"
-    assert user.signature_block == "\n\nArnaud"
+    user.signature = "\n\n  Jane Doe  \n\n"
+    assert user.signature_block == "\n\nJane Doe"
 
 
 # --- Saving ---------------------------------------------------------------
 
 def test_saving_a_signature(logged_in, user):
-    logged_in.post("/settings/account/signature", data={"signature": "Arnaud\nBy Monsieur"})
-    assert db.session.get(User, user.id).signature == "Arnaud\nBy Monsieur"
+    logged_in.post("/settings/account/signature", data={"signature": "Jane Doe\nMy Awesome Studio"})
+    assert db.session.get(User, user.id).signature == "Jane Doe\nMy Awesome Studio"
 
 
 def test_clearing_a_signature(logged_in, signed):
@@ -79,7 +79,7 @@ def test_a_whitespace_only_submission_is_stored_as_none(logged_in, signed):
 def test_the_account_page_shows_the_saved_signature(logged_in, signed):
     body = logged_in.get("/settings/account").get_data(as_text=True)
     assert "Email signature" in body
-    assert "By Monsieur" in body
+    assert "My Awesome Studio" in body
 
 
 def test_saving_a_signature_requires_a_login(app):
@@ -99,7 +99,7 @@ def test_one_user_cannot_see_anothers_signature(logged_in, signed, company):
     db.session.commit()
 
     body = logged_in.get("/settings/account").get_data(as_text=True)
-    assert "By Monsieur" in body
+    assert "My Awesome Studio" in body
     assert "Someone Else" not in body
 
 
@@ -107,7 +107,7 @@ def test_one_user_cannot_see_anothers_signature(logged_in, signed, company):
 
 def test_the_compose_box_is_prefilled(logged_in, signed, thread):
     body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
-    assert "Arnaud\nBy Monsieur</textarea>" in body
+    assert "Jane Doe\nMy Awesome Studio</textarea>" in body
 
 
 def test_the_compose_box_keeps_its_blank_line(logged_in, signed, thread):
@@ -115,7 +115,7 @@ def test_the_compose_box_keeps_its_blank_line(logged_in, signed, thread):
     template writes an extra one. Without it the signature arrives one blank
     line short, sitting directly under the cursor."""
     body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
-    assert 'required>\n\n\nArnaud' in body
+    assert 'required>\n\n\nJane Doe' in body
 
 
 def test_the_compose_box_is_empty_without_a_signature(logged_in, user, thread):
@@ -129,8 +129,8 @@ def test_the_compose_box_is_empty_without_a_signature(logged_in, user, thread):
 def test_a_draft_is_signed(configured_with_signature, vendor_double):
     company, _ = configured_with_signature
     draft = ai_services.suggest_reply(
-        company.id, _thread(_message("Hello")), signature="Arnaud\nBy Monsieur")
-    assert draft.endswith("\n\nArnaud\nBy Monsieur")
+        company.id, _thread(_message("Hello")), signature="Jane Doe\nMy Awesome Studio")
+    assert draft.endswith("\n\nJane Doe\nMy Awesome Studio")
 
 
 def test_an_unsigned_draft_is_left_alone(configured_with_signature, vendor_double):
@@ -146,10 +146,10 @@ def test_the_signature_is_never_asked_of_the_model(configured_with_signature, ve
     email is worse than none."""
     company, _ = configured_with_signature
     ai_services.suggest_reply(
-        company.id, _thread(_message("Hello")), signature="Arnaud\nBy Monsieur")
+        company.id, _thread(_message("Hello")), signature="Jane Doe\nMy Awesome Studio")
     call = vendor_double.calls[-1]
-    assert "Arnaud" not in call["instructions"]
-    assert "Arnaud" not in call["conversation"]
+    assert "Jane Doe" not in call["instructions"]
+    assert "Jane Doe" not in call["conversation"]
 
 
 def test_the_default_prompt_tells_the_model_not_to_sign_off(configured_with_signature, vendor_double):
@@ -165,7 +165,7 @@ def test_the_route_signs_with_the_logged_in_users_signature(logged_in, signed, t
     ai_services.save_reply_settings(signed.company_id, api_key="sk-test-123456789012")
     db.session.commit()
     response = logged_in.post("/ai/suggest-reply", json={"thread_id": thread.id})
-    assert response.get_json()["suggestion"].endswith("\n\nArnaud\nBy Monsieur")
+    assert response.get_json()["suggestion"].endswith("\n\nJane Doe\nMy Awesome Studio")
 
 
 def test_the_route_copes_with_no_signature(logged_in, user, thread, vendor_double):
