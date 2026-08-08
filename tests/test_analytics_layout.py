@@ -86,11 +86,13 @@ def test_a_card_cannot_be_moved_into_another_section(logged_in, company):
                                      "by_method"]},
     ])
 
-    layout = {s["key"]: s["cards"] for s in saved_layout(company)}
-    assert "tax_ytd" not in layout["clients"]
-    # Rejected from Clients, and not lost either — the merge puts it back at
-    # the end of the section it actually belongs to.
-    assert "tax_ytd" in layout["revenue"]
+    assert "tax_ytd" not in {s["key"]: s["cards"] for s in saved_layout(company)}["clients"]
+    # Rejected from Clients, and not lost either — the read-time merge puts it
+    # back at the end of the section it actually belongs to.
+    html = logged_in.get("/analytics").data.decode()
+    revenue, tax = section_positions(html, "revenue"), card_positions(html, "tax_ytd")
+    assert revenue[0] < tax[0]
+    assert card_positions(html, "by_method")[0] < tax[0]
 
 
 def test_unknown_section_and_card_keys_are_ignored(logged_in, company):
