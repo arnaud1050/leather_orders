@@ -19,10 +19,71 @@
   <label class="compose-form__field">Cc<input type="text" name="cc" placeholder="Optional, comma separated"></label>
   <label class="compose-form__field">Subject<input type="text" name="subject" value="{{ subject_value or '' }}"></label>
   <label>Message<textarea name="body_text" rows="10" required></textarea></label>
-  <div>
+  {% set offer_suggestion = thread and ai_reply_available is defined and ai_reply_available() %}
+  <div class="compose-form__actions">
     <button type="submit" class="btn-primary">{{ 'Send reply' if thread else 'Send' }}</button>
+    {# Only on a reply, and only with a key saved. A new message from the
+       client page has no conversation to draft from, and a suggestion built
+       from nothing would be a form letter — so it simply isn't offered
+       there. `ai_reply_available` is injected as a callable by the ai
+       blueprint's context processor, which is what keeps this template from
+       importing that module (and `is defined` is what keeps it rendering on
+       a deployment where the module isn't registered at all). #}
+    {% if offer_suggestion %}
+    <button type="button" class="btn-secondary" id="ai-suggest-btn"
+            data-endpoint="{{ url_for('ai.suggest_reply') }}"
+            data-thread-id="{{ thread.id }}">Suggest response</button>
+    <span class="compose-form__ai-status" id="ai-suggest-status" role="status" aria-live="polite"></span>
+    {% endif %}
   </div>
 </form>
+
+{% if offer_suggestion %}
+<script>
+  // Fills the message box with a draft. Nothing here sends anything — the
+  // Send button is still the only thing that does.
+  (function () {
+    var button = document.getElementById('ai-suggest-btn');
+    var status = document.getElementById('ai-suggest-status');
+    if (!button) { return; }
+    var textarea = button.closest('form').querySelector('textarea[name="body_text"]');
+
+    button.addEventListener('click', function () {
+      button.disabled = true;
+      status.className = 'compose-form__ai-status';
+      status.textContent = 'Drafting…';
+
+      fetch(button.dataset.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Same-origin, so the session cookie rides along and nothing else does.
+        credentials: 'same-origin',
+        body: JSON.stringify({ thread_id: button.dataset.threadId })
+      }).then(function (response) {
+        // Read the body whatever the status: the server answers with an
+        // `error` sentence on every failure path, so the two can't disagree.
+        return response.json().catch(function () { return {}; });
+      }).then(function (data) {
+        if (data.suggestion) {
+          textarea.value = data.suggestion;
+          // A box that fills itself is ambiguous about whether anything was
+          // sent, so it says so where the eye already is.
+          status.textContent = 'Draft inserted — edit it before sending.';
+        } else {
+          // Whatever is already typed stays exactly as it is.
+          status.className = 'compose-form__ai-status compose-form__ai-status--error';
+          status.textContent = data.error || 'Something went wrong. Try again.';
+        }
+      }).catch(function () {
+        status.className = 'compose-form__ai-status compose-form__ai-status--error';
+        status.textContent = 'Couldn\'t reach the server. Try again.';
+      }).then(function () {
+        button.disabled = false;
+      });
+    });
+  })();
+</script>
+{% endif %}
 {% else %}
 <p class="detail-note">
   No mailbox is connected for sending. Connect one under

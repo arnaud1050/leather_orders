@@ -54,6 +54,24 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   (`@login_required`); `/login` and `/logout` are the only exceptions.
   `/login` redirects to `next` on success; an unauthenticated request to any
   other route redirects to `/login?next=...`.
+- **CO4a.** A signed-in user can change their own password at
+  Settings → Account (`/settings/account`, posting to
+  `/settings/account/password`). The current password is required — the
+  session alone is not sufficient authorisation. The new password must be at
+  least `MIN_PASSWORD_LENGTH` (8) characters, must match its confirmation
+  field, and must differ from the current one; any of those failing leaves
+  `password_hash` untouched. The `minlength` attribute on the inputs is
+  convenience only — the length rule is enforced server-side, since nothing
+  outside a browser sends it.
+- **CO4b.** The page is per-user, not per-company — it's the only Settings
+  category that is, which is why it's its own category rather than a block on
+  General. It changes only `current_user`'s row; there's no UI to change
+  anyone else's password or to add a user (N2).
+- **CO4c.** Feedback is a one-shot session message (`password_status`,
+  cleared on read like `_take_settings_notice`) rendered as
+  `.password-status` — plain text, red on failure, deliberately not the amber
+  `.warning-note` panel, which means "standing condition of the page" rather
+  than "that button press worked".
 - **CO5.** `base.html`'s top nav (`.view-switch`) renders only when
   `current_user.is_authenticated` — a logged-out visitor sees no nav, not a
   disabled one.
@@ -493,8 +511,13 @@ each.
 
 - **N1.** No in-place edit of an existing `OrderLine` — remove and re-add
   only (OR7).
-- **N2.** No password-reset / change-password UI; no way to add a user
-  short of a Python shell.
+- **N2.** No password *reset* — a forgotten password is still a Python-shell
+  job, because the app has no mail sender of its own (the Gmail accounts
+  under Email/Calendar are the studio's client correspondence, not app mail).
+  Nor is there any way to add a user, or for one user to change another's
+  password. *Changing your own* password is built — see CO4a. Changing it
+  also doesn't invalidate sessions signed in elsewhere; with one user per
+  deployment there's nothing yet for that to protect.
 - **N3.** No signup flow or tenant switcher — `Company` is schema-ready for
   multiple tenants (CO1–CO3) but only one is ever seeded.
 - ~~**N4.** No tax-collected report on `/analytics`.~~ *Built* — see AN9;
@@ -526,6 +549,9 @@ has no regression test.
 | CO1–CO2 | — gap — (structural; exercised indirectly by every CO3-tagged test below, not asserted on its own) |
 | CO3 | `test_get_order_or_404_is_scoped_to_the_tenant`, `test_get_client_or_404_is_scoped_to_the_tenant` |
 | CO4 | `test_core_get_routes_require_login`, `test_core_get_routes_require_login_for_a_specific_order_and_client`, `test_core_post_routes_require_login` |
+| CO4a | `test_change_password_replaces_the_hash`, `test_the_new_password_is_what_logs_in_afterwards`, `test_a_wrong_current_password_changes_nothing`, `test_a_mismatched_confirmation_changes_nothing`, `test_a_short_new_password_is_rejected`, `test_reusing_the_current_password_is_rejected`, `test_the_change_password_routes_require_login` (`tests/test_change_password.py`) |
+| CO4b | — gap — (single-user deployments mean there's no second user to assert isolation against; the route only ever reads `current_user.id`) |
+| CO4c | `test_the_status_message_shows_once` (`tests/test_change_password.py`) |
 | CO5 | `test_nav_hides_for_a_logged_out_visitor` |
 | CO5a | `test_nav_includes_the_mobile_hamburger_toggle` (markup presence/order only — the CSS collapse and the open/close click behavior itself are client-side and unassertable by a route test, same limitation as TL7–TL9) |
 | CO6 | — gap — (single-tenant-seed is a deployment fact, not asserted by a test) |

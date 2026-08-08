@@ -24,5 +24,11 @@ APScheduler>=3.10           # background sync, only when RUN_SCHEDULER=1
 Pillow>=10.0
 pdf2image>=1.17
 
+# AI module (see ai/). Lazy import, same as the Google libraries above: the
+# app boots, Settings → AI renders and every other feature works without it
+# — only pressing "Suggest response" finds out, and it says so rather than
+# 500ing. `cryptography` above is shared (see crypto.py).
+openai>=1.40
+
 # Tests only — not imported by the app. `python -m pytest`.
 pytest>=8.0

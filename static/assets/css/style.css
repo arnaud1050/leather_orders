@@ -1964,9 +1964,14 @@ dialog.modal::backdrop {
   color: var(--ink-soft);
 }
 
+/* Wraps rather than overflowing: the row is eight categories long since
+   Account joined it, which is past what a narrow viewport fits on one line.
+   The row-gap is smaller than the column gap so a wrapped second line reads
+   as a continuation of the first, not as a second nav. */
 .settings-nav {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 8px 20px;
   margin-bottom: 28px;
   border-bottom: 1px solid var(--hairline);
 }
@@ -2082,6 +2087,19 @@ dialog.modal::backdrop {
 .settings-source-add {
   max-width: 320px;
   margin-bottom: 0;
+}
+
+/* Settings → Account. Same reasoning as .compose-form__ai-status: transient
+   feedback about one button press, not a standing condition of the page, so
+   plain text rather than the amber .warning-note panel. */
+.password-status {
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.password-status--error {
+  color: var(--day-today);
 }
 
 /* Wider than .settings-source-add — these forms carry addresses and
@@ -2607,6 +2625,29 @@ button.chip--event:hover .chip__title {
 .compose-form textarea {
   font-family: var(--font-body);
   width: 100%;
+}
+
+/* Send, then (on a reply, with an AI key saved) Suggest response, then the
+   status line the suggestion writes into. Wraps rather than squeezing on a
+   narrow screen, same as .field-row. */
+.compose-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Deliberately not a .warning-note: this is transient feedback about one
+   button press, not a standing condition of the page, and giving it the
+   amber panel would read as the form itself being in a bad state. Plain
+   text in --ink-soft, red only when it's reporting a failure. */
+.compose-form__ai-status {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.compose-form__ai-status--error {
+  color: var(--day-today);
 }
 
 /* Settings → AI. Exactly the .compose-form arrangement and for the same

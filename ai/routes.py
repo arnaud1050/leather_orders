@@ -12,16 +12,56 @@ than one. **If Flask-WTF is ever added app-wide, this module and
 `communications/security.py` should both defer to `CSRFProtect`.**
 """
 
-from flask import Blueprint, redirect, render_template, request, session, url_for
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
 from ai import config, services
+from ai.errors import AIError
 
 bp = Blueprint("ai", __name__, template_folder="templates")
 
+_resolve_thread_context = None
 
-def register(app) -> None:
+
+def register(app, *, resolve_thread_context=None) -> None:
+    """Attach the blueprint.
+
+    `resolve_thread_context(company_id, thread_id) -> dict | None` is
+    supplied by the host (app.py) rather than imported, the same hook shape
+    `documents.routes.register(resolve_order=...)` uses — and here it's what
+    keeps this module from ever importing `communications`. It returns the
+    plain dict `ai.conversation.render` expects, or None when the thread
+    isn't this company's.
+
+    Optional, so a host that doesn't wire it up gets a settings page and a
+    button that says the feature isn't available, rather than an import
+    error at startup.
+    """
+    global _resolve_thread_context
+    _resolve_thread_context = resolve_thread_context
     app.register_blueprint(bp)
+
+
+@bp.app_context_processor
+def _inject_availability():
+    """`ai_reply_available()` for `communications/templates/_compose_form.html`.
+
+    Injected as a *callable* rather than a value, so the query only runs on
+    templates that actually ask — the same reason communications' badge
+    counts are callables. Forgiving of a logged-out request and of a
+    database that hasn't been migrated yet, for the same reason: this
+    renders inside `base.html`'s descendants on pages that must not 500
+    because of an optional feature.
+    """
+    def ai_reply_available() -> bool:
+        if _resolve_thread_context is None or not current_user.is_authenticated:
+            return False
+        try:
+            return services.reply_available(current_user.company_id)
+        except Exception:  # noqa: BLE001 — an optional feature never breaks a page
+            return False
+
+    return {"ai_reply_available": ai_reply_available}
 
 
 def _flash(message: str) -> None:
@@ -29,6 +69,41 @@ def _flash(message: str) -> None:
     documents' and communications' `_flash`: the app has no flash
     convention, so this stays scoped to a session key this module owns."""
     session["ai_notice"] = message
+
+
+@bp.route("/ai/suggest-reply", methods=["POST"])
+@login_required
+def suggest_reply():
+    """Draft a reply to one thread. JSON in, JSON out — the compose form
+    fetches this and fills its own textarea, so there's no page navigation
+    and nothing to redirect back to.
+
+    Every failure answers `{"error": "<a sentence>"}` with a real status
+    code. The browser side reads `error` regardless of status, so the two
+    can't disagree about whether something went wrong.
+    """
+    if _resolve_thread_context is None:
+        return jsonify(error="Reply suggestions aren't wired up on this "
+                             "deployment."), 501
+
+    payload = request.get_json(silent=True) or request.form
+    raw_thread_id = str(payload.get("thread_id", ""))
+    if not raw_thread_id.isdigit():
+        return jsonify(error="No conversation to reply to."), 400
+
+    conversation = _resolve_thread_context(current_user.company_id, int(raw_thread_id))
+    if conversation is None:
+        # Another company's thread, or one that's since been deleted. Same
+        # answer either way — "not yours" and "not there" must not be
+        # distinguishable from outside.
+        return jsonify(error="No conversation to reply to."), 404
+
+    try:
+        suggestion = services.suggest_reply(current_user.company_id, conversation)
+    except AIError as exc:
+        return jsonify(error=str(exc)), 502
+
+    return jsonify(suggestion=suggestion)
 
 
 @bp.route("/settings/ai")

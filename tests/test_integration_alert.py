@@ -97,6 +97,26 @@ def test_the_badge_shows_on_the_settings_sub_nav(logged_in, account):
     assert body.count("nav-badge--alert") == 2
 
 
+def test_the_badge_sits_inside_the_email_calendar_link(logged_in, account):
+    """The renamed tab keeps its badge. "Integrations" became
+    "Email/Calendar" when the AI category arrived beside it, and a label
+    change that quietly left the alert behind on the old markup would be
+    invisible until the day something actually stopped syncing."""
+    fail(account)
+    body = logged_in.get("/settings/general").get_data(as_text=True)
+    link = body.split('href="/settings/integrations"')[1].split("</a>")[0]
+    assert "Email/Calendar" in link
+    assert "nav-badge--alert" in link
+
+
+def test_the_badge_shows_on_the_new_ai_settings_page_too(logged_in, account):
+    """Every settings category shares one nav, so a module-owned page can't
+    be the one place the alert goes missing."""
+    fail(account)
+    body = logged_in.get("/settings/ai").get_data(as_text=True)
+    assert body.count("nav-badge--alert") == 2
+
+
 def test_the_badge_reaches_the_integrations_page_itself(logged_in, account):
     """The module owns that template but shares _settings_nav.html, so the
     trail from the badge to the page explaining it can't break."""

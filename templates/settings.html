@@ -36,6 +36,38 @@
     </form>
   </section>
 
+  {% elif section == 'account' %}
+
+  <section class="detail-orders">
+    <h2>Password</h2>
+    <p class="detail-note">
+      Changes the password for <strong>{{ current_user.username }}</strong>,
+      the account you're signed in as. Your current password is required.
+    </p>
+    <form method="post" action="{{ url_for('change_password') }}" class="detail-form">
+      <label>Current password
+        <input type="password" name="current_password" autocomplete="current-password" required>
+      </label>
+      <label>New password
+        <input type="password" name="new_password" autocomplete="new-password"
+               minlength="{{ min_password_length }}" required>
+      </label>
+      <label>Confirm new password
+        <input type="password" name="confirm_password" autocomplete="new-password"
+               minlength="{{ min_password_length }}" required>
+      </label>
+      <p class="detail-note">At least {{ min_password_length }} characters.</p>
+      <div>
+        <button type="submit" class="btn-primary">Change password</button>
+      </div>
+      {% if password_status %}
+      <p class="password-status {{ 'password-status--error' if not password_status.ok }}">
+        {{ password_status.message }}
+      </p>
+      {% endif %}
+    </form>
+  </section>
+
   {% elif section == 'orders' %}
 
   <section class="detail-orders">

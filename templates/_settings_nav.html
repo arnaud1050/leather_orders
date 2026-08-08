@@ -24,4 +24,7 @@
     {% if failing_integrations %}<span class="nav-badge nav-badge--alert" title="{{ failing_integrations }} integration{{ 's' if failing_integrations != 1 }} stopped syncing">!</span>{% endif %}
   </a>
   <a href="{{ url_for('ai.settings') }}" class="settings-nav__link {{ 'is-active' if section == 'ai' else '' }}">AI</a>
+  {# Last, and set apart by being the only category about the signed-in user
+     rather than the company. #}
+  <a href="{{ url_for('settings_account') }}" class="settings-nav__link {{ 'is-active' if section == 'account' else '' }}">Account</a>
 </nav>

@@ -5,14 +5,13 @@ future changes don't silently drop a rule nobody wrote down, and so there's
 a checklist to test against. When a rule changes, update this file in the
 same change.
 
-**Phase 1 (this commit) is configuration only** — the settings a company
-holds, and the two predicates that say whether a feature can be offered.
-§6 and §7 describe features **not yet built**; they're written down now
-because the phase-1 shape was chosen to fit them, and a rule invented later
-to justify what got built is worth nothing.
+**Phase 1 was configuration; phase 2 added inquiry replies (§6).** §7,
+renderings, is **not built yet** — written down before it exists because the
+shape below was chosen to fit it, and a rule invented afterwards to justify
+what got built is worth nothing.
 
-Covered by `tests/test_ai_settings.py` and `tests/test_ai_boundary.py`
-unless noted.
+Covered by `tests/test_ai_settings.py`, `tests/test_ai_reply.py` and
+`tests/test_ai_boundary.py` unless noted.
 
 ## 1. Tenant isolation (`T-*`)
 
@@ -110,24 +109,48 @@ unless noted.
   module is wired to *three* host concepts, so reaching into any one
   directly would tie it to all three.
 
-## 6. Inquiry replies — **not built yet** (`R-*`)
+## 6. Inquiry replies (`R-*`)
+
+Covered by `tests/test_ai_reply.py`.
 
 - **R-1** The button drafts into the existing compose textarea. **Nothing
-  in this module ever sends mail**; a human edits and sends.
+  in this module ever sends mail**; a human edits and sends. There is no
+  code path from here to a mail provider at all.
 - **R-2** The **entire thread** is sent as context, oldest message first,
-  each labelled with who sent it and when — not just the latest message.
-  A reply drafted from the last message alone re-asks what was answered
-  three messages ago, which is worse than no suggestion.
+  each labelled with which side sent it and when — not just the latest
+  message. A reply drafted from the last message alone re-asks what was
+  answered three messages ago, which is worse than no suggestion.
 - **R-3** Context is capped (`config.THREAD_CONTEXT_MAX_CHARS`). Past the
-  cap the **oldest** messages are dropped, since a long thread's recent
-  turns are what a reply has to answer.
-- **R-4** Quoted reply chains are trimmed before sending, reusing the
-  trimming the thread page already does — otherwise a five-message thread
-  ships the first message five times.
-- **R-5** A vendor failure (bad key, rate limit, timeout) surfaces as a
-  readable message beside the button and leaves whatever is already typed
-  in the textarea untouched.
-- **R-6** The button doesn't render at all when no key is saved (`A-1`).
+  cap the **oldest** messages are dropped and a marker takes their place,
+  since a long thread's recent turns are what a reply has to answer. A
+  single message longer than the whole budget is **truncated, not
+  dropped** — otherwise the transcript would be empty and the model would
+  answer a question it was never shown.
+- **R-4** Quoted reply chains are trimmed before sending: the host hook
+  passes `body_display`, not `body_text`, reusing the trimming the thread
+  page already does. Otherwise a five-message thread ships the first
+  message five times.
+- **R-5** A vendor failure (missing library, bad key, unknown model, rate
+  limit, timeout, empty completion) surfaces as **a sentence written for a
+  person**, and leaves whatever is already typed in the textarea
+  untouched. Each of the common statuses gets its own advice, because each
+  has a different fix.
+- **R-6** The button doesn't render at all when no key is saved (`A-1`),
+  nor where there's no conversation to draft from — the client page's "New
+  message" box, whose suggestion could only be a form letter.
+- **R-7** The vendor's own error text is **never** shown. An API error can
+  echo request details, including the key, back in its message, and that
+  message would be rendered in the browser.
+- **R-8** Speakers are labelled from `direction`, not from the app's
+  `sender_label`, which renders our own mail as "You" — right on a page a
+  human reads, ambiguous in a prompt, where "you" is what the model calls
+  itself.
+- **R-9** The company prompt is the **system** message and the transcript
+  is the **user** message, so a thread containing text that looks like
+  instructions can't displace the company's own.
+- **R-10** A thread that isn't this company's answers **identically** to
+  one that doesn't exist. "Not yours" and "not there" must not be
+  distinguishable from outside.
 
 ## 7. Renderings — **not built yet** (`G-*`)
 

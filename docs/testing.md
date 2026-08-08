@@ -13,6 +13,12 @@ routes are `tests/test_settings_company.py`, order-line add/delete is
 `tests/test_order_lines.py`, and the two option lists' hide-vs-hard-delete
 guard is in `tests/test_settings_options.py`.
 
+**`tests/test_change_password.py`** covers Settings → Account (`CO4a`–`CO4c`).
+Every rejection case asserts on the stored hash rather than on the message
+that came back — a redirect carrying the right words says nothing about what
+was written — and one test goes the whole way round through `/login` to prove
+the new password is the one that actually authenticates.
+
 **`tests/test_seeding.py`** defends the bootstrap/sample-data split (`CO9a`–
 `CO9c`, hard rule 16): that `seed_if_empty()` creates a tenant and *no* clients,
 orders, invoices or letterhead; that `sample_data.seed_sample_data()` inserts the
@@ -68,6 +74,19 @@ The four money files, and the single rule each exists to defend:
   the saved key" (the input is always rendered blank, so treating blank as a
   clear would wipe the key on every prompt edit) and the page still rendering
   after an encryption-key rotation, when the value can no longer be decrypted.
+
+- **`tests/test_ai_reply.py`** — reply suggestions, with **two levels of
+  vendor double** and a reason for each. The `vendor` fixture replaces
+  `openai_client.generate_reply` wholesale, which is right for asserting on
+  what the prompt *contained*; the failure tests patch `openai.OpenAI`
+  itself, one layer lower, because the translation from vendor exception to
+  readable sentence lives inside the function the first double replaces.
+  The first version of these tests got that wrong and asserted on the
+  double's own behaviour instead of the code's. It also reads the **real**
+  `openai` exception classes and checks their status codes still map to the
+  advice intended — the translator is duck-typed on purpose (importing those
+  classes would defeat the lazy import), and a library rename would
+  otherwise silently downgrade every message to the generic one.
 
 `tests/test_inventory.py` covers the newer `inventory/` module on the same
 per-file-per-rule principle, even though it isn't one of the four money files

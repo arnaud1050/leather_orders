@@ -82,17 +82,48 @@ def test_ai_never_imports_the_host_or_a_sibling_module(path):
         )
 
 
+# Third-party libraries are not a boundary concern — the rule is about what
+# of *this app* the module reaches into. Listed explicitly rather than
+# waved through, so adding a dependency is a visible decision.
+THIRD_PARTY = {"flask", "flask_login", "sqlalchemy", "openai"}
+STDLIB = {"os", "base64", "hashlib", "logging", "datetime", "dataclasses", "builtins"}
+
+
 def test_the_only_host_helper_is_crypto():
     """One host import that isn't `db`, and it's the shared SecretBox."""
-    allowed = {"", "ai", "models", "crypto", "flask", "flask_login"}
+    allowed = {"", "ai", "models", "crypto"} | THIRD_PARTY | STDLIB
     for path in ai_sources():
         for module, _ in imports_in(path):
             root = module.split(".")[0]
-            if root in {"os", "base64", "hashlib", "logging", "datetime", "dataclasses"}:
-                continue
-            if root == "sqlalchemy":
-                continue  # migrations.py, same as every other module's
             assert root in allowed, f"{path.name} imports {module!r}"
+
+
+def test_only_one_file_knows_the_vendor_exists():
+    """The containment `communications/providers/gmail_provider.py` gives
+    Gmail, without the registry machinery: everything above `openai_client`
+    speaks prompts and strings, so swapping the vendor is one file plus one
+    call site. A second `import openai` anywhere would quietly end that."""
+    for path in ai_sources():
+        for module, _ in imports_in(path):
+            if module.split(".")[0] == "openai":
+                assert path.name == "openai_client.py", (
+                    f"{path.name} imports the vendor library directly. Only "
+                    "openai_client.py may know OpenAI exists."
+                )
+
+
+def test_the_vendor_import_is_lazy():
+    """The app has to boot, Settings → AI has to render and every other
+    feature has to work on a machine where `openai` isn't installed — only
+    pressing the button finds out. A module-level import would turn that
+    into a startup crash."""
+    import ast
+
+    tree = ast.parse((AI / "openai_client.py").read_text(encoding="utf-8"))
+    for node in tree.body:  # top level only
+        assert not isinstance(node, (ast.Import, ast.ImportFrom)) or (
+            (node.module or "").split(".")[0] != "openai"
+        ), "openai is imported at module level; it must be inside the function"
 
 
 def test_the_shared_crypto_helper_drags_nothing_in_behind_it():
@@ -116,7 +147,7 @@ def test_services_are_the_public_surface():
         services.settings_for, services.reply_available, services.render_available,
         services.can_render_document, services.save_reply_settings,
         services.save_render_settings, services.clear_text_key,
-        services.clear_image_key,
+        services.clear_image_key, services.suggest_reply,
     ]
     for function in scoped:
         first = list(inspect.signature(function).parameters)[0]

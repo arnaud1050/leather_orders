@@ -40,15 +40,15 @@ from models import (  # noqa: E402
     Client, Company, Order, OrderLine, OrderType, Payment,
     SourceOption, User, db, run_migrations, seed_if_empty,
 )
-# Self-contained module: its own models, services, blueprint and templates
-# (see billing/__init__.py). billing_adapter.py is the only file that knows
-# an "order" is what this app bills for.
 # Self-contained module: its own model, services, blueprint and templates
 # (see ai/__init__.py). It holds a company's vendor API keys and prompts and
 # never sees a host model — everything it needs about an order, a document
 # or a mail thread arrives through a hook registered here.
 import ai.migrations as ai_migrations  # noqa: E402
 import ai.routes as ai_routes  # noqa: E402
+# Self-contained module: its own models, services, blueprint and templates
+# (see billing/__init__.py). billing_adapter.py is the only file that knows
+# an "order" is what this app bills for.
 import billing.migrations as billing_migrations  # noqa: E402
 import billing.routes as billing_routes  # noqa: E402
 import billing_adapter  # noqa: E402
@@ -275,10 +275,48 @@ def get_order_or_404(order_id: int) -> Order:
 
 documents_routes.register(app, resolve_order=get_order_or_404)
 inventory_routes.register(app, resolve_order=get_order_or_404)
-# No hooks yet — phase 1 is the settings page alone. The reply and render
-# features register `resolve_thread_context` / `load_document` / `save_render`
-# here, the same way documents and inventory take `resolve_order`.
-ai_routes.register(app)
+def _thread_conversation(company_id: int, thread_id: int) -> dict | None:
+    """One mail thread as the plain dict `ai/` speaks.
+
+    This function is the whole reason `ai/` never imports `communications/`:
+    the translation from an `EmailThread` into "subject plus a list of
+    messages" happens here, in the composition root that already knows
+    both sides. `ai/conversation.py` documents the shape.
+
+    Three deliberate choices, all of them `ai/REQUIREMENTS.md` rules:
+
+    - **`thread.messages` whole**, already ordered oldest-first by the
+      relationship — not just the latest (`R-2`). Trimming to fit is the
+      module's job, not this one's.
+    - **`body_display`, not `body_text`** (`R-4`): every mail client quotes
+      the entire prior conversation into a reply, and those messages are
+      already in this list in their own right.
+    - **`direction`, not `sender_label`**, as the source of who's speaking.
+      `sender_label` renders our own mail as "You", which is right on a page
+      a human reads and ambiguous in a prompt.
+    """
+    thread = email_service.get_thread(company_id, thread_id)
+    if thread is None:
+        return None
+    return {
+        "subject": thread.display_subject,
+        "counterparty": thread.counterparty,
+        "messages": [
+            {
+                "sender": message.sender_name or message.sender,
+                "direction": message.direction,
+                "sent_at": (
+                    message.received_date.strftime("%Y-%m-%d")
+                    if message.received_date else None
+                ),
+                "body": message.body_display,
+            }
+            for message in thread.messages
+        ],
+    }
+
+
+ai_routes.register(app, resolve_thread_context=_thread_conversation)
 
 
 def _parse_amount(raw: str | None) -> float | None:
@@ -1566,6 +1604,79 @@ def update_company_details():
     )
     db.session.commit()
     return redirect(url_for("settings_invoicing"))
+
+
+# Account — the one settings category that's about the signed-in user rather
+# than the company. Its own page, not a block on General, because everything
+# else under Settings is company-wide: a password sitting among the
+# company-wide preferences would read as one of them.
+MIN_PASSWORD_LENGTH = 8
+
+
+def _flash_password_status(message: str, ok: bool) -> None:
+    """One-shot feedback for the next Settings → Account render.
+
+    Its own session key rather than `_flash_settings_notice`'s: that one
+    renders as a .warning-note, which is right for a standing condition of
+    the page and wrong for "that worked" after one button press.
+    """
+    session["password_status"] = {"message": message, "ok": ok}
+
+
+@app.route("/settings/account")
+@login_required
+def settings_account():
+    return render_template(
+        "settings.html",
+        section="account",
+        company=db.session.get(Company, current_user.company_id),
+        password_status=session.pop("password_status", None),
+        min_password_length=MIN_PASSWORD_LENGTH,
+        active_view="settings",
+    )
+
+
+@app.route("/settings/account/password", methods=["POST"])
+@login_required
+def change_password():
+    """Change the signed-in user's own password.
+
+    The current password is required even though the session already proves
+    who this is — it's what stops an unattended logged-in browser from being
+    turned into a permanent one. There's no reset-by-email counterpart: the
+    app has no address of its own to send from (the Gmail accounts under
+    Email/Calendar are the studio's outgoing client mail, not app mail), so
+    a forgotten password is still a shell job. See N2 in REQUIREMENTS.md.
+    """
+    current = request.form.get("current_password", "")
+    new = request.form.get("new_password", "")
+    confirmation = request.form.get("confirm_password", "")
+
+    if not current_user.check_password(current):
+        # Deliberately not "wrong password" — the same wording the login
+        # page uses would be confusing here, where only one field can be at
+        # fault and the user is already identified.
+        error = "That isn't your current password."
+    elif len(new) < MIN_PASSWORD_LENGTH:
+        error = f"Choose a new password of at least {MIN_PASSWORD_LENGTH} characters."
+    elif new != confirmation:
+        error = "The two new passwords don't match."
+    elif new == current:
+        error = "That's already your password."
+    else:
+        error = None
+
+    if error is not None:
+        _flash_password_status(error, ok=False)
+    else:
+        # current_user is a proxy around the row; write through the session's
+        # own instance so the commit is unambiguous.
+        user = db.session.get(User, current_user.id)
+        user.set_password(new)
+        db.session.commit()
+        _flash_password_status("Password changed.", ok=True)
+
+    return redirect(url_for("settings_account"))
 
 
 @app.route("/settings/invoicing", methods=["POST"])

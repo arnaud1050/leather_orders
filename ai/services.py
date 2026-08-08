@@ -7,7 +7,8 @@ predicates that say whether each feature can be offered. Generating a reply
 and rendering an image land on top of this.
 """
 
-from ai import config, crypto
+from ai import config, conversation as conversation_text, crypto, openai_client
+from ai.errors import AIError
 from ai.models import AISettings
 from models import db
 
@@ -52,6 +53,47 @@ def can_render_document(company_id: int, content_type: str | None) -> bool:
     return (
         content_type in config.SOURCE_IMAGE_CONTENT_TYPES
         and render_available(company_id)
+    )
+
+
+def suggest_reply(company_id: int, conversation: dict) -> str:
+    """A draft reply to `conversation`, as plain text.
+
+    **This never sends anything** (`R-1`). It returns text for a human to
+    edit in the compose box, and the module has no path to a mail provider
+    at all — sending stays entirely in `communications/`.
+
+    Raises `AIError` with a message written for the user on every failure
+    path: no key saved, the vendor rejecting the key, a rate limit, a
+    timeout, an empty completion. The caller renders it beside the button
+    and leaves whatever's already typed alone (`R-5`).
+    """
+    settings = settings_for(company_id)
+    try:
+        api_key = settings.text_api_key if settings.has_text_key else None
+    except crypto.KeyDecryptionError as exc:
+        # The encryption key rotated since the API key was saved. The
+        # settings page renders this state fine (`S-5`); here it has to
+        # become a sentence rather than a 500, and the recovery is to
+        # re-enter the key.
+        raise AIError(
+            "The saved OpenAI key can't be decrypted — AI_ENCRYPTION_KEY or "
+            "SECRET_KEY changed since it was saved. Enter the key again "
+            "under Settings → AI."
+        ) from exc
+    if not api_key:
+        # Reachable by racing the button against someone deleting the key
+        # in another tab — the button doesn't render without one (`R-6`).
+        raise AIError(
+            "No OpenAI API key is saved. Add one under Settings → AI."
+        )
+
+    return openai_client.generate_reply(
+        api_key=api_key,
+        model=settings.text_model,
+        instructions=settings.reply_prompt,
+        conversation=conversation_text.render(conversation),
+        timeout=config.TEXT_TIMEOUT_SECONDS,
     )
 
 
