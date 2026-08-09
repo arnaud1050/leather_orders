@@ -161,9 +161,11 @@ with app.app_context():
     # documents/migrations.py) — run before seeding so a fresh company
     # never sees the old placeholder rows this replaces.
     documents_migrations.run_migrations()
-    # Same arrangement again: its own tables (inventory_types,
-    # inventory_items, order_materials, order_material_others), nothing to
-    # migrate yet since every one is brand new.
+    # Same arrangement again: its own tables (inventory_units,
+    # inventory_prefs, inventory_types, inventory_items, order_materials,
+    # order_material_others) — all still covered by create_all, plus its own
+    # ADDED_COLUMNS for the columns added to inventory_items since it
+    # shipped, and the InventoryUnit backfill.
     inventory_migrations.run_migrations()
     # Same arrangement again: its own table (ai_settings), brand new, so
     # ADDED_COLUMNS is empty and the call is a no-op — it's wired up now so
@@ -1531,6 +1533,10 @@ def settings_inventory():
         units=inventory_service.list_units(current_user.company_id),
         available_units=inventory_service.available_catalog_units(current_user.company_id),
         inventory_types=inventory_service.list_types(current_user.company_id),
+        # Every column, not just the visible ones — this editor is what turns
+        # visibility back on, so a hidden column still needs its row (same as
+        # settings_orders' order_columns).
+        inventory_columns=inventory_service.list_columns(current_user.company_id),
         notice=_take_settings_notice(),
         active_view="settings",
     )

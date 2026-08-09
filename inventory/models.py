@@ -67,6 +67,33 @@ class InventoryUnit(db.Model):
         ).first() is None
 
 
+class InventoryPref(db.Model):
+    """One row per company, holding this module's page-level preferences —
+    today just the /inventory master list's column layout.
+
+    Created lazily on first read (services._prefs_for), the same "create it
+    on first use" idiom billing.profile_for() uses for a company's
+    letterhead and _ensure_default_unit uses for "Each".
+
+    `columns` is a JSON blob, not a row per column, for the same reason
+    app.py stores the Orders-list columns as one on `Company`: this is a
+    fixed set of known keys the app declares (config.INVENTORY_COLUMNS), not
+    an open-ended list a user names, so there's no per-row identity to hide
+    rather than delete and nothing to reference it. The blob lives here
+    rather than on `Company` only because that model belongs to the host and
+    this module doesn't import it — same reason `InvoiceProfile` exists.
+    """
+    __tablename__ = "inventory_prefs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, nullable=False, unique=True)
+    # JSON: [{"key": ..., "visible": bool}, ...]. Read through
+    # services.list_columns, which merges it against INVENTORY_COLUMNS — a
+    # malformed or stale blob degrades to the declared default rather than
+    # erroring.
+    columns = db.Column(db.Text)
+
+
 class InventoryType(db.Model):
     """A company-configurable material category (Leather, Lining,
     Hardware...). Same hide-don't-delete shape as OrderType/DocumentType:
@@ -117,6 +144,19 @@ class InventoryItem(db.Model):
     unit = db.Column(db.String(10), nullable=False, default="each")
     quantity_on_hand = db.Column(db.Float, nullable=False, default=0.0)
     unit_price = db.Column(db.Float, nullable=False, default=0.0)
+    # Three optional, purely descriptive fields — none of them is validated
+    # against anything or read by any calculation, and none is snapshotted
+    # onto OrderMaterial (a material's frozen copy is name/unit/price only,
+    # M2). They exist so the person restocking has the supplier's own
+    # vocabulary to hand: `reference` is whatever the supplier calls it (SKU,
+    # article number, colour code), `url` is where it was bought so reordering
+    # is one click rather than a search, and `notes` is everything that
+    # doesn't fit a field ("temper is stiffer than the 3-4oz", "min. order 5
+    # hides"). Nullable and never required — an item created before these
+    # existed, or by someone who doesn't care, is still a complete item.
+    reference = db.Column(db.String(120))
+    url = db.Column(db.String(500))
+    notes = db.Column(db.Text)
     # The low-stock warning point: once quantity_on_hand drops to this or
     # below (while still above zero), the item is "low" — an amber signal,
     # milder than the red at-or-below-zero "out of stock" one. `0` means the
@@ -132,6 +172,19 @@ class InventoryItem(db.Model):
     @property
     def can_delete(self):
         return OrderMaterial.query.filter_by(inventory_item_id=self.id).first() is None
+
+    @property
+    def url_host(self) -> str | None:
+        """The bare domain of `url`, so the master list's Link cell can read
+        as "vancouverleather.example" rather than a wrapped 90-character
+        address or a generic "Open". Presentation only — the anchor always
+        points at the full stored URL. Parsed by hand rather than with
+        urllib: services._clean_url has already guaranteed an http(s) scheme,
+        so there's nothing here to get wrong."""
+        if not self.url:
+            return None
+        host = self.url.split("://", 1)[-1].split("/", 1)[0]
+        return host[4:] if host.lower().startswith("www.") else host
 
     @property
     def is_low_stock(self) -> bool:

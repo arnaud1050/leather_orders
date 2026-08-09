@@ -163,6 +163,38 @@ dropdown, and in what sequence. It never gates what `InventoryItem.unit`
   number — negative/blank collapse to `0` at the route (`_parse_float(...) or
   0.0`); no cross-check against `quantity_on_hand` is imposed.
 
+- **I14.** An item carries three **optional, purely descriptive** fields,
+  all nullable and never required: `reference` (the supplier's own SKU /
+  article number / colour code), `url` (where it can be reordered) and
+  `notes` (free text). None is validated against anything, none feeds any
+  calculation, and none is snapshotted onto `OrderMaterial` — a material's
+  frozen copy stays name/unit/price only (M2). Columns added after the
+  table shipped, so they need `ADDED_COLUMNS` entries in
+  `inventory/migrations.py` (nullable, backfilling every existing row to
+  `NULL` — "not filled in", which is what they are).
+- **I15.** Blank or whitespace-only means **not filled in**: stored as
+  `NULL`, never as an empty string, so "no reference" is one value rather
+  than two that render identically. `reference` is truncated to 120
+  characters and `notes` to 10 000 — an oversized paste is trimmed, not
+  rejected.
+- **I16.** `url` is normalized before storage: an address with **no scheme**
+  gets `https://` prefixed (people type and paste bare domains, and a link
+  that doesn't navigate is worse than no link), an `http`/`https` one is
+  kept as typed, and anything carrying **any other scheme** (`javascript:`,
+  `data:`, `mailto:`, `ftp:`) is **dropped** — the field's whole purpose is
+  to become a clickable `href`. A `host:port` with no scheme is dropped by
+  that same check; typing the `https://` stores it fine.
+  `InventoryItem.url_host` is the bare domain (scheme and a leading `www.`
+  stripped), for the master list's Link cell — presentation only, the
+  anchor always points at the full stored URL.
+- **I17.** All three are **always overwritten** on edit, like
+  `quantity_on_hand`/`unit_price`/`low_stock_threshold` and unlike
+  `name`/`unit` (I6): the Add/Edit modal always renders them, so a blank
+  means "clear it", which is how a note or a stale reorder link is deleted.
+  A `url` that fails I16's scheme check clears the field rather than
+  keeping the previous value — it was rejected, and silently leaving the
+  old link in place would read as if it had saved.
+
 ## 4. Selectable items (the "add material" picker on an order)
 
 - **S1.** The items offered are: every **active** item for the company,
@@ -296,6 +328,57 @@ dropdown, and in what sequence. It never gates what `InventoryItem.unit`
   than a style change signaling on/off the way the type buttons do.
 - **U13.** The "Show hidden" toggle is absent entirely when no item is
   hidden — there being nothing for it to reveal.
+
+### The master list's configurable columns (`CFG*`)
+
+Which fields the `/inventory` table renders and in what order is a
+per-company preference, edited from Settings → Inventory. Same contract as
+the Orders list's columns (`app.py`'s `ORDER_COLUMNS`/`_order_columns_for`)
+and deliberately the same UI, since it's the same control over a second
+table.
+
+- **CFG1.** `config.INVENTORY_COLUMNS` is the fixed, app-declared set of
+  configurable columns (`type`, `name`, `reference`, `unit`, `quantity`,
+  `unit_price`, `notes`, `url`), each with a label, a numeric flag, and the
+  `INVENTORY_SORT_KEYS` entry its header links to (or `None` for a column
+  that isn't sortable). Its declaration order is the default column order.
+- **CFG2.** A company's layout is stored as one JSON blob on its own
+  `InventoryPref` row (`[{"key", "visible"}, …]`) — a fixed set of known
+  keys, not an open-ended list a user names, so there's nothing per-row to
+  hide-rather-than-delete. The row is created lazily on first write
+  (`services._prefs_for`), the same idiom as `_ensure_default_unit` and
+  `billing.profile_for()`.
+- **CFG3.** `list_columns` **never writes**: a company with no saved layout
+  reads as `INVENTORY_COLUMNS` itself, every column visible, so merely
+  rendering a page can't create a prefs row.
+- **CFG4.** The saved layout is merged against `INVENTORY_COLUMNS` on every
+  read: a key the app has since added appears (visible, appended at the
+  end), a key the app has since dropped falls out silently, and a malformed
+  or unparsable blob degrades to the declared default rather than raising.
+- **CFG5.** `INVENTORY_REQUIRED_COLUMNS` (currently just `name`) can be
+  reordered but **not hidden** — the item's name is the row's only handle
+  on its edit modal, so hiding it would leave a table nothing could be
+  edited from. `toggle_column` is a no-op against one, it renders no
+  Hide button in Settings, and it's forced visible even if a stale blob
+  says otherwise.
+- **CFG6.** `toggle_column` flips one column's visibility; a key outside
+  `INVENTORY_COLUMNS` is a silent no-op, same quiet-validation posture as
+  the rest of the module.
+- **CFG7.** `reorder_columns` sets order from position in the given key
+  list, keeping each column's current visibility. Unknown keys are skipped,
+  duplicates collapse, and a key the client didn't send back is appended
+  rather than lost — same "the request is a `fetch()`, not a form the
+  server built" reasoning as `reorder_units` (UN12). A list with **nothing
+  recognisable in it is a no-op**, so a broken client can't flatten the
+  layout to nothing.
+- **CFG8.** Both routes are per-tenant (`current_user.company_id`) and
+  require login (A1/A3): one company's layout never affects another's.
+- **CFG9.** The **Actions** column is not configurable and never appears in
+  this editor — it's the row's controls, not one of the item's fields.
+- **CFG10.** Hiding a column hides only that **cell** on the master list.
+  The field keeps its value, and the Add/Edit modal still renders every
+  field regardless of column visibility — this is a table-width
+  preference, not a way to disable a field.
 
 ## 10. Stock alerts (out-of-stock + low-stock, nav badges + Materials-tab warnings)
 
@@ -451,6 +534,10 @@ catch a regression of it; that's a to-do, not a shrug.
 | I11 | `test_delete_item_removes_it_when_unused`, `test_delete_item_is_blocked_once_referenced` |
 | I12 | `test_inventory_list_sorts_by_name` (indirectly, via the route) |
 | I13 | `test_add_item_stores_the_low_stock_threshold`, `test_add_item_defaults_the_threshold_to_zero`, `test_edit_item_overwrites_the_low_stock_threshold`, `test_is_low_stock_only_in_the_band_above_zero` |
+| I14 | `test_add_item_stores_the_descriptive_fields`, `test_descriptive_fields_default_to_none`, `test_add_item_route_stores_the_descriptive_fields` |
+| I15 | `test_blank_descriptive_fields_are_stored_as_none` |
+| I16 | `test_add_item_prefixes_a_scheme_less_url`, `test_add_item_drops_a_non_http_url`, `test_url_host_strips_the_scheme_and_www` |
+| I17 | `test_edit_item_overwrites_the_descriptive_fields` |
 | S1 | `test_selectable_items_includes_a_hidden_item_already_used_on_this_order` |
 | S2 | `test_selectable_items_excludes_hidden_items_by_default` |
 | S3 | `test_selectable_items_are_ordered_by_type_sort_order_then_name` |
@@ -491,6 +578,16 @@ catch a regression of it; that's a to-do, not a shrug.
 | U11 | `test_inventory_list_marks_hidden_items_with_data_active_false` (asserts the data attribute the client-side default-hide reads — the actual hiding is JS, manually verified in browser only) |
 | U12 | `test_show_hidden_toggle_appears_when_a_hidden_item_exists` (presence only — the reveal-on-click behavior itself is JS, manually verified in browser only) |
 | U13 | `test_show_hidden_toggle_absent_when_nothing_is_hidden` |
+| CFG1 | `test_list_columns_defaults_to_the_declared_order` |
+| CFG2 | *(implicit — asserted through every CFG test below)* |
+| CFG3 | `test_list_columns_does_not_create_a_prefs_row` |
+| CFG4 | `test_a_stale_saved_layout_degrades_to_the_default`, `test_a_malformed_saved_layout_degrades_to_the_default` |
+| CFG5 | `test_toggle_column_is_a_no_op_for_a_required_column`, `test_settings_inventory_page_lists_every_column` (the "always shown" tag) |
+| CFG6 | `test_toggle_column_hides_and_shows_it`, `test_toggle_column_ignores_an_unknown_key`, `test_toggle_column_route_hides_it_from_the_list` |
+| CFG7 | `test_reorder_columns_sets_the_order_and_keeps_visibility`, `test_reorder_columns_ignores_unknown_keys`, `test_reorder_columns_with_nothing_recognisable_is_a_no_op`, `test_reorder_columns_route_persists_the_order` |
+| CFG8 | `test_column_layout_is_scoped_to_the_tenant` |
+| CFG9 | — gap — (asserted by construction: "Actions" isn't in `INVENTORY_COLUMNS`, so there's nothing to render a row for) |
+| CFG10 | `test_toggle_column_route_hides_it_from_the_list` (the note stays in the edit modal's textarea with the column hidden) |
 | V1 | `test_out_of_stock_count_counts_zero_and_negative_active_items`, `test_out_of_stock_count_excludes_hidden_items` |
 | V2 | `test_out_of_stock_count_is_scoped_to_the_tenant` |
 | V3 | `test_stock_alert_badge_appears_when_an_item_is_out_of_stock`, `test_stock_alert_badge_absent_when_nothing_is_out_of_stock` |

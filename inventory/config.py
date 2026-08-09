@@ -100,3 +100,37 @@ UNIT_LABELS = {key: info["label"] for key, info in UNIT_CATALOG.items()}
 # used to be a literal `unit === 'sqft'` check in that template's JS to any
 # unit a company enables, whole or divisible.
 UNIT_WHOLE = {key: info["whole"] for key, info in UNIT_CATALOG.items()}
+
+
+# ---------------------------------------------------------------------------
+# The /inventory master-list columns.
+#
+# Same role as app.py's ORDER_COLUMNS, and deliberately the same shape: this
+# dict is both the fallback order for a company that's never reordered
+# anything and the whitelist a saved layout is filtered against, so a column
+# added here later appears (visible, appended) for a company with an older
+# saved layout, and one removed here silently drops out of theirs instead of
+# erroring. Declaration order *is* the default column order.
+#
+# `sort` names the INVENTORY_SORT_KEYS entry a column's header links to (see
+# inventory/routes.py), or None for a column that isn't sortable — the same
+# split the page already had by hand, where Type/Name/Unit price carried a
+# sort link and Unit/Quantity didn't.
+# ---------------------------------------------------------------------------
+INVENTORY_COLUMNS = {
+    "type":       {"label": "Type",             "numeric": False, "sort": "type"},
+    "name":       {"label": "Name",             "numeric": False, "sort": "name"},
+    "reference":  {"label": "Ref",              "numeric": False, "sort": None},
+    "unit":       {"label": "Unit",             "numeric": False, "sort": None},
+    "quantity":   {"label": "Quantity on hand", "numeric": True,  "sort": None},
+    "unit_price": {"label": "Unit price",       "numeric": True,  "sort": "price"},
+    "notes":      {"label": "Notes",            "numeric": False, "sort": None},
+    "url":        {"label": "Link",             "numeric": False, "sort": None},
+}
+
+# Columns a company can reorder but not hide. The item's name is the row's
+# only handle on its edit modal (clicking it is what opens the thing), so
+# hiding it would leave a table nothing could be edited from — unlike
+# /orders, where every row still links out from its own Item cell *and* the
+# order page is reachable from the timeline. Reordering it is fine.
+INVENTORY_REQUIRED_COLUMNS = frozenset({"name"})

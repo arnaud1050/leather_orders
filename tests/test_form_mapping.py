@@ -316,9 +316,15 @@ def test_a_form_with_no_email_falls_back_to_the_sender(app, company, account, ma
     assert client.name == "Haejung Kim"
 
 
-def test_the_badge_still_announces_it(app, company, account, mapped_rule):
+def test_the_enquiry_is_announced_exactly_once(app, company, account, mapped_rule):
+    """A form submission is one event, and the Clients link says so once.
+    Both purple badges firing — "1" beside "1" — was the app counting the
+    arrival and the enquiry as two things. The unread one wins (N-10a): it's
+    the half with work attached."""
     deliver(account)
-    assert sender_rules.unseen_client_count(company.id) == 1
+
+    assert email_service.unread_client_mail_count(company.id) == 1
+    assert sender_rules.unseen_client_count(company.id) == 0
 
 
 # --- a returning customer -------------------------------------------------

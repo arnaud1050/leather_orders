@@ -20,13 +20,16 @@ this module's tables, they're just queried by `order_id` directly (see
 
 Layers, and what each is for:
 
-- **`config.py`** — the unit vocabulary (`each` / `sqft`).
-- **`models.py`** — `InventoryType`, `InventoryItem`, `OrderMaterial`,
-  `OrderMaterialOther`.
-- **`migrations.py`** — this module's own column migrations (empty for now —
-  every table here is brand new, so `db.create_all()` covers it; ready for
-  whenever a column gets added later, same starting shape
-  `documents/migrations.py` had).
+- **`config.py`** — the fixed vocabularies this module declares rather than
+  stores: the unit catalog (`UNIT_CATALOG`) and the master list's column set
+  (`INVENTORY_COLUMNS`). A company configures a *subset and order* of each;
+  neither list itself is per-company.
+- **`models.py`** — `InventoryUnit`, `InventoryPref`, `InventoryType`,
+  `InventoryItem`, `OrderMaterial`, `OrderMaterialOther`.
+- **`migrations.py`** — this module's own column migrations (the item's
+  low-stock threshold, and its reference/url/notes fields — every table here
+  is new enough that `db.create_all()` still covers the tables themselves),
+  plus the `InventoryUnit` data backfill.
 - **`services.py`** — the public API. Every function takes `company_id` (or
   an already tenant-checked `order_id`) first.
 - **`routes.py`** — the Flask blueprint, registered with a host-supplied

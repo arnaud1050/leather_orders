@@ -354,10 +354,79 @@ def test_the_sync_summary_reports_what_rules_did(app, company, account):
 
 
 # --- the new-clients badge ------------------------------------------------
+#
+# N-10a is what shapes this whole section. A conversion *always* arrives
+# with exactly one unread message — the enquiry that caused it — so the
+# unread-mail badge is already announcing the same client, on the same nav
+# link, in the same purple. This badge stands down for those, which means
+# the tests below have to put the mail out of the way to see it at all.
 
-def test_an_auto_created_client_raises_the_badge(app, company, account):
+def announced_alone(company, account):
+    """A rule-created client the mail badge is silent about.
+
+    Dismissing the conversation is the way that happens: it's how "don't
+    tell me about this" is spelled for mail (N-24), and it's the only one
+    that doesn't also acknowledge the client — `mark_thread_opened` does
+    both, deliberately (N-10a).
+    """
     rule(company, FORM, RULE_CONVERT)
     incoming(company, account)
+    email_service.dismiss_thread(company.id, stored().id)
+
+
+def test_a_conversion_raises_one_purple_badge_not_two(app, company, account):
+    """The bug N-10a fixes: one contact-form submission used to light both
+    purple badges on Clients, each reading "1", for one event."""
+    rule(company, FORM, RULE_CONVERT)
+    incoming(company, account)
+
+    assert email_service.unread_client_mail_count(company.id) == 1
+    assert sender_rules.unseen_client_count(company.id) == 0
+
+
+def test_the_clients_link_carries_a_single_purple_badge(logged_in, company, account):
+    rule(company, FORM, RULE_CONVERT)
+    incoming(company, account)
+    body = logged_in.get("/").get_data(as_text=True)
+
+    assert "nav-badge--mail" in body
+    assert "nav-badge--new" not in body
+
+
+def test_reading_the_enquiry_does_not_summon_the_other_badge(
+    logged_in, company, account,
+):
+    """The half that makes suppression safe. Without acknowledging on open,
+    this badge would *appear* the moment the mail badge cleared — a notice
+    arriving after the thing it announces has been dealt with."""
+    rule(company, FORM, RULE_CONVERT)
+    incoming(company, account)
+    logged_in.get(f"/mail/threads/{stored().id}")
+
+    body = logged_in.get("/").get_data(as_text=True)
+    assert "nav-badge--mail" not in body
+    assert "nav-badge--new" not in body
+    assert AutoCreatedClient.query.filter_by(company_id=company.id).one().seen_at
+
+
+def test_reading_the_enquiry_keeps_the_record(app, company, account):
+    """Acknowledged, not deleted — N-12 holds for this clearing rule too."""
+    rule(company, FORM, RULE_CONVERT)
+    incoming(company, account)
+    email_service.mark_thread_opened(company.id, stored().id)
+
+    row = AutoCreatedClient.query.filter_by(company_id=company.id).one()
+    assert row.seen_at is not None
+    assert row.client_id is not None
+
+
+def test_a_dismissed_enquiry_still_announces_the_client(app, company, account):
+    """What the badge is still for. Hiding the conversation silences the
+    mail badge (N-24) — but a client did appear on the roster, and nothing
+    else would say so."""
+    announced_alone(company, account)
+
+    assert email_service.unread_client_mail_count(company.id) == 0
     assert sender_rules.unseen_client_count(company.id) == 1
 
 
@@ -371,8 +440,7 @@ def test_a_hand_converted_client_does_not_raise_the_badge(
 
 
 def test_acknowledging_clears_the_badge(app, company, account):
-    rule(company, FORM, RULE_CONVERT)
-    incoming(company, account)
+    announced_alone(company, account)
     sender_rules.acknowledge_all(company.id)
     assert sender_rules.unseen_client_count(company.id) == 0
 
@@ -380,8 +448,7 @@ def test_acknowledging_clears_the_badge(app, company, account):
 def test_acknowledging_keeps_the_record(app, company, account):
     """The row says this client arrived automatically, which stays true once
     the badge is gone."""
-    rule(company, FORM, RULE_CONVERT)
-    incoming(company, account)
+    announced_alone(company, account)
     sender_rules.acknowledge_all(company.id)
 
     row = AutoCreatedClient.query.filter_by(company_id=company.id).one()
@@ -390,22 +457,19 @@ def test_acknowledging_keeps_the_record(app, company, account):
 
 
 def test_the_badge_is_tenant_scoped(app, company, other_company, account):
-    rule(company, FORM, RULE_CONVERT)
-    incoming(company, account)
+    announced_alone(company, account)
     assert sender_rules.unseen_client_count(other_company.id) == 0
 
 
 def test_the_badge_shows_on_the_clients_link(logged_in, company, account):
-    rule(company, FORM, RULE_CONVERT)
-    incoming(company, account)
+    announced_alone(company, account)
     body = logged_in.get("/").get_data(as_text=True)
     assert "nav-badge--new" in body
     assert "1 client added automatically" in body
 
 
 def test_opening_the_client_list_clears_the_badge(logged_in, company, account):
-    rule(company, FORM, RULE_CONVERT)
-    incoming(company, account)
+    announced_alone(company, account)
     logged_in.get("/clients")
     assert "nav-badge--new" not in logged_in.get("/").get_data(as_text=True)
 
@@ -415,8 +479,7 @@ def test_the_lead_badge_and_the_new_client_badge_are_different_things(
 ):
     """Both sit on the same Clients link, and they must not be conflated: one
     counts work outstanding, the other announces something that happened."""
-    rule(company, FORM, RULE_CONVERT)
-    incoming(company, account)
+    announced_alone(company, account)
 
     body = logged_in.get("/").get_data(as_text=True)
     assert "1 lead waiting" in body            # the untouched lead_thread

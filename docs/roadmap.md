@@ -113,13 +113,18 @@
   not client-provided numbers. Revisit once the client shares actual production lead
   time per item type.
 - **Prices**: also estimates, not real numbers — same caveat as lead times.
-- **No inventory-value report, and no *threshold* low-stock alerting.**
-  `/inventory` rendering a negative quantity in red, the nav badge, and the
-  Materials-tab warning (see the Inventory module's "Stock alerts" section)
-  all fire on a hard zero-or-negative signal only — there's still no
-  rolled-up "total stock value" figure and no configurable reorder point
-  ("warn me under 5 units"). An obvious next addition alongside the revenue
-  cards on `/analytics`.
+- **No inventory-value report.** Threshold low-stock alerting *does* now
+  exist — a per-item warning point driving an amber tier beside the red
+  zero-or-negative one (see the Inventory module's "Stock alerts" section) —
+  but there's still no rolled-up "total stock value" figure. An obvious next
+  addition alongside the revenue cards on `/analytics`.
+- **No image on an inventory item.** A thumbnail is the one thing that would
+  actually show *which* leather a row means, and it's wanted — deliberately
+  deferred rather than dropped, since it's an upload/storage/thumbnailing
+  job (the `documents/` module's territory) rather than another column. The
+  descriptive fields it would sit beside — `reference`, `url`, `notes` —
+  shipped first (`I14`), and `INVENTORY_COLUMNS` is where its column would
+  be declared when it lands.
 - **A material's item and unit can't be changed once added, only its
   quantity** (`inventory.services.edit_material`) — same "remove and re-add"
   limit `OrderLine` has, and for the same "fine at prototype scale" reason.

@@ -9,10 +9,24 @@ than a raised exception, since these are always called from a plain form POST
 with nowhere interesting to show a stack trace.
 """
 
+import json
+
 from models import db
 
-from inventory.config import DEFAULT_UNIT, UNIT_CATALOG
-from inventory.models import InventoryItem, InventoryType, InventoryUnit, OrderMaterial, OrderMaterialOther
+from inventory.config import (
+    DEFAULT_UNIT,
+    INVENTORY_COLUMNS,
+    INVENTORY_REQUIRED_COLUMNS,
+    UNIT_CATALOG,
+)
+from inventory.models import (
+    InventoryItem,
+    InventoryPref,
+    InventoryType,
+    InventoryUnit,
+    OrderMaterial,
+    OrderMaterialOther,
+)
 
 # ---------------------------------------------------------------------------
 # Units — which of config.UNIT_CATALOG's keys a company offers in its
@@ -127,6 +141,120 @@ def reorder_units(company_id: int, ordered_ids: list[int]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Master-list columns — which of config.INVENTORY_COLUMNS the /inventory
+# table renders and in what order. Same contract as app.py's
+# _order_columns_for/_save_order_columns for the Orders list, stored as one
+# JSON blob on this module's own per-company InventoryPref row (see that
+# model's docstring for why a blob and why not on `Company`).
+# ---------------------------------------------------------------------------
+
+def _prefs_for(company_id: int) -> InventoryPref:
+    """This company's preferences row, created on first use — the same lazy
+    idiom `_ensure_default_unit` and `billing.profile_for()` use, so nothing
+    has to be seeded at company creation and a company that never opens
+    Settings simply reads the declared defaults."""
+    prefs = InventoryPref.query.filter_by(company_id=company_id).first()
+    if prefs is None:
+        prefs = InventoryPref(company_id=company_id)
+        db.session.add(prefs)
+        db.session.commit()
+    return prefs
+
+
+def list_columns(company_id: int) -> list[dict]:
+    """Every master-list column, in this company's saved order/visibility —
+    hidden ones included, since the Settings editor is what turns visibility
+    back on and so has to render a row for them.
+
+    Merged against INVENTORY_COLUMNS the way `_order_columns_for` merges
+    against ORDER_COLUMNS: a key the app has since added appears (visible,
+    appended) for a company whose saved layout predates it, a key the app has
+    since dropped falls out of theirs silently, and a malformed blob reads as
+    the declared default rather than raising. Read-only — it never writes a
+    prefs row, so merely rendering a page can't create one.
+    """
+    prefs = InventoryPref.query.filter_by(company_id=company_id).first()
+    saved = []
+    if prefs is not None and prefs.columns:
+        try:
+            saved = json.loads(prefs.columns)
+        except (ValueError, TypeError):
+            saved = []
+
+    seen = set()
+    columns = []
+    for entry in saved:
+        key = entry.get("key") if isinstance(entry, dict) else None
+        if key in INVENTORY_COLUMNS and key not in seen:
+            seen.add(key)
+            columns.append(_column(key, visible=bool(entry.get("visible", True))))
+    for key in INVENTORY_COLUMNS:
+        if key not in seen:
+            columns.append(_column(key, visible=True))
+    return columns
+
+
+def _column(key: str, *, visible: bool) -> dict:
+    """One column as the templates want it: the app's declared label/numeric/
+    sort alongside this company's own visibility. A required column (see
+    INVENTORY_REQUIRED_COLUMNS) is forced visible whatever a stale blob
+    says — a layout saved before a column became required shouldn't leave
+    the table missing it."""
+    required = key in INVENTORY_REQUIRED_COLUMNS
+    return {
+        "key": key,
+        **INVENTORY_COLUMNS[key],
+        "visible": True if required else visible,
+        "can_hide": not required,
+    }
+
+
+def visible_columns(company_id: int) -> list[dict]:
+    """What the /inventory table actually renders."""
+    return [c for c in list_columns(company_id) if c["visible"]]
+
+
+def _save_columns(company_id: int, columns: list[dict]) -> None:
+    prefs = _prefs_for(company_id)
+    prefs.columns = json.dumps([
+        {"key": c["key"], "visible": c["visible"]} for c in columns
+    ])
+    db.session.commit()
+
+
+def toggle_column(company_id: int, key: str) -> None:
+    """Flip one column's visibility. A key outside INVENTORY_COLUMNS, or one
+    that can't be hidden at all, is a silent no-op — same quiet-validation
+    posture as every other function here."""
+    if key not in INVENTORY_COLUMNS or key in INVENTORY_REQUIRED_COLUMNS:
+        return
+    columns = list_columns(company_id)
+    for column in columns:
+        if column["key"] == key:
+            column["visible"] = not column["visible"]
+    _save_columns(company_id, columns)
+
+
+def reorder_columns(company_id: int, ordered_keys: list[str]) -> None:
+    """Set column order from position in `ordered_keys`, keeping each
+    column's current visibility. Unknown keys are dropped and a key the
+    client didn't send back is appended rather than lost — same "the request
+    is a fetch(), not a form the server built" reasoning as `reorder_units`
+    and `reorder_order_columns`. An empty/entirely-unknown list is a no-op,
+    so a broken client can't flatten the layout to nothing."""
+    order = [key for key in ordered_keys if key in INVENTORY_COLUMNS]
+    if not order:
+        return
+    visibility = {c["key"]: c["visible"] for c in list_columns(company_id)}
+    columns = [{"key": key, "visible": visibility.get(key, True)} for key in dict.fromkeys(order)]
+    seen = {c["key"] for c in columns}
+    for key, visible in visibility.items():
+        if key not in seen:
+            columns.append({"key": key, "visible": visible})
+    _save_columns(company_id, columns)
+
+
+# ---------------------------------------------------------------------------
 # Inventory types — company-configurable categories, same hide-don't-delete
 # shape as OrderType/DocumentType.
 # ---------------------------------------------------------------------------
@@ -238,9 +366,43 @@ def selectable_items(company_id: int, order_id: int | None = None) -> list[Inven
     return merged
 
 
+def _clean_text(raw: str | None, limit: int) -> str | None:
+    """Blank (or whitespace-only) means "not filled in" — stored as NULL
+    rather than an empty string, so "no reference" is one value everywhere
+    instead of two that render identically. Truncated to the column's own
+    width so an oversized paste is trimmed rather than rejected."""
+    value = (raw or "").strip()
+    return value[:limit] if value else None
+
+
+def _clean_url(raw: str | None) -> str | None:
+    """Normalize a reorder link into something safe to render as an anchor.
+
+    A bare "supplier.example/leather" gets an https:// prefix — people paste
+    and type addresses without the scheme, and a link that doesn't navigate
+    is worse than no link. Anything carrying a *different* scheme
+    (javascript:, data:, mailto:, ftp:) is dropped rather than stored: this
+    field's whole purpose is to become a clickable href, so an href we
+    wouldn't want clicked has no business being saved in the first place. A
+    host:port with no scheme is the one legitimate casualty of that check —
+    type the https:// and it stores fine.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if value.lower().startswith(("http://", "https://")):
+        return value[:500]
+    head, _, _ = value.partition("/")
+    scheme, sep, after = head.partition(":")
+    if sep and not after.isdigit():
+        return None
+    return ("https://" + value)[:500]
+
+
 def add_item(
     company_id: int, name: str, unit: str, inventory_type_id: int | None,
     quantity_on_hand: float, unit_price: float, low_stock_threshold: float = 0.0,
+    reference: str | None = None, url: str | None = None, notes: str | None = None,
 ) -> InventoryItem | None:
     name = (name or "").strip()
     if not name or unit not in UNIT_CATALOG:
@@ -259,6 +421,9 @@ def add_item(
         quantity_on_hand=quantity_on_hand,
         unit_price=unit_price,
         low_stock_threshold=low_stock_threshold,
+        reference=_clean_text(reference, 120),
+        url=_clean_url(url),
+        notes=_clean_text(notes, 10000),
     )
     db.session.add(item)
     db.session.commit()
@@ -269,6 +434,7 @@ def edit_item(
     company_id: int, item_id: int, *, name: str, unit: str,
     inventory_type_id: int | None, quantity_on_hand: float, unit_price: float,
     low_stock_threshold: float = 0.0,
+    reference: str | None = None, url: str | None = None, notes: str | None = None,
 ) -> InventoryItem | None:
     item = get_item(company_id, item_id)
     if item is None:
@@ -292,6 +458,14 @@ def edit_item(
     # renders this field, so a blank means "no warning point" (0), not "leave
     # it alone" (unlike name/unit, which a partial edit keeps).
     item.low_stock_threshold = low_stock_threshold
+    # Same always-overwrite rule, for the same reason: the modal always
+    # renders all three, so clearing one is how you delete a note or a stale
+    # reorder link. (A URL that fails _clean_url's scheme check clears the
+    # field rather than keeping the old one — it was rejected, and silently
+    # leaving the previous link in place would read as if it had saved.)
+    item.reference = _clean_text(reference, 120)
+    item.url = _clean_url(url)
+    item.notes = _clean_text(notes, 10000)
     db.session.commit()
     return item
 

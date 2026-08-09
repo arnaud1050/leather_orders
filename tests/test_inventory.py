@@ -14,7 +14,15 @@ import pytest
 from models import Client, Order, db
 
 from inventory import services
-from inventory.models import InventoryItem, InventoryType, InventoryUnit, OrderMaterial, OrderMaterialOther
+from inventory.config import INVENTORY_COLUMNS
+from inventory.models import (
+    InventoryItem,
+    InventoryPref,
+    InventoryType,
+    InventoryUnit,
+    OrderMaterial,
+    OrderMaterialOther,
+)
 
 
 # --- units: which UNIT_CATALOG keys a company offers, and in what order ----
@@ -437,6 +445,220 @@ def test_edit_item_is_scoped_to_the_tenant(company, other_company):
     )
     assert result is None
     assert db.session.get(InventoryItem, item.id).name == "Widget"  # untouched
+
+
+# --- I14-I17: the optional descriptive fields (ref / link / notes) --------
+
+def test_add_item_stores_the_descriptive_fields(company):
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        reference="ART-4471", url="https://supplier.example/art-4471",
+        notes="Minimum order 5.",
+    )
+    assert item.reference == "ART-4471"
+    assert item.url == "https://supplier.example/art-4471"
+    assert item.notes == "Minimum order 5."
+
+
+def test_descriptive_fields_default_to_none(company):
+    """Omitted (as every pre-existing caller does) means NULL — an item
+    without them is a complete item, they're never required."""
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+    )
+    assert item.reference is None
+    assert item.url is None
+    assert item.notes is None
+
+
+def test_blank_descriptive_fields_are_stored_as_none(company):
+    """Whitespace-only is "not filled in", stored one way rather than as an
+    empty string that renders identically to NULL."""
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        reference="  ", url="  ", notes="  ",
+    )
+    assert (item.reference, item.url, item.notes) == (None, None, None)
+
+
+def test_add_item_prefixes_a_scheme_less_url(company):
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        url="supplier.example/art-4471",
+    )
+    assert item.url == "https://supplier.example/art-4471"
+
+
+def test_add_item_drops_a_non_http_url(company):
+    """This field becomes a clickable href, so anything but http(s) is
+    dropped rather than stored — see services._clean_url."""
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        url="javascript:alert(1)",
+    )
+    assert item.url is None
+
+
+def test_edit_item_overwrites_the_descriptive_fields(company):
+    """Always overwritten, like quantity/price/threshold (I6) — the modal
+    always renders all three, so clearing one is how you delete it."""
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        reference="OLD-1", url="https://old.example", notes="Old note.",
+    )
+    services.edit_item(
+        company.id, item.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        reference="NEW-2", url="", notes="",
+    )
+    updated = db.session.get(InventoryItem, item.id)
+    assert updated.reference == "NEW-2"
+    assert updated.url is None
+    assert updated.notes is None
+
+
+def test_url_host_strips_the_scheme_and_www(company):
+    item = services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        url="https://www.supplier.example/catalog/art-4471?x=1",
+    )
+    assert item.url_host == "supplier.example"
+
+
+def test_add_item_route_stores_the_descriptive_fields(logged_in, company):
+    logged_in.post("/inventory/new", data={
+        "name": "Widget", "unit": "each", "inventory_type_id": "",
+        "quantity_on_hand": "1", "unit_price": "1",
+        "reference": "ART-4471", "url": "supplier.example",
+        "notes": "Stiffer temper.",
+    })
+    item = InventoryItem.query.filter_by(company_id=company.id, name="Widget").first()
+    assert item.reference == "ART-4471"
+    assert item.url == "https://supplier.example"
+    assert item.notes == "Stiffer temper."
+
+
+# --- CFG*: the master list's configurable columns -------------------------
+
+def test_list_columns_defaults_to_the_declared_order(company):
+    """No saved layout reads as config.INVENTORY_COLUMNS itself — every
+    column visible, in declaration order."""
+    columns = services.list_columns(company.id)
+    assert [c["key"] for c in columns] == list(INVENTORY_COLUMNS)
+    assert all(c["visible"] for c in columns)
+
+
+def test_list_columns_does_not_create_a_prefs_row(company):
+    """Rendering a page must not write — the row appears the first time
+    something is actually configured."""
+    services.list_columns(company.id)
+    assert InventoryPref.query.filter_by(company_id=company.id).first() is None
+
+
+def test_toggle_column_hides_and_shows_it(company):
+    services.toggle_column(company.id, "notes")
+    assert {c["key"]: c["visible"] for c in services.list_columns(company.id)}["notes"] is False
+    assert "notes" not in [c["key"] for c in services.visible_columns(company.id)]
+
+    services.toggle_column(company.id, "notes")
+    assert {c["key"]: c["visible"] for c in services.list_columns(company.id)}["notes"] is True
+
+
+def test_toggle_column_is_a_no_op_for_a_required_column(company):
+    """Name is the row's only handle on its edit modal — hiding it would
+    leave a table nothing could be edited from."""
+    services.toggle_column(company.id, "name")
+    by_key = {c["key"]: c for c in services.list_columns(company.id)}
+    assert by_key["name"]["visible"] is True
+    assert by_key["name"]["can_hide"] is False
+
+
+def test_toggle_column_ignores_an_unknown_key(company):
+    services.toggle_column(company.id, "not_a_column")
+    assert [c["key"] for c in services.list_columns(company.id)] == list(INVENTORY_COLUMNS)
+
+
+def test_reorder_columns_sets_the_order_and_keeps_visibility(company):
+    services.toggle_column(company.id, "notes")
+    services.reorder_columns(company.id, ["notes", "name", "type"])
+    columns = services.list_columns(company.id)
+    assert [c["key"] for c in columns][:3] == ["notes", "name", "type"]
+    # Every column the client didn't send is appended, not lost.
+    assert sorted(c["key"] for c in columns) == sorted(INVENTORY_COLUMNS)
+    assert {c["key"]: c["visible"] for c in columns}["notes"] is False
+
+
+def test_reorder_columns_ignores_unknown_keys(company):
+    services.reorder_columns(company.id, ["not_a_column", "url"])
+    assert [c["key"] for c in services.list_columns(company.id)][0] == "url"
+
+
+def test_reorder_columns_with_nothing_recognisable_is_a_no_op(company):
+    """A broken client can't flatten the layout to nothing."""
+    services.reorder_columns(company.id, ["nope"])
+    assert [c["key"] for c in services.list_columns(company.id)] == list(INVENTORY_COLUMNS)
+
+
+def test_a_stale_saved_layout_degrades_to_the_default(company):
+    """A key the app has since dropped falls out; one it has since added
+    appears (visible, appended) rather than erroring."""
+    prefs = services._prefs_for(company.id)
+    prefs.columns = json.dumps([{"key": "url", "visible": False}, {"key": "gone", "visible": True}])
+    db.session.commit()
+    columns = services.list_columns(company.id)
+    assert columns[0]["key"] == "url" and columns[0]["visible"] is False
+    assert "gone" not in [c["key"] for c in columns]
+    assert sorted(c["key"] for c in columns) == sorted(INVENTORY_COLUMNS)
+
+
+def test_a_malformed_saved_layout_degrades_to_the_default(company):
+    prefs = services._prefs_for(company.id)
+    prefs.columns = "not json"
+    db.session.commit()
+    assert [c["key"] for c in services.list_columns(company.id)] == list(INVENTORY_COLUMNS)
+
+
+def test_column_layout_is_scoped_to_the_tenant(company, other_company):
+    services.toggle_column(other_company.id, "notes")
+    assert {c["key"]: c["visible"] for c in services.list_columns(company.id)}["notes"] is True
+
+
+def test_toggle_column_route_hides_it_from_the_list(logged_in, company):
+    services.add_item(
+        company.id, name="Widget", unit="each",
+        inventory_type_id=None, quantity_on_hand=1, unit_price=1,
+        notes="A note that only shows in its own column.",
+    )
+    # The Notes *cell* — the edit modal's textarea holds the note either way.
+    assert "inventory-notes" in logged_in.get("/inventory").data.decode()
+
+    logged_in.post("/settings/inventory-columns/notes/toggle")
+    assert "inventory-notes" not in logged_in.get("/inventory").data.decode()
+
+
+def test_reorder_columns_route_persists_the_order(logged_in, company):
+    logged_in.post(
+        "/settings/inventory-columns/reorder",
+        data=json.dumps({"order": ["url", "name", "type"]}),
+        content_type="application/json",
+    )
+    assert [c["key"] for c in services.list_columns(company.id)][:3] == ["url", "name", "type"]
+
+
+def test_settings_inventory_page_lists_every_column(logged_in, company):
+    services.toggle_column(company.id, "notes")
+    body = logged_in.get("/settings/inventory").data.decode()
+    # Hidden ones too — this editor is what turns them back on.
+    assert 'data-key="notes"' in body
+    assert 'data-key="url"' in body
+    assert "always shown" in body  # Name's tag
 
 
 # --- I13: the low-stock warning point on an item --------------------------

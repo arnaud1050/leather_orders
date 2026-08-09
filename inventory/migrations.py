@@ -10,6 +10,11 @@ from app.py, the composition root, right after the other module migrations.
 Units settings section), so `db.create_all()` covers it with no
 `ADDED_COLUMNS` entry needed — same as every other table this module owns.
 It does need a **data** backfill, though: see `_seed_units_from_existing_items`.
+
+`inventory_prefs` (the master list's column layout) is likewise a new table
+`db.create_all()` covers, and needs no backfill at all: a company with no row
+reads as the declared default layout (see `services.list_columns`), so the
+row only ever gets written the first time someone actually changes something.
 """
 
 import logging
@@ -32,6 +37,14 @@ ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # items had before the column existed (only the hard zero/negative signal
     # applies until someone sets a threshold).
     ("inventory_items", "low_stock_threshold", "FLOAT NOT NULL DEFAULT 0"),
+    # The three optional descriptive fields on an item (supplier reference,
+    # reorder link, free-text notes), added after inventory_items first
+    # shipped. Nullable with no default, so every existing row backfills to
+    # NULL — "not filled in", which is exactly what they are and exactly how
+    # a brand new item starts. See InventoryItem's docstring.
+    ("inventory_items", "reference", "VARCHAR(120)"),
+    ("inventory_items", "url", "VARCHAR(500)"),
+    ("inventory_items", "notes", "TEXT"),
 ]
 
 

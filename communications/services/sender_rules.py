@@ -342,5 +342,34 @@ def acknowledge_all(company_id: int) -> int:
 
 
 def unseen_client_count(company_id: int) -> int:
-    """How many clients appeared without anyone deciding to create them."""
-    return AutoCreatedClient.query.filter_by(company_id=company_id, seen_at=None).count()
+    """How many clients appeared without anyone deciding to create them —
+    **excluding any the unread-mail badge is already announcing** (`N-10a`).
+
+    A client created from a contact form always arrives with exactly one
+    unread message: the enquiry that created them. So without this, one form
+    submission raised *two purple badges* side by side on the same Clients
+    link, both reading "1", for one event. They aren't two facts. The unread
+    one is the one worth keeping: it's the actionable half ("read this"), it
+    clears by doing the work rather than by glancing at a list, and opening
+    the conversation shows the new client's name at the top of the page
+    linked to their record — which is the whole content of the other notice.
+
+    Suppressed, not cleared: the row stays unseen, so a client whose mail is
+    dismissed still gets announced. Reading the enquiry acknowledges the row
+    outright (see `email_service.mark_thread_opened`), which is what stops
+    this badge appearing the moment the mail badge clears.
+
+    Deliberately built on `unread_counts_by_client` — the *same* query the
+    mail badge runs — rather than a second one shaped like it. Two badges
+    that must never both count a client can't be allowed to disagree about
+    which clients those are (the N-25 argument, one nav link over).
+    """
+    # Deferred: email_service reaches this module through email_sync, so a
+    # top-level import back would be circular.
+    from communications.services import email_service
+
+    announced = email_service.unread_counts_by_client(company_id)
+    pending = AutoCreatedClient.query.filter_by(
+        company_id=company_id, seen_at=None,
+    ).all()
+    return sum(1 for row in pending if row.client_id not in announced)

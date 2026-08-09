@@ -140,6 +140,10 @@ def inventory_list():
     return render_template(
         "inventory/inventory_list.html",
         items=items,
+        # Only what this company chose to show, in its own order — the
+        # Actions column isn't in here and isn't configurable, being the
+        # row's controls rather than one of the item's fields.
+        columns=services.visible_columns(current_user.company_id),
         filter_types=filter_types,
         # Hidden items stay in the DOM (so Unhide keeps working) but are
         # filtered out client-side by default — see inventory_list.html's
@@ -172,6 +176,9 @@ def add_item():
         quantity_on_hand=_parse_float(request.form.get("quantity_on_hand")) or 0.0,
         unit_price=_parse_float(request.form.get("unit_price")) or 0.0,
         low_stock_threshold=_parse_float(request.form.get("low_stock_threshold")) or 0.0,
+        reference=request.form.get("reference"),
+        url=request.form.get("url"),
+        notes=request.form.get("notes"),
     )
     return redirect(url_for("inventory.inventory_list"))
 
@@ -188,6 +195,9 @@ def edit_item(item_id: int):
         quantity_on_hand=_parse_float(request.form.get("quantity_on_hand")) or 0.0,
         unit_price=_parse_float(request.form.get("unit_price")) or 0.0,
         low_stock_threshold=_parse_float(request.form.get("low_stock_threshold")) or 0.0,
+        reference=request.form.get("reference"),
+        url=request.form.get("url"),
+        notes=request.form.get("notes"),
     )
     return redirect(url_for("inventory.inventory_list"))
 
@@ -245,6 +255,31 @@ def reorder_units():
     payload = request.get_json(silent=True) or {}
     ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
     services.reorder_units(current_user.company_id, ordered_ids)
+    return "", 204
+
+
+# ---------------------------------------------------------------------------
+# Master-list columns — settings-level, which fields the /inventory table
+# renders and in what order. Same pair of routes as app.py's
+# toggle_order_column/reorder_order_columns for the Orders list: a plain form
+# POST for the per-column Hide/Show button (everything else in Settings acts
+# immediately on click, so this shouldn't be the odd one out) and a JSON
+# fetch() for the drag-to-reorder handler.
+# ---------------------------------------------------------------------------
+
+@bp.route("/settings/inventory-columns/<key>/toggle", methods=["POST"])
+@login_required
+def toggle_column(key: str):
+    services.toggle_column(current_user.company_id, key)
+    return redirect(url_for("settings_inventory"))
+
+
+@bp.route("/settings/inventory-columns/reorder", methods=["POST"])
+@login_required
+def reorder_columns():
+    payload = request.get_json(silent=True) or {}
+    ordered_keys = [k for k in payload.get("order", []) if isinstance(k, str)]
+    services.reorder_columns(current_user.company_id, ordered_keys)
     return "", 204
 
 

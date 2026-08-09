@@ -1651,6 +1651,21 @@ dialog.modal::backdrop {
   font-weight: 600;
 }
 
+/* The inventory list's Notes cell. A note is free text that can run to a
+   paragraph, and the table already scrolls horizontally (.table-scroll), so
+   an unclamped one would either set the height of its row or push every
+   column after it off screen. Clamped to a single ellipsized line with the
+   full text on the cell's title attribute; the edit modal is where a long
+   note is actually read and written. */
+.inventory-notes {
+  display: block;
+  max-width: 22ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+}
+
 /* A row of icon-btns inside a table cell — the inventory list's Actions
    column (hide/unhide, delete). */
 .icon-actions {

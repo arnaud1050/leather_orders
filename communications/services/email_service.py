@@ -156,6 +156,14 @@ def mark_thread_opened(company_id: int, thread_id: int) -> None:
       the thread again. That's the whole point for a client conversation,
       which unlike a lead stays alive for years.
 
+    It also **acknowledges a client this conversation created** (`N-10a`).
+    Reading the enquiry is seeing that they arrived: their name is at the
+    top of the page, linked to their record. Without this the "new clients"
+    badge — suppressed while the enquiry is unread, so one form submission
+    doesn't raise two purple badges — would *appear* the moment somebody
+    read it, which is a notice arriving after the thing it announces has
+    been dealt with.
+
     Called from a GET route. Writing on a GET is normally worth avoiding,
     but this is idempotent, destroys nothing, and opening the conversation
     is the only place "read" could honestly be recorded.
@@ -173,6 +181,14 @@ def mark_thread_opened(company_id: int, thread_id: int) -> None:
         if message.is_unread:
             message.read_at = now
             changed = True
+
+    # Acknowledged, never deleted — the row is the record that this client
+    # arrived automatically, which stays true after the badge is gone (N-12).
+    for row in AutoCreatedClient.query.filter_by(
+        company_id=company_id, thread_id=thread.id, seen_at=None,
+    ).all():
+        row.seen_at = now
+        changed = True
 
     if changed:
         db.session.commit()

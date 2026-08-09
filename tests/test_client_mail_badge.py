@@ -417,10 +417,20 @@ def test_a_second_user_sees_the_same_count(app, company, account, client_record)
 def test_all_three_clients_badges_can_show_at_once(logged_in, company, account,
                                                    client_record, lead_thread):
     """They count different things and must stay distinguishable: an
-    untriaged lead, a client the app added by itself, and unread mail."""
+    untriaged lead, a client the app added by itself, and unread mail.
+
+    **Two different clients**, and that's the point of N-10a rather than an
+    accident of the fixture: the purple pair never both count the same
+    person. One form submission producing "1" beside "1" on one link was
+    the app announcing one event twice.
+    """
     from communications.models import AutoCreatedClient
 
-    db.session.add(AutoCreatedClient(company_id=company.id, client_id=client_record.id))
+    appeared = Client(company_id=company.id, first_name="Haejung",
+                      last_name="Kim", email="haejung@example.com")
+    db.session.add(appeared)
+    db.session.flush()
+    db.session.add(AutoCreatedClient(company_id=company.id, client_id=appeared.id))
     client_thread(company, account, client_record)
     db.session.commit()
 

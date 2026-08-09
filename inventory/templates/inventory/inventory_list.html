@@ -57,32 +57,57 @@
   {% if items %}
   <div class="table-scroll">
     <table class="invoice-table invoice-table--no-mono" id="inventory-table">
+      {# Columns are configured per company (order + visibility) from
+         Settings → Inventory — same shape as the Orders list, see
+         inventory.services.list_columns. "Actions" is not one of them: it's
+         the row's controls, not one of the item's fields. #}
       <thead>
         <tr>
-          <th>{{ sort_link('type', 'Type') }}</th>
-          <th>{{ sort_link('name', 'Name') }}</th>
-          <th>Unit</th>
-          <th class="is-numeric">Quantity on hand</th>
-          <th class="is-numeric">{{ sort_link('price', 'Unit price', numeric=True) }}</th>
+          {% for column in columns %}
+          <th {% if column.numeric %}class="is-numeric"{% endif %}>
+            {%- if column.sort %}{{ sort_link(column.sort, column.label, numeric=column.numeric) }}{% else %}{{ column.label }}{% endif -%}
+          </th>
+          {% endfor %}
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for item in items %}
         <tr data-type="{{ item.inventory_type_id if item.inventory_type_id else 'none' }}" data-active="{{ 'true' if item.is_active else 'false' }}">
+          {% for column in columns %}
+          {% if column.key == 'type' %}
           <td>{% if item.inventory_type %}{{ item.inventory_type.label }}{% else %}&mdash;{% endif %}</td>
+          {% elif column.key == 'name' %}
           <td>
             <button type="button" class="link-button" data-open-item="{{ item.id }}">{{ item.name }}</button>
             {% if not item.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
           </td>
+          {% elif column.key == 'reference' %}
+          <td>{% if item.reference %}{{ item.reference }}{% else %}&mdash;{% endif %}</td>
+          {% elif column.key == 'unit' %}
           <td>{{ unit_labels[item.unit] }}</td>
+          {% elif column.key == 'quantity' %}
           {# Red when oversold (negative), amber when low but still above zero
              (at/below its warning point) — the master-list mirror of the two
              nav badges. See InventoryItem.is_low_stock. #}
           <td class="is-numeric {{ 'inventory-qty--negative' if item.quantity_on_hand < 0 else ('inventory-qty--low' if item.is_low_stock else '') }}">
             {{ ('%.0f'|format(item.quantity_on_hand)) if item.unit == 'each' else ('%.2f'|format(item.quantity_on_hand)) }}
           </td>
+          {% elif column.key == 'unit_price' %}
           <td class="is-numeric">${{ '%.2f'|format(item.unit_price) }}</td>
+          {% elif column.key == 'notes' %}
+          {# Clamped to one line with the full text on hover — a note can run
+             to a paragraph, and one long one shouldn't set the height of
+             every row in the table. #}
+          <td>{% if item.notes %}<span class="inventory-notes" title="{{ item.notes }}">{{ item.notes }}</span>{% else %}&mdash;{% endif %}</td>
+          {% elif column.key == 'url' %}
+          <td>
+            {% if item.url %}
+            <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" title="{{ item.url }}">{{ item.url_host }}</a>
+            {% else %}&mdash;{% endif %}
+          </td>
+          {% endif %}
+          {% endfor %}
           <td>
             <div class="icon-actions">
               <form method="post" action="{{ url_for('inventory.toggle_item', item_id=item.id) }}" class="icon-form">
@@ -125,6 +150,9 @@
     </select>
   </label>
   {% endif %}
+  {# Optional, purely descriptive — see InventoryItem. Sits right under
+     Name/Type because it's the supplier's own name for the same thing. #}
+  <label class="modal__field">Ref number<input type="text" name="reference" value="{{ item.reference or '' if item else '' }}" placeholder="SKU, article or colour code"></label>
   <label class="modal__field">Unit
     <select name="unit">
       {% for unit in units if unit.is_active or (item and item.unit == unit.key) %}
@@ -153,6 +181,13 @@
            {% if not item %}data-auto{% endif %} data-threshold>
   </label>
   <p class="modal__hint">Amber &ldquo;running low&rdquo; alert. 0 means no warning until it&rsquo;s out of stock.</p>
+  {# Where to buy it again, and anything the fields above can't hold. Both
+     optional. Deliberately type="text", not type="url": the browser's own
+     url validation refuses anything without a scheme, and typing the bare
+     domain is exactly what people do — services._clean_url adds the
+     https:// instead of the form rejecting it. #}
+  <label class="modal__field">Reorder link<input type="text" name="url" inputmode="url" value="{{ item.url or '' if item else '' }}" placeholder="https://supplier.example/product/1234"></label>
+  <label class="modal__field">Notes<textarea name="notes" rows="3" placeholder="Temper, finish, minimum order&hellip;">{{ item.notes or '' if item else '' }}</textarea></label>
   {% endmacro %}
 
   {# Add-item modal, opened by the button above. #}

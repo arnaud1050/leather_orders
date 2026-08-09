@@ -1,0 +1,99 @@
+{# Included from templates/settings.html's "inventory" section, last — Units
+   and Inventory types define what an item *is*, this only decides how the
+   master list draws it. Context expected: inventory_columns (every column,
+   hidden ones included, in the company's own order — see
+   inventory.services.list_columns).
+
+   Same markup and drag-to-reorder handler as the Orders-list columns editor
+   in settings.html, deliberately: they're the same control over two tables,
+   and a second visual idiom for it would be one to learn for no reason. #}
+
+<h2>Inventory list columns</h2>
+<p class="detail-note">
+  Reorder and hide/show the columns shown on the
+  <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a> list. Drag
+  a row by its handle to reorder — it saves as you drop it. Hidden columns
+  keep their data; they just stop rendering that column, so hiding
+  <strong>Notes</strong> or <strong>Ref</strong> is a way to keep the table
+  narrow without losing anything.
+  <strong>Name</strong> is always shown — it's what opens an item's edit
+  form.
+</p>
+
+<ul class="settings-source-list" id="inventory-column-list">
+  {% for column in inventory_columns %}
+  <li class="settings-source-list__item {% if not column.visible %}settings-source-list__item--hidden{% endif %}"
+      draggable="true" data-key="{{ column.key }}">
+    <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
+      <svg viewBox="0 0 10 16" fill="currentColor">
+        <circle cx="2" cy="2" r="1.3"/>
+        <circle cx="8" cy="2" r="1.3"/>
+        <circle cx="2" cy="8" r="1.3"/>
+        <circle cx="8" cy="8" r="1.3"/>
+        <circle cx="2" cy="14" r="1.3"/>
+        <circle cx="8" cy="14" r="1.3"/>
+      </svg>
+    </span>
+    <span class="settings-source-list__label">
+      {{ column.label }}
+      {% if not column.visible %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+    </span>
+    {# Same reasoning as the "Each" row in _settings_units.html: a column
+       that can't be hidden still renders the trailing actions slot, so every
+       row keeps the same three-child flex layout. #}
+    <div class="settings-source-list__actions">
+      {% if column.can_hide %}
+      <form method="post" action="{{ url_for('inventory.toggle_column', key=column.key) }}">
+        <button type="submit" class="btn-secondary">{{ 'Show' if not column.visible else 'Hide' }}</button>
+      </form>
+      {% else %}
+      <span class="checkbox-group__hidden-tag">(always shown)</span>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+
+<script>
+  (function () {
+    var list = document.getElementById('inventory-column-list');
+    if (!list) return;
+    var dragged = null;
+
+    list.addEventListener('dragstart', function (e) {
+      var item = e.target.closest('.settings-source-list__item');
+      if (!item) return;
+      dragged = item;
+      item.classList.add('settings-source-list__item--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox won't start a drag at all without setData.
+      e.dataTransfer.setData('text/plain', item.dataset.key);
+    });
+
+    list.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      var target = e.target.closest('.settings-source-list__item');
+      if (!target || target === dragged) return;
+      var rect = target.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < rect.height / 2;
+      list.insertBefore(dragged, before ? target : target.nextSibling);
+    });
+
+    list.addEventListener('drop', function (e) {
+      e.preventDefault();
+    });
+
+    list.addEventListener('dragend', function () {
+      if (dragged) dragged.classList.remove('settings-source-list__item--dragging');
+      dragged = null;
+      var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
+        .map(function (item) { return item.dataset.key; });
+      fetch("{{ url_for('inventory.reorder_columns') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: order }),
+      });
+    });
+  })();
+</script>

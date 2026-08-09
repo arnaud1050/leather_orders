@@ -73,6 +73,25 @@ via a shared base file.
   ```bash
   docker compose -f docker-compose-demo.yml exec demo python scripts/seed_sample_data.py
   ```
+- **Schema changes apply themselves on boot.** `db.create_all()` and every
+  module's `run_migrations()` run at import (the `with app.app_context()` block in
+  `app.py`), so redeploying a release that added a column or a table migrates that
+  deployment's database as it starts — there's no separate migrate step to
+  remember, and no release that's silently half-applied. Every migration in this
+  codebase is a no-op once applied, so restarting repeatedly is safe.
+
+  `scripts/migrate.py` does the same thing **deliberately**, and prints the diff —
+  for applying a schema change to a running deployment ahead of swapping the
+  image, or just to see in writing what a release changed. It takes a timestamped
+  `.bak` copy of the SQLite file first (`--no-backup` skips it):
+
+  ```bash
+  docker compose -f docker-compose-demo.yml exec demo python scripts/migrate.py
+  ```
+
+  Both it and `seed_sample_data.py` read **`DATABASE_URL` from the environment,
+  before importing `app`** — set any later and it silently acts on the real
+  `data/atelier.db` instead (hard rule 13).
 - **`.dockerignore`**: excludes `venv/`, `.git`, `data/`, `CLAUDE.md`, etc. from the
   build context (shared by both Dockerfiles' build contexts). Update this if you add
   other local-only folders (e.g. `.vscode/`).
