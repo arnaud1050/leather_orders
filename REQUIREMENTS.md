@@ -365,8 +365,24 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   (`orders-list-hidden-statuses`), independent of the timeline's. Hiding a
   status recomputes the **order count** and **balance due** stat cards from
   the still-visible rows, not the full unfiltered roster.
-- **LST5.** `/clients` has no status-style filter — there's no column with
-  that shape on that page.
+- **LST5.** `/clients` has no status column to filter by, but it does have
+  an **orders filter**: two `.legend__item` buttons, **"With orders"** and
+  **"No orders"**, same click-a-legend-item-to-hide interaction and `--off`
+  dimming/strikethrough as LST4's status filter (no `.dot` — these aren't
+  statuses and have no colour to key).
+  - **LST5a.** Both groups show **by default**, so every client is listed
+    until something is clicked. Clicking one button hides that group,
+    which makes all three states reachable: everyone, only clients with
+    orders, only clients without.
+  - **LST5b.** Hidden groups persist client-side under their own
+    `localStorage` key (`clients-list-hidden-order-groups`), independent of
+    `/orders`'s, so the filter survives sort-link navigation.
+  - **LST5c.** The filter renders only when the company has clients in
+    **both** groups — with every client on one side, hiding that side could
+    only ever empty the table.
+  - **LST5d.** Hiding recomputes the **client count** and **returning**
+    stat cards from the still-visible rows, same as LST4 does on
+    `/orders`.
 - **LST6.** Orders-list columns are **reorderable and hideable**, per
   company, from `/settings/orders`:
   - **LST7.** `ORDER_COLUMNS` is the canonical, fixed set of possible

@@ -239,6 +239,9 @@ Settings → Email/Calendar, because every site words its form differently.
 | **F-13** | An unmapped rule **says so in the UI**, naming the consequence. | Otherwise a rule on a relay quietly produces clients named after the relay. | `test_form_mapping.py` |
 | **F-14** | Deleting a rule deletes its mappings; deleting a mapping stops that field being read. | No orphans, no surprises. | `test_form_mapping.py` |
 | **F-15** | The thread is linked to the **person**, not the relay. | So the conversation appears under Haejung Kim, not under Squarespace. | `test_form_mapping.py` |
+| **F-16** | Every address the UI *shows or sends to* for a thread is `EmailThread.contact_address` — the linked client's own address, falling back to `counterparty`. | F-15 puts the conversation on the right record; without this the reply box, the thread header and the Emails-tab list all still read the relay's address, and pressing Send answers a no-reply robot. | `test_form_mapping.py`, `test_routes.py` |
+| **F-17** | A message from a relay is **attributed to the client** (`sender_display` / `sender_label`), not to the relay. | The form submitted it; the customer wrote it. "Squarespace" over their own words is the same misattribution as M-2's, one step removed. | `test_form_mapping.py` |
+| **F-18** | A relay is **only** an address a **convert** rule covers. Nothing else — an unmatched sender, a hide rule, or merely "not the linked client" — is relabelled. | The studio declaring "every enquiry from here is genuine and written by somebody else" is exactly the statement F-17 needs. Guessing would put the client's name over a message their architect actually wrote. | `test_form_mapping.py`, `test_models.py` |
 
 ---
 
@@ -249,8 +252,8 @@ chrome, repeated per message, drowns the conversation.
 
 | # | Rule | Why | Tested in |
 |---|---|---|---|
-| **M-1** | The header names the **counterparty**, never the mailbox the thread synced through. | That's *our* address; printed next to the client's name it reads as theirs. | `test_routes.py` |
-| **M-2** | Outgoing messages are labelled **"You"**; incoming show the person's **name alone**, falling back to the address. | Their address is already in the header. | `test_models.py`, `test_routes.py` |
+| **M-1** | The header names the **contact address**, never the mailbox the thread synced through. | That's *our* address; printed next to the client's name it reads as theirs. (`contact_address`, not `counterparty` — see F-16 for the relay that made the difference matter.) | `test_routes.py` |
+| **M-2** | Outgoing messages are labelled **"You"**; incoming show the person's **name alone**, falling back to the address. | Their address is already in the header. (Who "the person" is on a relayed message: F-17.) | `test_models.py`, `test_routes.py` |
 | **M-3** | Sender labels are coloured to match the message's own left edge. | Ties each side to its border without a second label saying so. | visual |
 | **M-4** | Recipients show as "Also sent to", **excluding** our mailbox, the client and the counterparty, and are omitted entirely when empty. | A two-party conversation's To: line says nothing. | `test_models.py`, `test_routes.py` |
 | **M-5** | Quoted history is trimmed at the first `>` line or an "On … wrote:" attribution. | Those messages are already on the page in their own right. | `test_models.py` |

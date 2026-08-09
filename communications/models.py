@@ -408,6 +408,49 @@ class EmailThread(db.Model):
         return None
 
     @property
+    def contact_address(self) -> str | None:
+        """The address to *reach* the other side on.
+
+        Usually the same thing as `counterparty` — mail from a person
+        arrives from the address you answer. It differs for the one case
+        this exists for: a website contact form relays the enquiry, so the
+        header sender is `form-submission@squarespace.info` while the
+        customer's own address was in the body, read out by the rule's
+        field mapping and stored on the Client (see `F-5`). Replying to the
+        header address sends the answer to a robot.
+
+        So a linked client's address wins, and `counterparty` is the
+        fallback for a lead that has no client yet — where the two are the
+        same by definition.
+        """
+        if self.client is not None and (self.client.email or "").strip():
+            return self.client.email.strip()
+        return self.counterparty
+
+    def is_relayed_sender(self, address: str | None) -> bool:
+        """Whether `address` is a relay this company declared, rather than
+        a person.
+
+        "Declared" is exact: a **convert** sender rule means the studio said
+        every enquiry from this address is a genuine one written by somebody
+        else — which is the same statement as "this address is never the
+        person who wrote it". Nothing else is treated as a relay, because
+        guessing (say, "any incoming sender that isn't the linked client")
+        would put the client's name over a message their architect actually
+        wrote.
+
+        The rules are fetched once per thread instance: a thread page asks
+        this per message and the answer can't change mid-render.
+        """
+        # Deferred: sender_rules imports this module at load time.
+        from communications.services import sender_rules
+
+        if not hasattr(self, "_sender_rule_cache"):
+            self._sender_rule_cache = sender_rules.rules_for(self.company_id)
+        rule = sender_rules.match(self._sender_rule_cache, _address_only(address))
+        return rule is not None and rule.action == RULE_CONVERT
+
+    @property
     def suggested_name(self) -> tuple[str, str]:
         """(first, last) to offer for a client made from this conversation.
 
@@ -550,18 +593,43 @@ class EmailMessage(db.Model):
         return [part.strip() for part in (self.cc or "").split(",") if part.strip()]
 
     @property
+    def sender_display(self) -> str:
+        """Who wrote this, named as a person — never "You".
+
+        The person's name alone, falling back to the address when the header
+        carried none. The exception is mail that came through a **relay**: a
+        contact form submits from its own address, so the header names
+        Squarespace while the person who actually wrote the message is the
+        client the rule created from it. Their name is the honest answer to
+        "who is this from"; the relay is machinery. Only an address the
+        studio declared a relay counts (see `EmailThread.is_relayed_sender`),
+        and only once there's a client to name — otherwise this falls
+        straight through to the header.
+
+        Split out from `sender_label` because the "You" substitution below
+        is right on a page a human reads and wrong everywhere else — the AI
+        transcript being the caller that needs the name without it.
+        """
+        if (
+            self.is_incoming
+            and self.thread.client is not None
+            and self.thread.is_relayed_sender(self.sender)
+        ):
+            return self.thread.client.name
+        return self.sender_name or self.sender or "(unknown sender)"
+
+    @property
     def sender_label(self) -> str:
         """Who to print above the message.
 
         "You" for anything we sent: the mailbox it went out from is the
         studio's own address, and printing it there read as though it were the
-        client's. Incoming mail shows the person's name alone — their address
-        is already in the thread header — falling back to the address when the
-        header carried no name.
+        client's. Incoming mail is `sender_display` — the person's name alone,
+        since their address is already in the thread header.
         """
         if not self.is_incoming:
             return "You"
-        return self.sender_name or self.sender or "(unknown sender)"
+        return self.sender_display
 
     @property
     def other_recipients(self) -> list[str]:

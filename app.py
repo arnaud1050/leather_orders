@@ -383,17 +383,21 @@ def _thread_conversation(company_id: int, thread_id: int) -> dict | None:
       already in this list in their own right.
     - **`direction`, not `sender_label`**, as the source of who's speaking.
       `sender_label` renders our own mail as "You", which is right on a page
-      a human reads and ambiguous in a prompt.
+      a human reads and ambiguous in a prompt. `sender_display` is that same
+      label without the substitution — so a form submission is attributed to
+      the customer who wrote it rather than to the relay that carried it, and
+      a draft opens "Hi Haejung" instead of greeting Squarespace.
+    - **`contact_address`, not `counterparty`**, for the same reason.
     """
     thread = email_service.get_thread(company_id, thread_id)
     if thread is None:
         return None
     return {
         "subject": thread.display_subject,
-        "counterparty": thread.counterparty,
+        "counterparty": thread.contact_address,
         "messages": [
             {
-                "sender": message.sender_name or message.sender,
+                "sender": message.sender_display,
                 "direction": message.direction,
                 "sent_at": (
                     message.received_date.strftime("%Y-%m-%d")
@@ -975,6 +979,14 @@ def clients_list():
         "clients_list.html",
         clients=clients,
         unread_by_client=unread_by_client,
+        # Both groups start shown and every client stays in the DOM; the
+        # filter buttons hide a group client-side — see clients_list.html's
+        # script. This just tells the template whether the filter is worth
+        # rendering: with every client in the same group, hiding it would
+        # only ever empty the table.
+        show_order_filter=(
+            any(c.orders for c in clients) and any(not c.orders for c in clients)
+        ),
         sort_by=sort_by,
         sort_dir=sort_dir,
         active_view="clients",

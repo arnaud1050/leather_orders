@@ -26,22 +26,34 @@
 
   <div class="client-stats">
     <div class="client-stats__item">
-      <span class="client-stats__value">{{ clients|length }}</span>
-      <span class="client-stats__label">Client{{ 's' if clients|length != 1 else '' }}</span>
+      <span class="client-stats__value" id="client-count">{{ clients|length }}</span>
+      <span class="client-stats__label" id="client-count-label">Client{{ 's' if clients|length != 1 else '' }}</span>
     </div>
     <div class="client-stats__item">
-      <span class="client-stats__value">{{ clients|selectattr('is_returning')|list|length }}</span>
+      <span class="client-stats__value" id="client-returning-count">{{ clients|selectattr('is_returning')|list|length }}</span>
       <span class="client-stats__label">Returning</span>
     </div>
   </div>
 
   <div class="legend-row">
+    {% if show_order_filter %}
+    {# Two buttons rather than one "hide the order-less" toggle, so all three
+       states are reachable: everyone (the default, both on), only clients
+       with orders, only clients without. Same click-a-legend-item-to-hide
+       pattern and --off styling as /orders's status filter — no dots, since
+       these aren't statuses and there's no colour to key. #}
+    <span class="legend__label">Filter by</span>
+    <div class="legend" id="orders-legend">
+      <button type="button" class="legend__item" data-group="with">With orders</button>
+      <button type="button" class="legend__item" data-group="none">No orders</button>
+    </div>
+    {% endif %}
     <a href="{{ url_for('new_client', return_to=request.path) }}" class="btn-primary legend__new-order">+ Add client</a>
   </div>
 
   {% if clients %}
   <div class="table-scroll">
-    <table class="invoice-table invoice-table--no-mono">
+    <table class="invoice-table invoice-table--no-mono" id="clients-table">
       <thead>
         <tr>
           <th>{{ sort_link('name', 'Name') }}</th>
@@ -53,7 +65,7 @@
       </thead>
       <tbody>
         {% for client in clients %}
-        <tr>
+        <tr data-group="{{ 'with' if client.orders else 'none' }}" data-returning="{{ 1 if client.is_returning else 0 }}">
           <td>
             <a href="{{ url_for('client_page', client_id=client.id) }}?return_to={{ request.path }}">{{ client.name }}</a>
             {% if client.is_returning %}
@@ -88,4 +100,68 @@
   {% endif %}
 
 </div>
+
+<script>
+  // Orders filter — literally the same click-a-legend-item-to-hide code as
+  // /orders's status filter (see orders_list.html), over two groups instead
+  // of the status list, and with its own localStorage key so it survives
+  // sort-link navigation on this page. Nothing hidden by default, so both
+  // groups show until someone clicks.
+  (function () {
+    var HIDDEN_KEY = 'clients-list-hidden-order-groups';
+
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#clients-table tbody tr'));
+    var legendButtons = document.querySelectorAll('#orders-legend .legend__item');
+    var clientCount = document.getElementById('client-count');
+    var clientCountLabel = document.getElementById('client-count-label');
+    var returningCount = document.getElementById('client-returning-count');
+
+    if (!rows.length) return;
+
+    function getHidden() {
+      try {
+        return JSON.parse(localStorage.getItem(HIDDEN_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function applyFilter() {
+      var hidden = getHidden();
+      var visible = 0;
+      var returning = 0;
+      rows.forEach(function (row) {
+        var isHidden = hidden.indexOf(row.dataset.group) !== -1;
+        row.hidden = isHidden;
+        if (!isHidden) {
+          visible++;
+          if (row.dataset.returning === '1') returning++;
+        }
+      });
+      legendButtons.forEach(function (btn) {
+        btn.classList.toggle('legend__item--off', hidden.indexOf(btn.dataset.group) !== -1);
+      });
+      clientCount.textContent = visible;
+      clientCountLabel.textContent = 'Client' + (visible !== 1 ? 's' : '');
+      returningCount.textContent = returning;
+    }
+
+    legendButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var hidden = getHidden();
+        var group = btn.dataset.group;
+        var index = hidden.indexOf(group);
+        if (index === -1) {
+          hidden.push(group);
+        } else {
+          hidden.splice(index, 1);
+        }
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+        applyFilter();
+      });
+    });
+
+    applyFilter();
+  })();
+</script>
 {% endblock %}

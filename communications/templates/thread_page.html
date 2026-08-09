@@ -14,11 +14,13 @@
         {% else %}
         Not linked to a client
         {% endif %}
-        {# The counterparty, not thread.account.email_address — the mailbox
+        {# contact_address, not thread.account.email_address — the mailbox
            this synced through is our own address, which read here as though
            it were the client's. The reply form still names it, under
-           "Sending as". #}
-        {% if thread.counterparty %}· {{ thread.counterparty }}{% endif %}
+           "Sending as". And not thread.counterparty either: on a thread a
+           contact form relayed, that's the form's own address, printed
+           beside the client's name as though it were theirs. #}
+        {% if thread.contact_address %}· {{ thread.contact_address }}{% endif %}
       </p>
     </div>
   </header>
@@ -103,7 +105,9 @@
 
   <section class="detail-orders">
     <h2>Reply</h2>
-    {% with to_value = thread.counterparty,
+    {# contact_address: a reply goes to the client, not to the contact form
+       that relayed their enquiry. #}
+    {% with to_value = thread.contact_address,
             subject_value = ('Re: ' ~ thread.display_subject) if not thread.display_subject.lower().startswith('re:') else thread.display_subject,
             client = thread.client %}
       {% include "_compose_form.html" %}

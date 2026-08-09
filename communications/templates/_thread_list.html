@@ -40,7 +40,11 @@
       {% endif %}
     </span>
     <span class="thread-list__meta">
-      {{ thread.counterparty or '—' }}
+      {# contact_address, not counterparty: on a client's Emails tab a thread
+         a contact form relayed would otherwise be listed under the form's
+         address rather than the client's. Identical on a lead, which has no
+         client to prefer. #}
+      {{ thread.contact_address or '—' }}
       · {{ thread.message_count }} message{{ '' if thread.message_count == 1 else 's' }}
       {% if thread.last_message_date %}· {{ thread.last_message_date|local_datetime('%b %d, %Y') }}{% endif %}
     </span>

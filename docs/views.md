@@ -148,8 +148,15 @@ pattern as the timeline (see below) but with its own `localStorage` key
 in `orders_list.html` rather than the shared timeline script. Hiding a status also
 recomputes the **order count** and **balance due** stat cards at the top of the page
 (from each row's `data-balance`), so those numbers always describe what's actually
-showing, not the full unfiltered roster. The Clients list has no equivalent filter —
-there's no status-like column to filter by there.
+showing, not the full unfiltered roster. The **Clients list has an orders
+filter** built the same way — two buttons, **"With orders"** and **"No
+orders"**, own `localStorage` key (`clients-list-hidden-order-groups`),
+recomputing the **client** and **returning** counts from the still-visible
+rows. Two buttons rather than one "hide the order-less ones" toggle because
+that's what makes all three states reachable: everyone (the default, nothing
+hidden), only clients with orders, only clients without. No `.dot` on these —
+a dot carries a status colour, and these are groups, not statuses. The filter
+is skipped entirely unless the company has clients on both sides of it.
 
 **Orders list columns are reorderable and hideable**, per company, from
 Settings > Orders > "Orders list columns" (`settings.html`, `section ==

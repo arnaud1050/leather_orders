@@ -19,8 +19,8 @@ from models import Client, SourceOption, db
 from communications.models import (
     AUDIT_CLIENT_AUTO_CREATED, AUDIT_CLIENT_MAIL_LINKED,
     FIELD_EMAIL, FIELD_IGNORE, FIELD_INQUIRY, FIELD_MESSAGE, FIELD_NAME,
-    FIELD_PHONE, FIELD_SOURCE, RULE_CONVERT, AuditLog, AutoCreatedClient,
-    SenderRuleField,
+    FIELD_PHONE, FIELD_SOURCE, RULE_CONVERT, RULE_HIDE, AuditLog,
+    AutoCreatedClient, EmailMessage, EmailThread, SenderRuleField, utcnow,
 )
 from communications.services import email_service, sender_rules
 from communications.sync import email_sync
@@ -445,6 +445,207 @@ def test_a_returning_customer_matched_by_name_is_still_a_separate_client(
 
     deliver(account)
     assert Client.query.filter_by(company_id=company.id).count() == 2
+
+
+# --- reading the conversation afterwards ----------------------------------
+#
+# F-15 puts the thread on the right client. These are about everything the
+# page then *says* about it: the enquiry arrived from a no-reply relay, so
+# every address and every name shown has to be the customer's, or the studio
+# answers a robot and reads the conversation as being with Squarespace.
+
+def relayed_thread(company):
+    return EmailThread.query.filter_by(
+        company_id=company.id, provider_thread_id="t-form").one()
+
+
+def test_the_contact_address_is_the_customer_not_the_relay(
+    app, company, account, mapped_rule,
+):
+    """F-16 at the source. `counterparty` stays what the header said — it's
+    still how the lead inbox describes an unconverted thread — and the two
+    only diverge here."""
+    deliver(account)
+    thread = relayed_thread(company)
+
+    assert thread.counterparty == FORM
+    assert thread.contact_address == "dayanee1004@gmail.com"
+
+
+def test_the_reply_box_addresses_the_customer(logged_in, company, account, mapped_rule):
+    """The bug this section exists for: pressing Send on a form submission
+    used to answer Squarespace's no-reply address."""
+    deliver(account)
+    body = logged_in.get(f"/mail/threads/{relayed_thread(company).id}").get_data(
+        as_text=True)
+
+    assert 'name="to" value="dayanee1004@gmail.com"' in body
+    assert f'name="to" value="{FORM}"' not in body
+
+
+def test_the_thread_header_names_the_customers_address(
+    logged_in, company, account, mapped_rule,
+):
+    """M-1's rationale, one step further: an address printed beside "Haejung
+    Kim" reads as hers."""
+    deliver(account)
+    body = logged_in.get(f"/mail/threads/{relayed_thread(company).id}").get_data(
+        as_text=True)
+
+    assert "dayanee1004@gmail.com" in body
+    assert FORM not in body
+
+
+def test_the_message_is_attributed_to_the_customer(app, company, account, mapped_rule):
+    """F-17. The form submitted it; she wrote it."""
+    deliver(account)
+    message = relayed_thread(company).messages[0]
+
+    assert message.sender == FORM          # the header is kept as it arrived
+    assert message.sender_label == "Haejung Kim"
+    assert message.sender_display == "Haejung Kim"
+
+
+def test_the_thread_page_prints_the_customers_name_over_the_message(
+    logged_in, company, account, mapped_rule,
+):
+    deliver(account)
+    body = logged_in.get(f"/mail/threads/{relayed_thread(company).id}").get_data(
+        as_text=True)
+    assert '<span class="message__sender">Haejung Kim</span>' in body
+
+
+def test_the_clients_emails_tab_lists_it_under_her_address(
+    logged_in, company, account, mapped_rule,
+):
+    deliver(account)
+    client = Client.query.filter_by(company_id=company.id).one()
+    body = logged_in.get(f"/clients/{client.id}/emails").get_data(as_text=True)
+
+    assert "dayanee1004@gmail.com" in body
+    assert FORM not in body
+
+
+def test_a_returning_customers_thread_reads_the_same_way(
+    logged_in, company, account, mapped_rule,
+):
+    """The other conversion path (`R-16`): nothing is created, the thread is
+    linked to the client already on file. Same relay, same display."""
+    existing = Client(company_id=company.id, first_name="Haejung", last_name="Kim",
+                      email="dayanee1004@gmail.com")
+    db.session.add(existing)
+    db.session.commit()
+
+    deliver(account)
+    thread = relayed_thread(company)
+
+    assert thread.contact_address == "dayanee1004@gmail.com"
+    assert thread.messages[0].sender_label == "Haejung Kim"
+
+
+def test_a_form_with_no_email_still_reads_as_the_relay_address(
+    app, company, account, mapped_rule,
+):
+    """F-11's fallback client is created *under* the relay address, so that
+    is genuinely the only address there is. Showing it is correct — and the
+    name is still hers, which is what makes the record findable."""
+    deliver(account, body="Name: Haejung Kim\n")
+    thread = relayed_thread(company)
+
+    assert thread.contact_address == FORM
+    assert thread.messages[0].sender_label == "Haejung Kim"
+
+
+# --- what is *not* a relay ------------------------------------------------
+#
+# F-18. The relabelling is driven by the studio's own convert rule and
+# nothing looser, because every looser rule mislabels somebody.
+
+def test_an_ordinary_client_thread_is_untouched(app, company, account, thread):
+    """No rules at all. The `thread` fixture is a client writing from their
+    own address — the overwhelmingly common case."""
+    assert thread.contact_address == "marie@example.com"
+    assert thread.messages[0].sender_label == "Marie Alarie"
+
+
+def test_a_third_party_on_a_client_thread_keeps_their_own_name(
+    app, company, account, thread, mapped_rule,
+):
+    """The reason a convert rule is the test rather than "isn't the linked
+    client": an architect cc'd into the conversation wrote this, and printing
+    the client's name over it would be a fabrication."""
+    db.session.add(EmailMessage(
+        thread_id=thread.id, provider_message_id="m-third-party",
+        sender="architect@example.com", sender_name="Luc Bergeron",
+        recipients="studio@example.com", subject="Briefcase timeline",
+        body_text="Adding a note on the dimensions.", received_date=utcnow(),
+        direction="incoming",
+    ))
+    db.session.commit()
+
+    assert thread.messages[-1].sender_label == "Luc Bergeron"
+
+
+def test_a_hide_rule_is_not_a_relay(app, company, account, thread):
+    """"Ignore this sender" says nothing about who wrote what it sends."""
+    sender_rules.add_rule(company.id, "newsletter@example.com", RULE_HIDE)
+    db.session.add(EmailMessage(
+        thread_id=thread.id, provider_message_id="m-newsletter",
+        sender="newsletter@example.com", sender_name="Leather Weekly",
+        recipients="studio@example.com", body_text="This week in leather.",
+        received_date=utcnow(), direction="incoming",
+    ))
+    db.session.commit()
+
+    assert thread.messages[-1].sender_label == "Leather Weekly"
+
+
+def test_a_relayed_lead_nobody_converted_still_shows_the_relay(
+    app, company, account,
+):
+    """No convert rule fired, so there's no client to name and nothing to
+    correct the header with. The lead inbox has to show what arrived."""
+    with fakes.fake_providers(threads=[fakes.thread(
+        thread_id="t-form", messages=[fakes.message(
+            message_id="m-t-form", thread_id="t-form", sender=FORM,
+            body_text=SQUARESPACE_BODY,
+        )],
+    )]):
+        email_sync.sync_account(account)
+
+    thread = relayed_thread(company)
+    assert thread.client_id is None
+    assert thread.contact_address == FORM
+    assert thread.messages[0].sender_label == FORM
+
+
+def test_outgoing_mail_is_still_you(app, company, account, mapped_rule):
+    """M-2 doesn't move: a reply we sent through the relay's thread is ours,
+    whatever the rules say about the address it's going to."""
+    deliver(account)
+    thread = relayed_thread(company)
+    db.session.add(EmailMessage(
+        thread_id=thread.id, provider_message_id="m-reply",
+        sender="studio@example.com", sender_name="Studio",
+        recipients="dayanee1004@gmail.com", body_text="Happy to help.",
+        received_date=utcnow(), direction="outgoing",
+    ))
+    db.session.commit()
+
+    assert thread.messages[-1].sender_label == "You"
+
+
+def test_the_ai_transcript_names_the_customer(app, company, account, mapped_rule):
+    """The same misattribution reaching a prompt: a draft that opens by
+    greeting Squarespace is worse than no draft."""
+    import app as app_module
+
+    deliver(account)
+    conversation = app_module._thread_conversation(
+        company.id, relayed_thread(company).id)
+
+    assert conversation["counterparty"] == "dayanee1004@gmail.com"
+    assert conversation["messages"][0]["sender"] == "Haejung Kim"
 
 
 # --- managing the mapping -------------------------------------------------
