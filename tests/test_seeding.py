@@ -95,7 +95,9 @@ def test_seed_sample_data_adds_clients_orders_and_invoices(app):
 
     assert seed_sample_data() is True
     assert Client.query.count() == 10
-    assert Order.query.count() == 12
+    # 14 since the lifecycle landed: the original 12 plus one tentative and
+    # one cancelled, so the demo shows both inactive ends.
+    assert Order.query.count() == 14
     assert Invoice.query.count() == 4
     # Raised through the billing module, so they're real invoices with
     # numbers from its own sequence rather than rows the running app
@@ -162,8 +164,12 @@ def test_no_sample_order_is_ready_or_delivered_before_it_starts(app):
     seed_sample_data(today=today)
 
     for order in Order.query.filter(Order.start > today):
-        assert order.status in {"in_progress", "rush"}, (
+        assert order.status in {"tentative", "confirmed"}, (
             f"order {order.id} starts in the future but is {order.status!r}")
+        # And the derived label has to agree too — a future start must never
+        # read as "In progress" (OR1c), which is the whole point of deriving
+        # it off the date rather than storing a second stage.
+        assert order.display_status == order.status
 
 
 def test_no_sample_payment_or_invoice_is_dated_in_the_future(app):

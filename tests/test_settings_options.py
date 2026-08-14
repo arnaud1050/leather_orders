@@ -144,7 +144,7 @@ def test_delete_order_type_keeps_a_type_an_order_uses(logged_in, company, client
     db.session.flush()
     db.session.add(Order(
         client_id=client_record.id, item="Bag", order_type_id=order_type.id,
-        start=date(2026, 7, 1), due=date(2026, 7, 15), status="in_progress"))
+        start=date(2026, 7, 1), due=date(2026, 7, 15), status="confirmed"))
     db.session.commit()
     type_id = order_type.id
 

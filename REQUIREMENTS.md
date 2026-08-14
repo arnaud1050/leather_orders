@@ -155,10 +155,17 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **CL1.** `Client.name` is derived (`f"{first_name} {last_name}"`), never a
   stored column — every template reads it, nothing writes it directly.
 - **CL2.** `Client.is_returning` = `len(self.orders) >= 2`, computed on every
-  read. `Client.lifetime_value` = `sum(o.total for o in self.orders)`
-  (`Order.total` is the tax-inclusive figure — see OR-rules below), also
-  computed on every read. Neither is a stored column, so neither can drift
-  out of sync with the orders behind it.
+  read. `Client.lifetime_value` = `sum(o.total for o in self.orders if
+  o.status != "cancelled")` (`Order.total` is the tax-inclusive figure — see
+  OR-rules below), also computed on every read. Neither is a stored column,
+  so neither can drift out of sync with the orders behind it.
+- **CL2a.** **Cancelled orders don't count toward `lifetime_value`** — work
+  that was called off was never business done, and this figure ranks the
+  Analytics "Top 5 paying clients" (AN3) and the timeline's
+  highest-paying-client sort. It is still `total`, not `amount_paid`: the
+  value of orders *placed and kept*, tax-inclusive, not money received.
+  `is_returning` deliberately still counts them — that a client came back
+  and asked twice is true whether or not the second one went ahead.
 - **CL3.** `inquiry_type` and `first_message` are free-form fields meant to
   be populated by an inbound source (webhook or the communications module's
   `create_client_from_thread()`) — nothing in the core app's own new/edit
@@ -204,6 +211,66 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **CL16.** A `Client` whose `notes` column is `None` (never edited) must
   render as an **empty** textarea, not the literal text "None" — the
   template renders `client.notes or ''`, not a bare `client.notes`.
+- **CL17.** `Client.is_hidden` is hide-don't-delete (hard rule 8) taken to
+  its limit: **a client can never be deleted**, and unlike `SourceOption`
+  and `OrderType` there is no `can_delete` escape hatch and no condition
+  under which one could exist — `Order`, `Invoice` and `EmailThread` all
+  reference a client, so a deleted row would leave every one of them
+  pointing at nobody. `toggle_client_hidden()` is the whole vocabulary:
+  one route, one boolean, both directions.
+- **CL18.** **Hiding is roster-scope and nothing else.** It changes exactly
+  two things — the client's presence on `/clients` (CL19) and in the
+  new-order client picker (CL20) — and must leave every one of these
+  bit-identical:
+  - their orders on the timeline, in `/orders`, and on their own Orders
+    tab, still labelled with their name;
+  - `Client.lifetime_value`, `is_returning`, and **every figure on
+    `/analytics`** — revenue, top clients, avg value per client, the
+    source breakdown, tax billed;
+  - their invoices, payments and email threads, and the badges over them
+    (`N-21`'s unread count still counts a hidden client's mail).
+
+  On that last one: `N-25` requires the nav total and the per-client rows to
+  add up, and they do — **across both views**. The archive (CL19) renders the
+  same per-client badge the roster does, so the one stranded state (unread
+  mail at the moment somebody was hidden; anything arriving after un-hides
+  them per CL21) still has a row showing the count and a route to clearing
+  it, one click from the roster's archive link.
+
+  The argument is the one behind CL2a and AN4: an order is time the studio
+  spent and money it was owed, and a decision about a contact list does not
+  get to retract it. This is also why hiding takes **no option** to hide
+  the orders too — "hidden" would then mean two things, and `/analytics`
+  would answer differently depending on a box someone ticked months ago.
+- **CL19.** `/clients` shows non-hidden clients only; **`?hidden=1` is the
+  archive view**, showing *only* hidden ones so the two never mix into one
+  list that needs a marker read to tell apart. The filter is **server-side**,
+  unlike LST5's client-side orders filter — that one is a view over rows
+  already on the page, this one means "not part of the roster", and those
+  rows shouldn't reach the browser. The link to the archive renders only
+  when the company has at least one hidden client, and its counterpart
+  Add-client button is omitted from the archive view.
+- **CL20.** `new_order()` offers **non-hidden clients only**, exactly as it
+  offers only active `OrderType`s (OT5). It is the *new* selection that's
+  filtered: an order a hidden client already has renders their name
+  everywhere it always did, and `edit_order()` never touches `client_id`.
+- **CL21.** A hidden client is **put back on the roster by genuinely new
+  incoming mail** matched to them — counted as
+  `SyncResult.clients_resurfaced` and named in the sync summary. Gated
+  identically to the lead inbox's `L-15`/`L-16`: incoming only (us mailing
+  them isn't them writing back), and only inside `_store_message`'s
+  already-stored guard, so an overlapping sync window can't un-hide the
+  same person twice. There is deliberately **no** `R-6` exemption to
+  mirror — no sender rule can hide a *client*, so hiding one is always a
+  person's judgement, which is exactly the case `L-15` says to undo.
+- **CL22.** [`docs/client-lifecycle.html`](docs/client-lifecycle.html)
+  states CL17–CL21 in plain language for the studio, alongside CL1/CL2/CL13
+  and the `communications/` rules that decide where inbound mail lands
+  (`L-1`…`L-20`, `R-1`…`R-20`, `F-1`…`F-18`, `SY-6`…`SY-9`,
+  `N-10`/`N-10a`/`N-21`), and is **part of this rule set** on the same
+  terms `OR1i` sets for the order page: a change to any of those that
+  leaves it untouched has finished half the job. Like that page it has
+  neither a test nor an importer to catch it drifting.
 
 ## 4. OrderType
 
@@ -236,12 +303,93 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 
 ## 5. Order — core fields, status, dates
 
-- **OR1.** `Order.status` is one of exactly `in_progress` / `ready` /
-  `delivered` / `rush`. The string is used directly as a CSS class suffix in
-  three places (`chip--{status}`, `dot--{status}`, `timeline__bar--{status}`)
-  — adding a status requires matching CSS plus a `STATUS_LABELS` entry plus
-  (currently, since it's hardcoded rather than looped) a `timeline.html`
-  legend entry.
+- **OR1.** `Order.status` is one of exactly `tentative` / `confirmed` /
+  `ready` / `delivered` / `cancelled`. `in_progress` is **not** a storable
+  value — it exists only in `STATUS_LABELS`, as the label `display_status`
+  returns for a `confirmed` order (OR1c). The string is used directly as a
+  CSS class suffix in three places (`chip--{status}`, `dot--{status}`,
+  `timeline__bar--{status}`) — adding a status requires matching CSS plus a
+  `STATUS_LABELS` entry plus (currently, since it's hardcoded rather than
+  looped) a `timeline.html` legend entry.
+- **OR1a.** The lifecycle is one-way. `ALLOWED_TRANSITIONS` in `app.py` is
+  the whole of it: `tentative → confirmed | cancelled`,
+  `confirmed → ready | cancelled`, `ready → delivered | cancelled`;
+  `delivered` and `cancelled` are terminal. `edit_order()` rejects (400)
+  anything not in `settable_statuses(order.status)`, which is the current
+  status plus its forward transitions **minus** `cancelled` — so the check
+  can't drift from the dropdown that renders the same list.
+- **OR1b.** `tentative` and `confirmed`/`ready` split into inactive and
+  active. `Order.is_active` is `status in ("confirmed", "ready")`, derived
+  and never stored.
+- **OR1c.** `Order.display_status` returns `in_progress` when `status ==
+  "confirmed"` and `start <= today`, and `status` otherwise. It is what
+  every list, pill, dot and timeline bar renders; the raw `status` is what
+  forms post back. There is **no** stored "has actually started" field —
+  the planned start date is maintained (a schedule is a plan you keep
+  current), so deriving from it can't go stale the way a second column
+  would.
+- **OR1d.** `Order.is_rush` is a boolean flag, not a status. `can_rush` is
+  `status == "confirmed"` — narrower than `is_active`, because a `ready`
+  order is finished and waiting on its owner, which the studio can't
+  hurry. `toggle_rush` 400s on anything else, and the flag is cleared
+  whenever an order leaves `confirmed`, in `edit_order()` and
+  `cancel_order()` alike.
+- **OR1d-i.** Rush is settable from two places, deliberately in two idioms:
+  an immediate **"Mark as rush"** button on the order page, and a
+  **checkbox** in the timeline's quick-edit modal that saves with the rest
+  of the form — a button there would reload the page and discard any other
+  edit in progress. The checkbox posts a hidden `rush_field` marker so
+  `edit_order()` can tell an unticked box from a form with no rush control
+  (hard rule 9); the status write happens first, so ticking rush while
+  advancing to `ready` yields `ready` and no rush.
+- **OR1d-ii.** A rush order's **timeline bar is red** (`--status-rush`),
+  overriding its stage colour rather than layering a marker over it —
+  urgency is what has to register first when scanning a schedule. This is
+  affordable only because `can_rush` is confined to `confirmed`: the red
+  replaces exactly one colour, the steel blue, and can never disguise a
+  `ready` or `delivered` bar. Its key sits under the table with the
+  returning-client star, not in the filter row, because rush is not a stage
+  to filter to — sorting handles it instead (LST/timeline sort below).
+- **OR1e.** `Order.can_delete` is `status == "tentative"` **and** no
+  invoice **and** no payments **and** no `OrderMaterial` drawn against it.
+  `delete_order()` re-checks it and 400s otherwise; it is the only hard
+  delete of an order in the app, and the only exception to hard rule 8.
+- **OR1e-i.** **Materials block deleting; the app never restocks on the
+  user's behalf.** Deleting an order cannot know whether the stock it drew
+  went back on the shelf or was consumed on a prototype, and guessing is
+  worse than refusing. The user clears the materials on the Materials tab
+  first — `delete_material()` restores that row's stock, which is the
+  conscious per-material decision — and only then does Delete appear. The
+  order page must say so, and link to that tab (a control that vanishes
+  without explanation is the failure mode being avoided). **Cancelling is
+  the path that keeps materials and their stock exactly as they are.**
+  One-off `OrderMaterialOther` costs carry no stock, so they do **not**
+  block and are cleaned up on delete like the order's own line items.
+- **OR1e-ii.** Because `Document`/`OrderMaterialOther` reference an order by
+  plain `order_id` with no cascade, `delete_order()` disposes of each
+  through its owning module's services — documents especially, since those
+  leave bytes on disk and not just rows.
+- **OR1f.** `Order.can_cancel` is `(is_active or tentative)` **and not**
+  `is_issued`. Cancelling an order with an issued invoice is refused rather
+  than auto-voiding it: hard rule 11 keeps an issued invoice frozen, and
+  voiding is a billing decision, not a side effect. `cancel_order()`
+  appends `"Cancelled <ISO date>: <reason>"` to `Order.notes` when a reason
+  is given — a sentence a person writes and reads, deliberately not its own
+  queryable column.
+- **OR1g.** Cancelled orders are excluded from the timeline query and from
+  the billing module's uninvoiced to-do list, and stay in `/orders` and on
+  the client's Orders tab, rendered muted via `.is-cancelled`. Delivered
+  orders stay on the timeline and drop out only as the window moves past
+  them.
+- **OR1h.** A new order may only be created at `tentative` or `confirmed`
+  (`INITIAL_STATUSES`); `new_order()` falls back to `tentative` for
+  anything else.
+- **OR1i.** [`docs/order-lifecycle.html`](docs/order-lifecycle.html) states
+  all of the above in plain language for the studio, and is **part of this
+  rule set** — a change to `OR1`…`OR1h` that leaves it untouched has
+  finished half the job. It is the only doc in the repo with neither a test
+  nor an importer to catch it drifting, and it has already gone stale twice
+  (rush's scope, and whether delivered orders leave the timeline).
 - **OR2.** `start` / `due` are real `Date` columns edited via native
   `<input type="date">` in both the order modal and the full order page.
 - **OR3.** `pickup_date` is a separate, optional `Date` column — never
@@ -334,11 +482,25 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   visible set and updates the displayed order count
   (`#order-count`/`#order-count-label`) to reflect what's actually shown,
   not the window's unfiltered total.
-- **TL9.** The sort `<select>` (start date / due date / highest paying
-  client — the last sorting by `client.lifetime_value`, not order price)
-  reorders the row elements in the DOM only; it never touches a bar's
-  horizontal position, which stays governed by its server-computed
-  `grid-column`.
+- **TL8a.** The legend filters on the **stored** status (the row's
+  `data-status`), not `display_status`, so **Confirmed and In progress share
+  one button** — they are one stage under two names (OR1c), and splitting
+  them would mean two clicks to hide one thing. The button is labelled "In
+  progress", the reading most bars in that group carry. Four buttons total:
+  Tentative / In progress / Ready for pickup / Delivered. `cancelled` has
+  none (never reaches this view) and neither does rush (a flag, not a
+  stage — OR1d-ii).
+- **TL9.** The sort `<select>` reorders the row elements in the DOM only;
+  it never touches a bar's horizontal position, which stays governed by its
+  server-computed `grid-column`. Five options: **start date**, **start
+  date, rush first**, **due date**, **due date, rush first**, and **highest
+  paying client** (sorting by `client.lifetime_value`, not order price).
+- **TL9a.** The two "rush first" sorts group by `is_rush` and then sort by
+  the chosen date **within each group** — the result stays a schedule
+  rather than becoming two unordered piles. This is the only way to single
+  out rush orders, since rush deliberately has no filter button (OR1d-ii).
+  A `localStorage` sort value that no longer matches an option falls back
+  to `start` rather than leaving the `<select>` blank.
 - **TL10.** Every order and client dialog (quick-edit modal) currently on
   screen is pre-rendered into the page by `timeline_window()` —
   `clients_in_view` is deduplicated so a client with multiple visible orders
@@ -468,7 +630,10 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **MOD6.** The back-link wording on a detail page is computed by
   `back_label(return_to)`, mapping the `return_to` path to a human label
   ("Back to timeline" / "Back to invoices" / etc.) rather than being
-  hardcoded to one destination.
+  hardcoded to one destination. It matches on the **path alone**: a
+  `return_to` can carry a query string (`/clients?hidden=1` per CL19, and
+  every sort link's `?sort=`), and each of those previously fell through to
+  a bare "Back".
 
 ## 12. Settings
 
@@ -606,6 +771,12 @@ has no regression test.
 | CL12 | covered indirectly by `tests/test_tax.py`'s client-province gating tests (billing side); `test_order_total_with_no_tax_is_the_sum_of_its_lines` covers the core-app trigger (no province ⇒ no tax) from `Order`'s side |
 | CL15 | `test_edit_client_without_notes_field_leaves_notes_untouched`, `test_edit_client_with_notes_field_updates_it` |
 | CL16 | `test_client_page_renders_blank_notes_not_the_word_none` |
+| CL17 | `test_a_new_client_is_not_hidden`, `test_hiding_and_showing_are_the_same_route`, `test_hiding_redirects_to_return_to`, `test_hiding_is_scoped_to_the_tenant`, `test_hiding_requires_login` (`tests/test_client_hiding.py`); the *absence* of a delete route is structural — there is nothing to assert against |
+| CL18 | `test_hiding_leaves_the_orders_list_alone`, `test_hiding_leaves_the_timeline_alone`, `test_hiding_leaves_lifetime_value_alone`, `test_hiding_does_not_change_a_single_analytics_figure`, `test_a_hidden_clients_own_page_still_works` (`tests/test_client_hiding.py`) |
+| CL19 | `test_the_roster_leaves_out_hidden_clients`, `test_the_hidden_view_shows_only_hidden_clients`, `test_the_roster_links_to_the_hidden_view_only_when_there_is_one` (`tests/test_client_hiding.py`) |
+| CL20 | `test_a_hidden_client_is_not_offered_on_a_new_order` (`tests/test_client_hiding.py`) |
+| CL21 | `test_new_mail_puts_a_hidden_client_back_on_the_list`, `test_coming_back_shows_in_the_sync_summary`, `test_mailing_a_hidden_client_does_not_bring_them_back`, `test_resyncing_the_same_window_does_not_bring_them_back_twice`, `test_mail_from_a_visible_client_counts_nothing` (`tests/test_client_hiding.py`) |
+| CL22 | — gap, permanently — the doc has no importer and no test, which is the whole reason the rule is written down |
 | OT1–OT3 | `test_add_order_type_rejects_a_case_insensitive_duplicate`, `test_add_order_type_rejects_a_duplicate_of_a_hidden_type`, `test_add_order_type_allows_the_same_label_in_another_company` (`tests/test_settings_options.py`) |
 | OT4 | `test_new_order_form_omits_type_dropdown_without_any_order_type`, `test_new_order_form_shows_type_dropdown_once_a_type_exists` |
 | OT5 | `test_new_order_only_offers_active_types`, `test_order_page_offers_a_hidden_type_the_order_already_has` |

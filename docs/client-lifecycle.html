@@ -1,0 +1,561 @@
+<!doctype html>
+<!--
+  The client lifecycle explained for the person *using* the app, not for
+  whoever maintains it — the companion to order-lifecycle.html, written to
+  the same brief and the same audience. It says "the client list" and "your
+  inbox", never "EmailThread" or "is_hidden".
+
+  Standalone on purpose — the CSS is inline and the diagram is hand-authored
+  SVG with no script, so the single file survives being emailed. Nothing in
+  the app loads it. The palette below is copied from style.css, so the
+  colours already agree; the greys and the purple carry the same meaning
+  here as they do in the app's badges.
+
+  ** It goes stale silently. ** Same warning as the order page, and the same
+  reason: no test covers it and no import reaches it, so a change to how
+  leads or clients behave breaks nothing visible here — it just quietly
+  turns this page into a lie. Treat it exactly like REQUIREMENTS.md: update
+  it in the same commit as the behaviour.
+
+  The authoritative rules are, in the core REQUIREMENTS.md, CL1 … CL21
+  (`CL17` … `CL21` are hiding) and CL13; and in
+  communications/REQUIREMENTS.md, L-1 … L-20 (the lead inbox and triage),
+  R-1 … R-20 (sender rules), F-1 … F-18 (contact-form field mapping),
+  SY-6 … SY-9 (matching), and N-10/N-10a/N-21 (the badges this page
+  mentions by name).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The life of a client</title>
+<style>
+  :root {
+    --paper: #f7f5f1;
+    --paper-deep: #dadada;
+    --ink: #1c1a17;
+    --ink-soft: #7e7a78;
+    --hairline: #83898d;
+
+    --enquiry:   #6b7075;
+    --roster:    #2f6fa6;
+    --ordering:  #2f7d4f;
+    --notice:    #ba25ba;
+    --hidden:    #a5a2a0;
+
+    --radius: 2px;
+    --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 56px 24px 72px;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { border-bottom: 1px solid var(--hairline); padding-bottom: 24px; margin-bottom: 40px; }
+
+  .masthead__eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 12px;
+  }
+
+  .masthead h1 {
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0 0 12px;
+    line-height: 1.15;
+  }
+
+  .masthead p {
+    margin: 0;
+    max-width: 62ch;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- section furniture ---------- */
+
+  .section { margin-bottom: 48px; }
+
+  .section__title {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--paper-deep);
+  }
+
+  .section__lede {
+    margin: -8px 0 20px;
+    max-width: 68ch;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- diagram ---------- */
+
+  .diagram {
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid var(--paper-deep);
+    border-radius: var(--radius);
+    padding: 8px 4px;
+  }
+
+  .diagram svg { display: block; min-width: 900px; width: 100%; height: auto; }
+
+  .node-name  { font-size: 15px; font-weight: 600; fill: var(--ink); }
+  .node-sub   { font-size: 11px; fill: var(--ink-soft); }
+  .edge-label { font-size: 11px; fill: var(--ink-soft); }
+  .aside-note { font-size: 11px; font-style: italic; fill: var(--ink-soft); }
+  .node-box   { fill: #fff; stroke: var(--hairline); stroke-width: 1; }
+  .node-box--ghost { fill: #fff; stroke: var(--hidden); stroke-width: 1; stroke-dasharray: 4 3; }
+  .edge       { stroke: var(--hairline); stroke-width: 1.5; fill: none; }
+  .edge--soft { stroke: var(--hidden); stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; }
+
+  /* ---------- stage cards ---------- */
+
+  .stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1px; background: var(--paper-deep); border: 1px solid var(--paper-deep); }
+
+  .stage { background: #fff; padding: 20px 22px; border-left: 4px solid var(--bar, var(--hairline)); }
+  .stage--enquiry  { --bar: var(--enquiry); }
+  .stage--roster   { --bar: var(--roster); }
+  .stage--ordering { --bar: var(--ordering); }
+  .stage--hidden   { --bar: var(--hidden); }
+
+  .stage__name { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+
+  .stage__tag {
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border: 1px solid var(--paper-deep);
+    border-radius: var(--radius);
+    padding: 2px 6px;
+    margin-bottom: 12px;
+  }
+
+  .stage__body { margin: 0 0 14px; font-size: 14px; line-height: 1.6; color: var(--ink); }
+  .stage__body:last-child { margin-bottom: 0; }
+
+  .stage__next { margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
+  .stage__next strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- the email scenarios ---------- */
+
+  .scenarios { display: grid; gap: 1px; background: var(--paper-deep); border: 1px solid var(--paper-deep); }
+
+  .scenario {
+    background: #fff;
+    display: grid;
+    grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.6fr);
+    gap: 0 28px;
+    padding: 20px 24px;
+  }
+
+  @media (max-width: 720px) { .scenario { grid-template-columns: 1fr; gap: 10px; } }
+
+  /* Each half is its own element rather than four loose <p>s: with grid
+     auto-placement a scenario that has no "only if" line puts its first
+     outcome paragraph in the left column. */
+  .scenario__what { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.5; }
+  .scenario__who { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
+  .scenario__then { margin: 0; font-size: 14px; line-height: 1.65; }
+  .scenario__then + .scenario__then { margin-top: 10px; }
+  .scenario__then em { color: var(--ink-soft); font-style: normal; }
+
+  /* ---------- two-up explanatory notes ---------- */
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+
+  .note {
+    background: #fff;
+    border: 1px solid var(--paper-deep);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+
+  .note--hidden { border-left: 4px solid var(--hidden); }
+  .note--notice { border-left: 4px solid var(--notice); }
+
+  .note h3 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+  .note p { margin: 0 0 12px; font-size: 14px; line-height: 1.65; }
+  .note p:last-child { margin-bottom: 0; }
+  .note em { color: var(--ink-soft); font-style: normal; }
+
+  /* A badge drawn at the size and weight it actually appears at in the
+     app, so "the grey one" and "the purple one" are recognisable here
+     rather than merely described. */
+  .badge {
+    display: inline-block;
+    min-width: 17px;
+    padding: 1px 5px;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 15px;
+    text-align: center;
+    color: #fff;
+    vertical-align: 1px;
+  }
+  .badge--neutral { background: var(--enquiry); }
+  .badge--notice { background: var(--notice); }
+
+  /* ---------- comparison table ---------- */
+
+  .compare { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; border: 1px solid var(--paper-deep); }
+  .compare th, .compare td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--paper-deep); vertical-align: top; line-height: 1.55; }
+  .compare tr:last-child th, .compare tr:last-child td { border-bottom: 0; }
+  .compare th { font-weight: 600; width: 34%; }
+  .compare thead th { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); font-weight: 500; }
+  .compare td { color: var(--ink); }
+
+  /* ---------- footer ---------- */
+
+  .colophon {
+    margin-top: 8px;
+    padding-top: 20px;
+    border-top: 1px solid var(--hairline);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+
+  @media print {
+    body { background: #fff; }
+    .sheet { padding: 0; max-width: none; }
+    .section, .note, .stage, .scenario, .diagram { break-inside: avoid; }
+    .diagram svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="masthead">
+    <p class="masthead__eyebrow">Atelier Order Book</p>
+    <h1>The life of a client</h1>
+    <p>Somebody writes in. Months later they're a name you know, with three orders behind them. This page shows what happens in between — where an enquiry sits before it's anybody, what makes it a client, and what the app does by itself when mail arrives.</p>
+  </header>
+
+  <section class="section">
+    <h2 class="section__title">The whole path at a glance</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 1160 600" role="img" aria-labelledby="diagram-title diagram-desc" xmlns="http://www.w3.org/2000/svg">
+        <title id="diagram-title">How a stranger becomes a returning client</title>
+        <desc id="diagram-desc">Mail from an address the app doesn't recognise lands in the lead inbox as an enquiry. From there it can be hidden or moved to the mailbox's trash, or turned into a client — by hand, or automatically by a rule you set up. Once someone is a client they are on the client list, whether or not they have ordered anything. Placing their first order makes them a client with work on the schedule, and a second order marks them as returning. A client can be hidden from the list at any point, and comes back by themselves if they email again.</desc>
+
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#83898d"></path>
+          </marker>
+          <marker id="arrow-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#a5a2a0"></path>
+          </marker>
+        </defs>
+
+        <!-- ============ hidden / trashed (not stages) ============ -->
+        <rect class="node-box--ghost" x="40" y="86" width="170" height="56" rx="2"></rect>
+        <text class="node-sub" x="125" y="110" text-anchor="middle" style="font-size:14px;font-weight:600;fill:#a5a2a0">Hidden</text>
+        <text class="node-sub" x="125" y="128" text-anchor="middle" fill="#a5a2a0">kept, out of the way</text>
+
+        <rect class="node-box--ghost" x="40" y="404" width="170" height="56" rx="2"></rect>
+        <text class="node-sub" x="125" y="428" text-anchor="middle" style="font-size:14px;font-weight:600;fill:#a5a2a0">In the Trash</text>
+        <text class="node-sub" x="125" y="446" text-anchor="middle" fill="#a5a2a0">in your real mailbox</text>
+
+        <path class="edge--soft" d="M 125 235 L 125 148" marker-end="url(#arrow-soft)"></path>
+        <text class="edge-label" x="139" y="196">not worth answering</text>
+
+        <path class="edge--soft" d="M 125 301 L 125 398" marker-end="url(#arrow-soft)"></path>
+        <text class="edge-label" x="139" y="352">spam</text>
+
+        <!-- ============ the spine ============ -->
+
+        <!-- enquiry -->
+        <rect class="node-box" x="40" y="235" width="170" height="66" rx="2"></rect>
+        <rect x="40" y="235" width="5" height="66" fill="#6b7075"></rect>
+        <text class="node-name" x="132" y="263" text-anchor="middle">Enquiry</text>
+        <text class="node-sub"  x="132" y="282" text-anchor="middle">in the lead inbox</text>
+        <text class="aside-note" x="125" y="323" text-anchor="middle">not on the client list yet</text>
+
+        <!-- on the list -->
+        <rect class="node-box" x="380" y="235" width="200" height="66" rx="2"></rect>
+        <rect x="380" y="235" width="5" height="66" fill="#2f6fa6"></rect>
+        <text class="node-name" x="483" y="263" text-anchor="middle">On the client list</text>
+        <text class="node-sub"  x="483" y="282" text-anchor="middle">no orders yet</text>
+
+        <!-- has ordered -->
+        <rect class="node-box" x="700" y="235" width="180" height="66" rx="2"></rect>
+        <rect x="700" y="235" width="5" height="66" fill="#2f7d4f"></rect>
+        <text class="node-name" x="793" y="263" text-anchor="middle">Has ordered</text>
+        <text class="node-sub"  x="793" y="282" text-anchor="middle">work on the schedule</text>
+
+        <!-- returning -->
+        <rect class="node-box" x="990" y="235" width="150" height="66" rx="2"></rect>
+        <rect x="990" y="235" width="5" height="66" fill="#2f7d4f"></rect>
+        <text class="node-name" x="1068" y="263" text-anchor="middle">Returning</text>
+        <text class="node-sub"  x="1068" y="282" text-anchor="middle">came back for more</text>
+
+        <!-- spine arrows -->
+        <path class="edge" d="M 215 268 L 373 268" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="294" y="243" text-anchor="middle">you convert it, or a rule does</text>
+        <text class="edge-label" x="294" y="290" text-anchor="middle">— see below</text>
+
+        <path class="edge" d="M 585 268 L 693 268" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="639" y="257" text-anchor="middle">first order</text>
+
+        <path class="edge" d="M 885 268 L 983 268" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="934" y="257" text-anchor="middle">second order</text>
+
+        <!-- a client added by hand skips the inbox entirely -->
+        <path class="edge" d="M 483 148 L 483 229" marker-end="url(#arrow)"></path>
+        <rect class="node-box" x="393" y="86" width="180" height="56" rx="2"></rect>
+        <text class="node-sub" x="483" y="110" text-anchor="middle" style="font-size:14px;font-weight:600;fill:#1c1a17">Added by hand</text>
+        <text class="node-sub" x="483" y="128" text-anchor="middle">someone who walked in</text>
+
+        <!-- ============ hiding a client ============ -->
+        <path class="edge--soft" d="M 483 301 L 483 470"></path>
+        <path class="edge--soft" d="M 793 301 L 793 470"></path>
+        <path class="edge--soft" d="M 483 470 L 793 470"></path>
+        <circle cx="638" cy="470" r="3.5" fill="#a5a2a0"></circle>
+
+        <!-- Hiding is drawn as a reversible pair rather than a one-way arrow
+             with a long return line: a client comes back to whatever they
+             were, which no single arrowhead can point at honestly. -->
+        <path class="edge--soft" d="M 610 470 L 610 498" marker-end="url(#arrow-soft)"></path>
+        <text class="edge-label" x="602" y="488" text-anchor="end">you hide them</text>
+        <path class="edge--soft" d="M 666 498 L 666 470" marker-end="url(#arrow-soft)"></path>
+        <text class="edge-label" x="674" y="482">they email again,</text>
+        <text class="edge-label" x="674" y="495">or you show them</text>
+
+        <rect class="node-box--ghost" x="538" y="502" width="200" height="66" rx="2"></rect>
+        <text class="node-name" x="641" y="530" text-anchor="middle" fill="#a5a2a0">Off the client list</text>
+        <text class="node-sub"  x="641" y="549" text-anchor="middle" fill="#a5a2a0">orders carry on regardless</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">What each stage means</h2>
+    <div class="stages">
+
+      <div class="stage stage--enquiry">
+        <p class="stage__name">Enquiry</p>
+        <span class="stage__tag">Not anybody yet</span>
+        <p class="stage__body">Mail from an address the app doesn't recognise, waiting in the <strong>lead inbox</strong>. It could be a customer, a supplier, or spam — nobody has looked yet, so the app doesn't guess. An enquiry is a <em>conversation</em>, not a person: nothing has been added to your client list.</p>
+        <p class="stage__next"><strong>Next:</strong> becomes a client when you convert it, or when a rule you set up converts it for you. Or it's hidden, or moved to your mailbox's Trash.</p>
+      </div>
+
+      <div class="stage stage--roster">
+        <p class="stage__name">On the client list</p>
+        <span class="stage__tag">A real record</span>
+        <p class="stage__body">A person with a record of their own: name, email, phone, address, how they heard about you, and your notes. Most arrive with no orders — an enquiry you decided was genuine, or somebody who walked in and gave you their details.</p>
+        <p class="stage__next"><strong>Next:</strong> their first order. There's no deadline on that, and no stage they fall out of if it never comes.</p>
+      </div>
+
+      <div class="stage stage--ordering">
+        <p class="stage__name">Has ordered</p>
+        <span class="stage__tag">Doing business</span>
+        <p class="stage__body">The same record, now with work attached. Their lifetime value starts counting, they appear in the takings, and their orders run their own course — see <em>The life of an order</em> for that half.</p>
+        <p class="stage__next"><strong>Next:</strong> a second order marks them <strong>Returning</strong>, shown as a star beside their name.</p>
+      </div>
+
+      <div class="stage stage--hidden">
+        <p class="stage__name">Hidden</p>
+        <span class="stage__tag">Off the list</span>
+        <p class="stage__body">Still a client in every way that matters — you've just taken them off the list you read every day. Their own page still works, and everything they ever did is still on it.</p>
+        <p class="stage__next"><strong>Next:</strong> back on the list whenever you say so — or by themselves, the moment they email you again.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">What happens when mail arrives</h2>
+    <p class="section__lede">Every one of these is the app deciding where an incoming message belongs. The rules are always the same; what differs is whether the address is one it already knows, and whether you've told it anything about that sender in advance.</p>
+    <div class="scenarios">
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">A stranger writes in</p>
+        </div>
+        <div>
+          <p class="scenario__then">The address matches nobody on your client list, so the conversation goes to the <strong>lead inbox</strong> and the grey <span class="badge badge--neutral">1</span> appears beside Clients. It stays there until you do something with it — reading it doesn't clear the count, because reading an enquiry isn't answering it.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">You convert it by hand</p>
+          <p class="scenario__who">The ordinary case, and the one you'll use most.</p>
+        </div>
+        <div>
+          <p class="scenario__then">Their name is already filled in for you, worked out from how they signed the mail — or, failing that, from their email address, so "marie.alarie@…" arrives as <em>Marie Alarie</em>. Correct it if it's wrong; what you submit always wins.</p>
+          <p class="scenario__then">The conversation moves onto their new record, and so does any other unclaimed mail from the same address — a first message and three follow-ups all end up in one place.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">Your website's contact form submits</p>
+          <p class="scenario__who">Only if you've set up a rule for it.</p>
+        </div>
+        <div>
+          <p class="scenario__then">These arrive from your website provider's address rather than the customer's, so without a rule every submission looks like the same sender. Tell the app that address is your contact form, and each one <strong>becomes a client automatically</strong>, announced with a purple badge on the Clients link.</p>
+          <p class="scenario__then">Tell it what your form's labels are called — <em>Name</em>, <em>Phone</em>, <em>How did you hear about us?</em> — and those answers land in the matching fields instead of sitting in a wall of text. Unlabelled, the rule still works; it just produces clients named after your website provider.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">…and that person is already on your list</p>
+        </div>
+        <div>
+          <p class="scenario__then">Nothing is duplicated. The conversation goes onto the record you already have, and anything the form filled in is used only to <strong>fill blanks</strong> — a phone number you corrected by hand is never overwritten by one they retyped into a web form. No new client, so no "new client" badge; the unread-mail badge is what tells you they wrote.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">A newsletter, or a supplier you'll never file</p>
+          <p class="scenario__who">Only if you've set up a rule for it.</p>
+        </div>
+        <div>
+          <p class="scenario__then">Tell the app to hide that sender and it stops reaching the lead inbox at all. The mail is kept and still readable, and your real mailbox is untouched — the rule only decides what this app shows you.</p>
+          <p class="scenario__then">Unlike a conversation <em>you</em> hide, a rule-hidden one doesn't come back when the sender writes again. That's the point: a newsletter arrives every week, and a rule that un-hides it every week hasn't worked. Remove the rule to undo it.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">An existing client writes</p>
+        </div>
+        <div>
+          <p class="scenario__then">No lead, no decision to make. The address is recognised, so the conversation attaches to their record straight away and a purple <span class="badge badge--notice">2</span> counts the messages you haven't read — on the Clients link, beside their name on the list, and on their own Emails tab.</p>
+          <p class="scenario__then">It counts <em>messages</em>, not conversations, so a reply three months into an old thread still reaches you. It clears only by opening the conversation — looking at the list isn't reading what they said.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">Mail that arrived before they existed</p>
+        </div>
+        <div>
+          <p class="scenario__then">Add a client, or correct an email address, and the app goes back through the unclaimed mail and attaches anything from that address. You don't have to wait for the person to write again.</p>
+        </div>
+      </div>
+
+      <div class="scenario">
+        <div>
+          <p class="scenario__what">A hidden client writes</p>
+        </div>
+        <div>
+          <p class="scenario__then">They come back onto the client list by themselves. Someone getting back in touch is exactly the moment you'd want them there, and it saves you remembering that you hid them.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Three things worth knowing</h2>
+    <div class="notes">
+
+      <div class="note note--hidden">
+        <h3>Hiding a client</h3>
+        <p>There is <strong>no way to delete a client</strong>, and there won't be. Their orders point at them, so do their invoices and every email they ever sent — deleting the record would leave all of it referring to nobody.</p>
+        <p><strong>Hiding is about the list, and only the list.</strong> They come off the client list and out of the picker when you start a new order. That's all it does.</p>
+        <p>Their orders stay exactly where they are — on the schedule, in the orders list, in your revenue and tax figures — and their name still shows on every one of them. An order is time you actually spent and money you were actually owed, and tidying a contact list doesn't get to retract that.</p>
+        <p><em>Use it for an enquiry that went nowhere, a duplicate, or somebody you've stopped dealing with.</em> Nothing is lost, and you can put them back at any time.</p>
+      </div>
+
+      <div class="note note--notice">
+        <h3>The two badges beside Clients</h3>
+        <p>The <strong>grey</strong> one counts enquiries waiting for you to decide something. It's deliberately colourless: the app has no idea whether that message is a customer or spam, and a louder colour would claim more than it knows.</p>
+        <p>The <strong>purple</strong> one means something worth knowing happened — unread mail from a client, or a client a rule added while you weren't looking. Purple clears by <em>looking</em>; grey clears by <em>doing</em>.</p>
+        <p>They never both count the same person, and both can show at once: triaging a stranger and replying to a client are different work with different answers.</p>
+      </div>
+
+      <div class="note">
+        <h3>An enquiry is not a client</h3>
+        <p>This is the distinction the whole page rests on. Mail from a stranger sits in the lead inbox as a <em>conversation</em>. Nothing is on your client list until somebody — you, or a rule you wrote — says it should be.</p>
+        <p>That's on purpose. An inbox is newsletters, suppliers and spam; a client record per sender would make the list useless within a month. The one exception is a sender you've explicitly named, which is you making the decision once instead of every time.</p>
+        <p><em>Going the other way is a matter of fact, not of judgement</em> — a client counts as having ordered because an order exists, and as returning because a second one does. There's no button for either.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Quick answers</h2>
+    <table class="compare">
+      <thead>
+        <tr><th scope="col">Question</th><td>Answer</td></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Can I delete a client?</th>
+          <td>No — hide them instead. Orders, invoices and email conversations all refer to a client, so removing the record would leave those pointing at nothing. Hiding gets you the same tidy list with none of that.</td>
+        </tr>
+        <tr>
+          <th scope="row">Does hiding a client hide their orders?</th>
+          <td>No, and this is the one thing worth being certain about. Their orders stay on the schedule, in the orders list, and in every figure on the Analytics page. Hiding answers "do I still deal with this person"; it isn't a way to take work off the books.</td>
+        </tr>
+        <tr>
+          <th scope="row">Can I place an order for a hidden client?</th>
+          <td>Not without putting them back on the list first — they aren't offered in the client picker on a new order. Show them again and they're there. Hiding somebody you're about to do work for is the contradiction the app is quietly pointing out.</td>
+        </tr>
+        <tr>
+          <th scope="row">Do hidden clients still count in my figures?</th>
+          <td>Yes. Revenue, lifetime value, top clients, "how did you hear about us" — all unchanged. Leaving a hidden client out would mean last year's takings changed because you tidied a list this morning.</td>
+        </tr>
+        <tr>
+          <th scope="row">What's the difference between hiding an enquiry and hiding a client?</th>
+          <td>An enquiry is a conversation, and hiding it takes it out of the lead inbox. A client is a person, and hiding them takes them off the client list. Both are reversible, both keep everything, and both undo themselves when the person writes to you again.</td>
+        </tr>
+        <tr>
+          <th scope="row">Somebody filled in the contact form twice. Do I get two records?</th>
+          <td>Not if they used the same email address both times — the second one attaches to the record that exists. A <em>different</em> address does produce a second record, because two people share a name far more often than they share an inbox, and merging two clients isn't something an unattended sync should be able to do.</td>
+        </tr>
+        <tr>
+          <th scope="row">Why is there no "client since" date?</th>
+          <td>Because their first order already says it, and better. A date on the record would tell you when somebody typed them in; the order tells you when you started working for them.</td>
+        </tr>
+        <tr>
+          <th scope="row">Can a client go backwards?</th>
+          <td>Only in the sense that any of it can be edited. Nothing expires: a client with one order from four years ago is still a client, and still shows on the list. The only thing that ever removes somebody from view is you hiding them.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p class="colophon">Atelier Order Book — client lifecycle reference. Its companion, <em>The life of an order</em>, covers what happens once a client places one. Colours and badges on this page match the ones used throughout the app.</p>
+
+</div>
+</body>
+</html>

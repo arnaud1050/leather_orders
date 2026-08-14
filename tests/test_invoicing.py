@@ -48,7 +48,7 @@ def registered(company):
 def make_order(client_row, unit_price=1000.0):
     row = Order(
         client_id=client_row.id, item="Briefcase",
-        start=date(2026, 7, 1), due=date(2026, 7, 15), status="in_progress",
+        start=date(2026, 7, 1), due=date(2026, 7, 15), status="confirmed",
     )
     db.session.add(row)
     db.session.flush()
@@ -358,7 +358,7 @@ def test_a_cent_of_rounding_does_not_leave_it_unpaid(registered, client_record):
 def test_a_zero_value_order_is_not_reported_as_paid(registered, client_record):
     """Nothing has been collected, so "Paid" would be a lie."""
     order = Order(client_id=client_record.id, item="Empty",
-                  start=date(2026, 7, 1), due=date(2026, 7, 2), status="in_progress")
+                  start=date(2026, 7, 1), due=date(2026, 7, 2), status="confirmed")
     db.session.add(order)
     db.session.flush()
     invoice = issue(registered, order)

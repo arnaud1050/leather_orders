@@ -30,7 +30,7 @@ def registered(company):
 def order(registered, client_record):
     row = Order(
         client_id=client_record.id, item="Briefcase",
-        start=date(2026, 7, 1), due=date(2026, 7, 15), status="in_progress",
+        start=date(2026, 7, 1), due=date(2026, 7, 15), status="confirmed",
     )
     db.session.add(row)
     db.session.flush()
@@ -79,7 +79,7 @@ def test_creating_an_invoice_for_another_tenants_order_404s(
     db.session.add(outsider)
     db.session.flush()
     foreign = Order(client_id=outsider.id, item="Not yours",
-                    start=date(2026, 7, 1), due=date(2026, 7, 2), status="in_progress")
+                    start=date(2026, 7, 1), due=date(2026, 7, 2), status="confirmed")
     db.session.add(foreign)
     db.session.commit()
 
@@ -217,7 +217,7 @@ def test_the_order_page_warns_when_tax_cannot_be_calculated(
     db.session.add(row)
     db.session.flush()
     order_row = Order(client_id=row.id, item="Belt", start=date(2026, 7, 1),
-                      due=date(2026, 7, 2), status="in_progress")
+                      due=date(2026, 7, 2), status="confirmed")
     db.session.add(order_row)
     db.session.flush()
     db.session.add(OrderLine(order_id=order_row.id, description="Belt",

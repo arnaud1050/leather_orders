@@ -158,6 +158,26 @@ hidden), only clients with orders, only clients without. No `.dot` on these —
 a dot carries a status colour, and these are groups, not statuses. The filter
 is skipped entirely unless the company has clients on both sides of it.
 
+**Hidden clients are filtered server-side**, unlike that one. `/clients`
+queries `is_hidden=False`; `/clients?hidden=1` is the **archive view**,
+querying `is_hidden=True` — only the hidden ones, so the two lists never mix
+into one that needs a marker read to tell apart. The split is deliberate:
+the orders filter is a view over rows already on the page, but a hidden
+client isn't part of the roster and shouldn't be shipped to the browser at
+all. A link to the archive appears in the legend row only when there is at
+least one, and the archive omits "+ Add client" (adding a client to the
+hidden list is not a thing anyone means to do). Every link off either view
+carries the view it came from as `return_to`, url-encoded — the only place
+in the app where `return_to` has a query string of its own, which is why
+`back_label()` matches on the path alone.
+
+**Hiding itself lives on the client page**, in a `.detail-lifecycle` block
+reusing the order page's cancel/delete shape, behind a confirm dialog that
+spells out what it won't touch. There is no Delete beside it and never will
+be — see REQUIREMENTS `CL17`–`CL21`, and
+[docs/client-lifecycle.html](client-lifecycle.html) for the studio-facing
+version of the same thing.
+
 **Orders list columns are reorderable and hideable**, per company, from
 Settings > Orders > "Orders list columns" (`settings.html`, `section ==
 'orders'`). `ORDER_COLUMNS` in `app.py` is the canonical dict of the 9
@@ -318,7 +338,12 @@ the layout note at the end of this entry for the one thing the page writes),
   order with no payment recorded (data entry hasn't caught up) contributes nothing.
   "Avg. value per client" = average `Client.lifetime_value` across clients who have
   at least one order (not average order price, and not diluted by leads with zero
-  orders). Also here: **revenue by payment method** (sorted by amount, so the
+  orders). **`lifetime_value` excludes cancelled orders** (CL2a) — a commission
+  that was called off was never business done, and letting it inflate this figure
+  would distort both the average here and the "Top 5 paying clients" below it. It
+  still sums `Order.total` rather than `amount_paid`, though, so it remains the
+  value of orders *placed and kept*, not money received: a kept-but-unpaid order
+  still counts here while contributing nothing to Revenue. Also here: **revenue by payment method** (sorted by amount, so the
   dominant method reads first) and **outstanding on issued invoices** — the latter
   counts invoiced work only, since an order that hasn't been billed isn't money
   anyone owes yet.

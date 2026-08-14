@@ -23,10 +23,13 @@ def _table_body(html: str) -> str:
 
 
 def test_orders_tab_shows_the_labeled_status_pill(logged_in, client_record, order):
+    """The pill renders `display_status`, not the stored one (OR1c) — this
+    order is `confirmed` with a past start, so it must read "In progress"."""
     html = logged_in.get(f"/clients/{client_record.id}/orders").get_data(as_text=True)
 
-    assert f'pill pill--{order.status}' in html
-    assert STATUS_LABELS[order.status] in html
+    assert order.display_status == "in_progress"
+    assert f'pill pill--{order.display_status}' in html
+    assert STATUS_LABELS[order.display_status] in html
 
 
 def test_orders_tab_status_dot_only_appears_in_the_legend(logged_in, client_record, order):
@@ -55,7 +58,7 @@ def test_orders_tab_shows_dash_for_an_uninvoiced_order(logged_in, client_record,
 def test_orders_tab_sorts_by_the_requested_column(logged_in, client_record, order):
     earlier = Order(
         client_id=client_record.id, item="AAA earlier item",
-        start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
     )
     db.session.add(earlier)
     db.session.flush()

@@ -62,6 +62,14 @@
   `communications/` must not import `Order`, so merging is app-side
   (`/clients/<id>/merge`) calling into the module for the thread half, same
   boundary question as creating an order from an enquiry above.
+  **Hiding is the partial answer that now exists** (`CL17`–`CL21`): the
+  duplicate can be taken off the roster, keeping both records and both
+  histories. It isn't a merge — the orders stay split across two clients, so
+  neither one's lifetime value is right — but it stops the list filling up
+  while the real thing is unbuilt. Note the interaction to get right if merge
+  ever lands: the losing record is currently *hidden*, not deleted, and a
+  merge would want to leave it that way rather than inventing a second
+  disposal.
 - **Square integration**: invoicing is currently local-only — the app numbers,
   renders and prints its own invoices, and payments are entered by hand whatever
   their `method`. The schema was shaped for the intended next step ("Path A"): the

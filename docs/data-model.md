@@ -82,10 +82,14 @@ client page) always show separate **First name** / **Last name** fields and writ
 to `first_name`/`last_name`.
 
 **Returning clients & lifetime value:** `Client.is_returning` (a plain `@property`,
-`len(self.orders) >= 2`) and `Client.lifetime_value` (`sum(o.price for o in
-self.orders)`) are computed on the fly from the `orders` relationship — no stored
-columns, so they're always correct without needing to update a flag whenever orders
-change. `is_returning` drives a small star icon next to the client's name
+`len(self.orders) >= 2`) and `Client.lifetime_value` (`sum(o.total for o in
+self.orders if o.status != "cancelled")`) are computed on the fly from the `orders`
+relationship — no stored columns, so they're always correct without needing to
+update a flag whenever orders change. **`lifetime_value` skips cancelled orders**
+(CL2a) — an order that was called off was never business done, and this figure
+ranks Analytics' top clients and the timeline's highest-paying-client sort.
+`is_returning` still counts them: that a client came back and asked a second time
+is true whether or not that second order went ahead. `is_returning` drives a small star icon next to the client's name
 (`.timeline__star`) — on the timeline, and next to the client column on `/orders`
 and `/clients` — plus a "Returning" pill on the full client page
 (`.pill--returning`). Each of those three tables carries a small
@@ -95,6 +99,31 @@ a filter, clicking it does nothing, and putting it up there read as though it we
 one. `lifetime_value` is shown at the top of the client page
 (`.client-stats`), and each order in that page's order list also shows its own
 price now.
+
+**Hiding a client — `Client.is_hidden`:** the strictest reading of "hide,
+don't delete". A `Client` has **no** `can_delete` and no delete route, and
+couldn't sensibly have one: `Order`, `Invoice` and `EmailThread` all reference
+a client, so a deleted row would leave every one of them pointing at nobody.
+Hiding is one boolean and `toggle_client_hidden()` in `app.py` is the whole
+of it.
+
+**Its scope is the roster and only the roster** (`CL18`) — `/clients` and the
+new-order client picker. It touches no order, no invoice, no payment, no email
+thread, and **not one figure on `/analytics`**: revenue, lifetime value, top
+clients and the source breakdown all read a hidden client exactly as before.
+The argument is the one behind `CL2a` (cancelled orders leaving
+`lifetime_value`) and `AN4` (hidden `SourceOption`s staying in the breakdown)
+turned the other way — an order is time the studio spent and money it was
+owed, and tidying a contact list doesn't get to retract that. It's also why
+there is deliberately **no option** to hide the orders too: "hidden" would
+then mean two different things and `/analytics` would answer differently
+depending on which one a user picked months ago.
+
+**It undoes itself.** New *incoming* mail matched to a hidden client puts them
+back on the roster (`CL21`), counted as `SyncResult.clients_resurfaced` and
+handled in `email_sync._store_message` right beside the lead inbox's own
+resurface — same gating, same reasoning (`L-15`, `L-16`). No `R-6` exemption
+to mirror, since no sender rule can hide a client in the first place.
 
 **Lead-capture fields on `Client`:** `inquiry_type` (matches the "About" dropdown on
 the bymonsieur.ca contact form) and `first_message` (the inquiry text) are blank for
@@ -235,13 +264,47 @@ brought in line with them (PM5 in `REQUIREMENTS.md`). Not exposed in the
 timeline's order modal — same "quick edit → modal, more room needed → full
 page" split as the rest of order editing.
 
-`status` is one of: `in_progress`, `ready`, `delivered`, `rush` — this string is used
-directly as a CSS class suffix (`chip--{{ status }}`, `dot--{{ status }}`,
-`timeline__bar--{{ status }}`), so if you add a new status, add matching CSS rules in
-`style.css` (`--chip-color` custom property per status), a label in `STATUS_LABELS`
-(`app.py`), and — for the timeline legend specifically — `timeline.html`'s legend is
-currently hardcoded to the four statuses rather than looping `STATUS_LABELS` like
-`calendar.html` does. Worth unifying if a 5th status gets added.
+`status` is one of: `tentative`, `confirmed`, `ready`, `delivered`, `cancelled` —
+a one-way lifecycle, with `ALLOWED_TRANSITIONS` in `app.py` as its only definition
+(see `REQUIREMENTS.md` OR1a). Two inactive ends around an active middle:
+`tentative` is a conversation that hasn't been committed to, `delivered` and
+`cancelled` are both over. `Order.is_active` derives the middle.
+
+**`in_progress` is a label, not a stored value.** `Order.display_status` returns it
+for a `confirmed` order whose `start` has arrived, and every list, pill, dot and
+timeline bar renders `display_status` while forms post back the raw `status`. This
+is the same "derived for display" shape as `Order.invoice_status`, and it exists so
+an order can't sit at "confirmed" three weeks into the work because nobody advanced
+a dropdown. There is deliberately **no** `started_at` column: the planned start date
+is something the studio keeps current (moving a bar *is* rescheduling), so deriving
+from it can't go stale the way a second date would.
+
+**Deleting an order is the app's one hard delete** (`Order.can_delete`, OR1e) and
+it is deliberately hard to reach: tentative only, and only with no invoice, no
+payment and **no materials drawn from stock**. That last one is the interesting
+constraint — deleting can't know whether the leather an order drew went back on
+the shelf or was consumed on a prototype, so rather than guess it refuses, and
+the user clears the materials on the Materials tab first (`delete_material()`
+restocks that row, which is the conscious per-material choice). Cancelling is
+the exit that leaves materials and their stock untouched. One-off "Other" costs
+carry no stock and so don't block. `Document` and `OrderMaterialOther` hang off
+a plain `order_id` with no cascade, so `delete_order()` clears each through its
+module's services — documents especially, since those are bytes on disk.
+
+**Rush is a separate boolean** (`Order.is_rush`), not a status — it used to be one,
+which meant an order could never be both rush and ready for pickup. It's settable
+only while `is_active`, cleared on the way out of the active stages, and renders as
+a marker layered over the stage colour rather than a colour of its own.
+
+The status string is still used directly as a CSS class suffix
+(`chip--{{ status }}`, `dot--{{ status }}`, `timeline__bar--{{ status }}`), so
+adding one means matching CSS in `style.css` (a `--chip-color` custom property per
+status), a `STATUS_LABELS` entry (`app.py`), an `ALLOWED_TRANSITIONS` entry, and —
+for the timeline legend specifically — a `timeline.html` legend entry, which is
+still hardcoded rather than looping `STATUS_LABELS` like `calendar.html` does. It
+stays hardcoded on purpose now: the legend filters on `display_status` and omits
+`cancelled` (never on this page) and `rush` (no longer a status), so it isn't the
+same list `STATUS_LABELS` holds.
 
 **Line items (`OrderLine`) and `Order.total`:** an order's value is the sum of its
 lines (`description` × `quantity` × `unit_price`), not a stored column — `Order.price`
@@ -402,7 +465,8 @@ every boot and on a fresh database.
   their table first shipped (`companies.invoice_prefix`, `clients.address`,
   `payments.method`, `payments.reference`, `orders.order_type_id`,
   `companies.timezone`, `orders.pickup_date`, `companies.order_columns`,
-  `source_options.is_other`, `clients.other_source_detail`, `clients.notes`). Its DDL spells the default zone as a literal rather
+  `source_options.is_other`, `clients.other_source_detail`, `clients.notes`,
+  `users.signature`, `orders.is_rush`, `clients.is_hidden`). Its DDL spells the default zone as a literal rather
   than interpolating `DEFAULT_TIMEZONE` — a migration records what shipped and
   must not change if that constant does. Adding another
   column to an existing table means appending here — otherwise it'll work on your

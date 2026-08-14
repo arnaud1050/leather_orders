@@ -260,7 +260,7 @@ def test_send_route_ignores_a_document_id_from_another_tenant(
     from datetime import date
     other_order = Order(
         client_id=other_client.id, item="Wallet", start=date(2026, 7, 1),
-        due=date(2026, 7, 15), status="in_progress",
+        due=date(2026, 7, 15), status="confirmed",
     )
     db.session.add(other_order)
     db.session.flush()

@@ -19,6 +19,18 @@ that came back — a redirect carrying the right words says nothing about what
 was written — and one test goes the whole way round through `/login` to prove
 the new password is the one that actually authenticates.
 
+**`tests/test_client_hiding.py`** defends `CL17`–`CL21`, and most of it is one
+assertion from different angles: **hiding a client must not touch their
+orders.** The load-bearing test is
+`test_hiding_does_not_change_a_single_analytics_figure`, which diffs the whole
+`/analytics` body either side of a hide — deliberately blunt, because the
+failure it guards against is a figure quietly moving, and enumerating the
+cards would only defend the ones somebody thought to list. The rest covers the
+toggle (tenant scoping, login, `return_to`), the roster/archive split (`CL19`),
+the new-order picker (`CL20`), and the come-back-on-new-mail rule (`CL21`) —
+that last group living here rather than in `tests/test_lead_triage.py` even
+though the code is in `communications/`, since the rule is the host's.
+
 **`tests/test_seeding.py`** defends the bootstrap/sample-data split (`CO9a`–
 `CO9c`, hard rule 16): that `seed_if_empty()` creates a tenant and *no* clients,
 orders, invoices or letterhead; that `sample_data.seed_sample_data()` inserts the

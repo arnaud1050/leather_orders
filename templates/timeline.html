@@ -35,16 +35,25 @@
   <div class="legend-row">
     <span class="legend__label">Filter by</span>
     <div class="legend" id="status-legend">
-      <button type="button" class="legend__item" data-status="in_progress"><span class="dot dot--in_progress"></span>In progress</button>
+      {# Filters on the *stored* status, so Confirmed and In progress share
+         one button — they're one stage under two names, and splitting them
+         would make you click twice to hide one thing. Labelled "In
+         progress" because that's what most bars in the group read; the
+         not-yet-started ones say "Confirmed" and hide with it.
+         Cancelled has no entry (never reaches this page), and neither does
+         rush — it's a flag, not a stage. Its key is below the table. #}
+      <button type="button" class="legend__item" data-status="tentative"><span class="dot dot--tentative"></span>Tentative</button>
+      <button type="button" class="legend__item" data-status="confirmed"><span class="dot dot--confirmed"></span>In progress</button>
       <button type="button" class="legend__item" data-status="ready"><span class="dot dot--ready"></span>Ready for pickup</button>
       <button type="button" class="legend__item" data-status="delivered"><span class="dot dot--delivered"></span>Delivered</button>
-      <button type="button" class="legend__item" data-status="rush"><span class="dot dot--rush"></span>Rush</button>
     </div>
     <label class="timeline__sort">
       Sort by
       <select id="timeline-sort">
         <option value="start">Start date</option>
+        <option value="start_rush">Start date, rush first</option>
         <option value="due">Due date</option>
+        <option value="due_rush">Due date, rush first</option>
         <option value="value">Highest paying client</option>
       </select>
     </label>
@@ -63,7 +72,7 @@
     </div>
 
     {% for row in rows %}
-    <div class="timeline__row" data-status="{{ row.status }}" data-start="{{ row.start.isoformat() }}" data-due="{{ row.due.isoformat() }}" data-client-value="{{ row.client.lifetime_value }}">
+    <div class="timeline__row" data-status="{{ row.status }}" data-rush="{{ '1' if row.is_rush else '0' }}" data-start="{{ row.start.isoformat() }}" data-due="{{ row.due.isoformat() }}" data-client-value="{{ row.client.lifetime_value }}">
       <button type="button" class="timeline__label" data-open-client="{{ row.client.id }}">
         <span class="timeline__label-name">{{ row.client.name }}</span>
         {% if row.client.is_returning %}
@@ -71,9 +80,13 @@
         {% endif %}
       </button>
       <div class="timeline__track">
-        <div class="timeline__bar timeline__bar--{{ row.status }} {% if row.truncated_start %}timeline__bar--open-start{% endif %} {% if row.truncated_end %}timeline__bar--open-end{% endif %}"
+        {# Colour comes from display_status, except when the order is rush —
+           then the bar goes red and says "this one first" before anything
+           else about it registers. `--rush` is declared after the stage
+           colours in style.css so it wins on source order. #}
+        <div class="timeline__bar timeline__bar--{{ row.display_status }} {% if row.is_rush %}timeline__bar--rush{% endif %} {% if row.truncated_start %}timeline__bar--open-start{% endif %} {% if row.truncated_end %}timeline__bar--open-end{% endif %}"
              style="grid-column: {{ row.col_start }} / span {{ row.span }};"
-             title="{{ row.item }}{% if row.order_type %} · {{ row.order_type.label }}{% endif %}"
+             title="{{ row.item }}{% if row.order_type %} · {{ row.order_type.label }}{% endif %}{% if row.is_rush %} · Rush{% endif %}"
              data-open-order="{{ row.id }}">
           <span class="timeline__bar-label">
             {{ row.item }}
@@ -95,6 +108,12 @@
   <p class="timeline__legend-note">
     <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
     Returning client
+    {# Rush belongs down here with the star rather than up in the filter
+       row: a red bar needs explaining, but rush isn't a stage, so it isn't
+       something you can filter *to* — sort by "rush first" instead. #}
+    <span class="timeline__legend-sep" aria-hidden="true">&middot;</span>
+    <span class="dot dot--rush"></span>
+    Rush
   </p>
 
   {# Quick-view/edit modals. One per client/order visible in this window,
@@ -131,13 +150,28 @@
       {# Read-only: the total is the sum of the order's line items, which are
          edited on the full order page (there's no room for a line editor here). #}
       <div class="modal__field">Total<span class="modal__readout">${{ '%.2f'|format(row.total) }}</span></div>
+      {# Legal moves only, same list edit_order() validates against. Cancelling
+         and deleting aren't offered here: both need a confirmation (and cancel
+         needs a reason, which is a note, which OR4 keeps off this modal), so
+         both live on the full order page. #}
       <label class="modal__field">Status
         <select name="status">
-          {% for key, label in status_labels.items() %}
-          <option value="{{ key }}" {% if key == row.status %}selected{% endif %}>{{ label }}</option>
+          {% for key in settable_statuses(row.status) %}
+          <option value="{{ key }}" {% if key == row.status %}selected{% endif %}>{{ status_labels[key] }}</option>
           {% endfor %}
         </select>
       </label>
+      {# Saves with the rest of the form rather than acting immediately —
+         a button here would reload the page and throw away any other edit
+         in progress. The hidden marker is what lets edit_order() tell
+         "unchecked" from "this form has no rush field" (hard rule 9). #}
+      {% if row.can_rush %}
+      <label class="modal__field modal__field--check">
+        <input type="hidden" name="rush_field" value="1">
+        <input type="checkbox" name="is_rush" {% if row.is_rush %}checked{% endif %}>
+        Mark as rush
+      </label>
+      {% endif %}
       <div class="modal__actions">
         <a class="modal__link" href="{{ url_for('order_page', order_id=row.id) }}?return_to={{ request.path }}">Open full order page &rarr;</a>
         <div class="modal__buttons">
@@ -216,12 +250,29 @@
       orderCountLabel.innerHTML = 'order' + (visible !== 1 ? 's' : '') + '<br>in this window';
     }
 
+    // "…, rush first" floats the urgent work to the top and then sorts by
+    // the chosen date *within* each group — so it stays a schedule rather
+    // than becoming two unordered piles.
+    var RUSH_FIRST = {start_rush: 'start', due_rush: 'due'};
+
     function applySort() {
       var sortBy = localStorage.getItem(SORT_KEY) || 'start';
       sortSelect.value = sortBy;
+      // A stored value from an older visit (or a hand-edited one) that no
+      // longer exists leaves the <select> blank; fall back to the default.
+      if (!sortSelect.value) {
+        sortBy = 'start';
+        sortSelect.value = sortBy;
+      }
+      var dateKey = RUSH_FIRST[sortBy];
       var sorted = rows.slice().sort(function (a, b) {
         if (sortBy === 'value') {
           return parseFloat(b.dataset.clientValue) - parseFloat(a.dataset.clientValue);
+        }
+        if (dateKey) {
+          var rushDiff = (b.dataset.rush === '1') - (a.dataset.rush === '1');
+          if (rushDiff !== 0) return rushDiff;
+          return a.dataset[dateKey] < b.dataset[dateKey] ? -1 : a.dataset[dateKey] > b.dataset[dateKey] ? 1 : 0;
         }
         return a.dataset[sortBy] < b.dataset[sortBy] ? -1 : a.dataset[sortBy] > b.dataset[sortBy] ? 1 : 0;
       });

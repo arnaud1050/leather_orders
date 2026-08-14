@@ -16,7 +16,7 @@
         </span>
         {% endif %}
       </h1>
-      <p class="detail-subtitle">Client</p>
+      <p class="detail-subtitle">{{ 'Client — hidden from the client list' if client.is_hidden else 'Client' }}</p>
     </div>
     <div class="client-stats client-stats--inline">
       <div class="client-stats__item">
@@ -78,6 +78,73 @@
     </div>
   </form>
 
+  {# The one thing you can do to a client that isn't a field edit. Same
+     .detail-lifecycle shape as the order page's cancel/delete block, and
+     the same rule: the button is one word, the note underneath says what
+     it will and won't touch. There is no Delete beside it and never will
+     be — orders, invoices and email threads all point here. #}
+  <section class="detail-lifecycle">
+    <h2>This client</h2>
+
+    <div class="lifecycle-actions">
+      {% if client.is_hidden %}
+      <form method="post" action="{{ url_for('toggle_client_hidden', client_id=client.id) }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <button type="submit" class="btn-secondary">Show on the client list</button>
+      </form>
+      {% else %}
+      <button type="button" class="btn-secondary" data-open-lifecycle="hide-client-modal">Hide</button>
+      {% endif %}
+    </div>
+
+    <p class="detail-note">
+      {% if client.is_hidden %}
+        Hidden from the client list and from the client picker on a new order.
+        {% if client.orders %}Their {{ client.orders|length }} order{{ 's' if client.orders|length != 1 }} and everything on {{ 'them' if client.orders|length != 1 else 'it' }} carried on as normal.{% endif %}
+        They come back by themselves if they email you again.
+      {% else %}
+        Hiding takes a client off the client list without deleting anything —
+        for an enquiry that went nowhere, a duplicate, or somebody you've
+        stopped dealing with. Their orders, invoices and emails are untouched.
+      {% endif %}
+    </p>
+  </section>
+
+  {% if not client.is_hidden %}
+  <dialog id="hide-client-modal" class="modal">
+    <form method="post" action="{{ url_for('toggle_client_hidden', client_id=client.id) }}" class="modal__form">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <h2 class="modal__title">Hide this client?</h2>
+      <p class="modal__subtitle">{{ client.name }}</p>
+      <p class="modal__hint">They come off the client list and out of the client picker when you start a new order. Nothing is deleted, and you can put them back at any time.</p>
+      {% if client.orders %}
+      <p class="modal__hint">Their {{ client.orders|length }} order{{ 's' if client.orders|length != 1 }} stay{{ '' if client.orders|length != 1 else 's' }} exactly where {{ 'they are' if client.orders|length != 1 else 'it is' }} — on the schedule, in the orders list, and in your figures. Their name still shows on {{ 'them' if client.orders|length != 1 else 'it' }}.</p>
+      {% endif %}
+      <p class="modal__hint">If they email you again, they come back on the list by themselves.</p>
+      <div class="modal__actions">
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Keep on the list</button>
+          <button type="submit" class="btn-primary">Hide</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    document.querySelectorAll('[data-open-lifecycle]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var modal = document.getElementById(el.dataset.openLifecycle);
+        if (modal) modal.showModal();
+      });
+    });
+    document.querySelectorAll('#hide-client-modal [data-close-modal]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        document.getElementById('hide-client-modal').close();
+      });
+    });
+  </script>
+  {% endif %}
+
   {% elif section == 'orders' %}
 
   {% macro sort_link(key, label, numeric=False) %}
@@ -130,9 +197,12 @@
         </thead>
         <tbody>
           {% for o in orders %}
-          <tr data-status="{{ o.status }}" data-balance="{{ o.balance_due }}">
+          <tr data-status="{{ o.display_status }}" data-balance="{{ o.balance_due }}" {% if o.status == 'cancelled' %}class="is-cancelled"{% endif %}>
             <td><a href="{{ url_for('order_page', order_id=o.id) }}?return_to={{ return_to }}">{{ o.item }}</a></td>
-            <td><span class="pill pill--{{ o.status }}">{{ status_labels[o.status] }}</span></td>
+            <td>
+              <span class="pill pill--{{ o.display_status }}">{{ status_labels[o.display_status] }}</span>
+              {% if o.is_rush %}<span class="pill pill--rush">Rush</span>{% endif %}
+            </td>
             <td>{{ o.start.strftime('%Y-%m-%d') }}</td>
             <td>{{ o.due.strftime('%Y-%m-%d') }}</td>
             <td class="is-numeric">${{ '%.2f'|format(o.total) }}</td>

@@ -297,7 +297,7 @@ def _order_for(company_id: int) -> Order:
     db.session.flush()
     outsider_order = Order(
         client_id=outsider_client.id, item="Outsider's item",
-        start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
     )
     db.session.add(outsider_order)
     db.session.flush()

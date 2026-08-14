@@ -81,12 +81,22 @@ SAMPLE_CLIENTS = [
 # window is never empty and never entirely historical. client_id 1 and 3
 # each get a second order, so they show up as "returning" clients.
 #
-# **Statuses have to agree with the offsets**, and that constraint is what
-# fixes several of them: "delivered" and "ready" (for pickup) only make
-# sense on an order that has actually started, so every not-yet-started
-# order here is "in_progress" or "rush". The status vocabulary has no
-# "booked, not started" value (see STATUS_LABELS in app.py), which is the
-# only reason the future orders aren't labelled more precisely.
+# **Statuses have to agree with the offsets**, and the lifecycle now makes
+# that automatic rather than a thing to hand-check: a "confirmed" order
+# renders as "Confirmed" while its start is in the future and "In progress"
+# once it arrives (Order.display_status), so the same row is correct on both
+# sides of its start date. "delivered" and "ready" still only make sense on
+# an order that has actually started, so those keep past-dated starts.
+#
+# One "tentative" and one "cancelled" order are here to exercise the two
+# inactive ends: the tentative one shows as a dashed, uncommitted bar on the
+# timeline, and the cancelled one is deliberately *absent* from it while
+# still appearing in /orders — which is the whole point of that stage, and
+# invisible in a dataset that has none.
+#
+# "is_rush" is optional and defaults to False. It's a flag, not a status,
+# so it sits alongside one — order 4 is rush *and* underway, which the old
+# four-value vocabulary couldn't express at all.
 #
 # "lines" is (description, quantity, unit_price) — an order's value is the
 # sum of these, there's no separate price field. "payments" is optional per
@@ -103,34 +113,45 @@ SAMPLE_ORDERS = [
     {"id": 1, "client_id": 1, "item": "Full-grain briefcase", "start": -18, "due": -4, "status": "delivered", "notes": "Horween Chromexcel, brass hardware", "order_type": "Custom Order",
      "lines": [("Full-grain briefcase, Horween Chromexcel", 1, 760.00), ("Brass hardware upgrade", 1, 90.00)],
      "payments": [(425.00, -18, "square", "sq:9F2K-4471"), (425.00, -4, "cash", None)]},
-    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": -11, "due": 10, "status": "in_progress", "notes": "Waxed canvas panels + veg-tan trim",
+    {"id": 2, "client_id": 2, "item": "Weekender duffel", "start": -11, "due": 10, "status": "confirmed", "notes": "Waxed canvas panels + veg-tan trim",
      "lines": [("Weekender duffel, veg-tan trim", 1, 560.00), ("Waxed canvas panels", 1, 60.00)],
      "payments": [(310.00, -11, "etransfer", "e-tfr CA8821")]},
     {"id": 3, "client_id": 3, "item": "Bifold wallet (monogram)", "start": -4, "due": 5, "status": "ready", "notes": "Hand-stitched, gold foil initials",
      "lines": [("Bifold wallet, hand-stitched", 1, 110.00), ("Gold foil monogram", 1, 30.00)],
      "payments": [(70.00, -4, "cash", None)]},
-    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": -1, "due": 11, "status": "rush", "notes": "Client travels the day after it's due", "order_type": "Custom Order",
+    {"id": 4, "client_id": 4, "item": "Messenger bag", "start": -1, "due": 11, "status": "confirmed", "is_rush": True, "notes": "Client travels the day after it's due", "order_type": "Custom Order",
      "lines": [("Messenger bag", 1, 430.00), ("Rush surcharge", 1, 50.00)],
      "payments": [(240.00, -1, "square", "sq:7T1B-9930")]},
-    {"id": 5, "client_id": 5, "item": "Belt, 38mm", "start": 1, "due": 8, "status": "in_progress", "notes": "English bridle leather",
+    {"id": 5, "client_id": 5, "item": "Belt, 38mm", "start": 1, "due": 8, "status": "confirmed", "notes": "English bridle leather",
      "lines": [("Belt, 38mm English bridle", 1, 95.00)]},
     {"id": 6, "client_id": 6, "item": "Camera strap", "start": 0, "due": 6, "status": "ready", "notes": "Padded, nickel rivets",
      "lines": [("Camera strap, padded", 1, 95.00), ("Nickel rivets", 1, 15.00)],
      "payments": [(55.00, 0, "etransfer", "e-tfr CA9014")]},
-    {"id": 7, "client_id": 7, "item": "Tote bag", "start": -2, "due": 13, "status": "in_progress", "notes": "Natural veg-tan, will patina", "order_type": "White Label",
+    {"id": 7, "client_id": 7, "item": "Tote bag", "start": -2, "due": 13, "status": "confirmed", "notes": "Natural veg-tan, will patina", "order_type": "White Label",
      "lines": [("Tote bag, natural veg-tan", 1, 310.00)]},
-    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": 3, "due": 9, "status": "in_progress", "notes": "Gift for anniversary",
+    {"id": 8, "client_id": 1, "item": "Passport holder (x2)", "start": 3, "due": 9, "status": "confirmed", "notes": "Gift for anniversary",
      "lines": [("Passport holder", 2, 65.00)],
      "payments": [(65.00, -1, "cash", None)]},
-    {"id": 9, "client_id": 8, "item": "Watch strap", "start": 5, "due": 10, "status": "rush", "notes": "Custom buckle from client's own",
+    {"id": 9, "client_id": 8, "item": "Watch strap", "start": 5, "due": 10, "status": "confirmed", "is_rush": True, "notes": "Custom buckle from client's own",
      "lines": [("Watch strap, client's own buckle", 1, 85.00)], "order_type": "Custom Order"},
-    {"id": 10, "client_id": 9, "item": "Laptop sleeve", "start": 4, "due": 12, "status": "in_progress", "notes": "13-inch, felt lining",
+    {"id": 10, "client_id": 9, "item": "Laptop sleeve", "start": 4, "due": 12, "status": "confirmed", "notes": "13-inch, felt lining",
      "lines": [("Laptop sleeve, 13-inch", 1, 145.00), ("Felt lining", 1, 20.00)]},
-    {"id": 11, "client_id": 10, "item": "Card holder", "start": 7, "due": 14, "status": "in_progress", "notes": "Minimalist, 3-slot",
+    {"id": 11, "client_id": 10, "item": "Card holder", "start": 7, "due": 14, "status": "confirmed", "notes": "Minimalist, 3-slot",
      "lines": [("Card holder, 3-slot", 1, 75.00)]},
     {"id": 12, "client_id": 3, "item": "Travel journal cover", "start": -3, "due": 8, "status": "ready", "notes": "Refillable, brass corners", "order_type": "Consulting/Sampling",
      "lines": [("Travel journal cover, refillable", 1, 105.00), ("Brass corners", 1, 15.00)],
      "payments": [(60.00, -2, "etransfer", "e-tfr CA9127")]},
+    # Still a conversation: no deposit, so no payment, and it holds a slot on
+    # the timeline as a dashed bar rather than a committed one. Deletable,
+    # unlike everything above it.
+    {"id": 13, "client_id": 6, "item": "Saddle bag", "start": 9, "due": 20, "status": "tentative", "notes": "Sizing and hardware still being discussed", "order_type": "Custom Order",
+     "lines": [("Saddle bag, veg-tan", 1, 390.00)]},
+    # Absent from the timeline, present in /orders — the reason a cancelled
+    # order exists as a stage instead of a delete. The note is the shape
+    # cancel_order() writes, dated prefix and all.
+    {"id": 14, "client_id": 9, "item": "Duffel, small", "start": -6, "due": 7, "status": "cancelled", "notes": "Navy waxed canvas",
+     "cancelled": (-3, "Client moved abroad, deposit refunded"),
+     "lines": [("Duffel, small", 1, 280.00)]},
 ]
 
 # Only some orders are invoiced — matching reality, where an invoice gets
@@ -206,10 +227,17 @@ def seed_sample_data(
 
     for o in SAMPLE_ORDERS:
         order_type = order_types.get(o.get("order_type"))
+        # A cancelled order's reason is built here rather than written into
+        # the literal above, so its date is an offset like every other date
+        # in this file. Same wording cancel_order() produces.
+        notes = o["notes"]
+        if "cancelled" in o:
+            offset, reason = o["cancelled"]
+            notes = f"{notes}\n\nCancelled {day(offset).isoformat()}: {reason}"
         order = Order(
             id=o["id"], client_id=o["client_id"], item=o["item"],
             start=day(o["start"]), due=day(o["due"]),
-            status=o["status"], notes=o["notes"],
+            status=o["status"], is_rush=o.get("is_rush", False), notes=notes,
             order_type_id=order_type.id if order_type else None,
         )
         db.session.add(order)

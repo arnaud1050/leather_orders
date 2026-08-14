@@ -21,7 +21,7 @@ def _foreign_order(other_company):
     db.session.flush()
     order = Order(
         client_id=client.id, item="Foreign order",
-        start=date(2026, 7, 1), due=date(2026, 7, 15), status="in_progress")
+        start=date(2026, 7, 1), due=date(2026, 7, 15), status="confirmed")
     db.session.add(order)
     db.session.flush()
     line = OrderLine(

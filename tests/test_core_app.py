@@ -71,7 +71,7 @@ def test_get_order_or_404_is_scoped_to_the_tenant(logged_in, other_company):
     db.session.flush()
     foreign_order = Order(
         client_id=foreign_client.id, item="Foreign order",
-        start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
     )
     db.session.add(foreign_order)
     db.session.commit()
@@ -133,7 +133,7 @@ def test_client_is_returning_only_with_two_or_more_orders(client_record):
     for i in range(2):
         db.session.add(Order(
             client_id=client_record.id, item=f"Order {i}",
-            start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+            start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
         ))
     db.session.commit()
     assert client_record.is_returning is True
@@ -143,7 +143,7 @@ def test_client_lifetime_value_sums_order_totals(client_record):
     for price in (100.0, 250.0):
         order = Order(
             client_id=client_record.id, item="Item",
-            start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+            start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
         )
         db.session.add(order)
         db.session.flush()
@@ -152,6 +152,47 @@ def test_client_lifetime_value_sums_order_totals(client_record):
 
     assert client_record.lifetime_value == sum(o.total for o in client_record.orders)
     assert client_record.lifetime_value > 0
+
+
+def test_client_lifetime_value_skips_cancelled_orders(client_record):
+    """CL2a — a commission that was called off was never business done, and
+    letting it count would inflate the analytics top-client ranking."""
+    kept, called_off = None, None
+    for price, status in ((100.0, "confirmed"), (250.0, "cancelled")):
+        order = Order(
+            client_id=client_record.id, item="Item",
+            start=date(2026, 1, 1), due=date(2026, 1, 10), status=status,
+        )
+        db.session.add(order)
+        db.session.flush()
+        db.session.add(OrderLine(
+            order_id=order.id, description="Item", quantity=1, unit_price=price))
+        if status == "cancelled":
+            called_off = order
+        else:
+            kept = order
+    db.session.commit()
+
+    assert client_record.lifetime_value == kept.total
+    assert called_off.total > 0  # the cancelled order is still worth something
+    assert client_record.lifetime_value < sum(o.total for o in client_record.orders)
+
+
+def test_a_client_whose_only_order_was_cancelled_is_worth_nothing(client_record):
+    order = Order(
+        client_id=client_record.id, item="Item",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="cancelled",
+    )
+    db.session.add(order)
+    db.session.flush()
+    db.session.add(OrderLine(
+        order_id=order.id, description="Item", quantity=1, unit_price=400.0))
+    db.session.commit()
+
+    assert client_record.lifetime_value == 0
+    # Still a client with an order on file, though — is_returning and the
+    # orders list both deliberately keep counting it (CL2a).
+    assert len(client_record.orders) == 1
 
 
 def test_edit_client_without_address_field_leaves_address_untouched(logged_in, client_record):
@@ -319,11 +360,12 @@ def test_orders_list_type_column_only_shows_with_at_least_one_order_type(logged_
 # ---------------------------------------------------------------------------
 
 def test_edit_order_rejects_an_unknown_status(logged_in, order):
-    logged_in.post(f"/orders/{order.id}/edit", data={
+    response = logged_in.post(f"/orders/{order.id}/edit", data={
         "item": order.item, "start": order.start.isoformat(), "due": order.due.isoformat(),
         "status": "not-a-real-status",
     })
-    assert db.session.get(Order, order.id).status == "in_progress"
+    assert response.status_code == 400
+    assert db.session.get(Order, order.id).status == "confirmed"
 
 
 def test_edit_order_pickup_date_untouched_when_field_absent(logged_in, order):
@@ -366,7 +408,7 @@ def test_new_order_creates_a_single_line_from_price(logged_in, client_record):
     logged_in.post("/orders/new", data={
         "client_id": str(client_record.id), "item": "Weekender bag",
         "start": "2026-08-01", "due": "2026-08-15", "price": "480.00",
-        "status": "in_progress",
+        "status": "confirmed",
     })
 
     created = Order.query.filter_by(item="Weekender bag").first()
@@ -382,7 +424,7 @@ def test_order_total_with_no_tax_is_the_sum_of_its_lines(client_record):
     client_record.province = None
     order = Order(
         client_id=client_record.id, item="Untaxed order",
-        start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
     )
     db.session.add(order)
     db.session.flush()
@@ -398,7 +440,7 @@ def test_is_settled_tolerates_a_cent_of_rounding(client_record):
     client_record.province = None  # no tax, so the total is exactly the line price
     order = Order(
         client_id=client_record.id, item="Rounding order",
-        start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
     )
     db.session.add(order)
     db.session.flush()
@@ -466,7 +508,7 @@ def test_billing_tab_deletes_via_trash_icon_not_a_remove_button(logged_in, order
 def test_delete_payment_is_scoped_to_the_order(logged_in, order, client_record):
     other_order = Order(
         client_id=client_record.id, item="Other order",
-        start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
     )
     db.session.add(other_order)
     db.session.flush()
@@ -545,7 +587,7 @@ def test_timeline_next_and_prev_step_by_half_the_window(logged_in, order):
 def test_timeline_excludes_an_order_entirely_outside_the_window(logged_in, client_record):
     far_future = Order(
         client_id=client_record.id, item="Far future order",
-        start=date(2030, 1, 1), due=date(2030, 1, 10), status="in_progress",
+        start=date(2030, 1, 1), due=date(2030, 1, 10), status="confirmed",
     )
     db.session.add(far_future)
     db.session.commit()
@@ -558,7 +600,7 @@ def test_timeline_excludes_an_order_entirely_outside_the_window(logged_in, clien
 def test_timeline_clips_a_bar_that_starts_before_the_window(logged_in, client_record):
     order = Order(
         client_id=client_record.id, item="Straddling order",
-        start=date(2026, 7, 1), due=date(2026, 8, 10), status="in_progress",
+        start=date(2026, 7, 1), due=date(2026, 8, 10), status="confirmed",
     )
     db.session.add(order)
     db.session.commit()
@@ -590,7 +632,7 @@ def test_timeline_dedupes_client_dialogs_across_multiple_orders(logged_in, clien
     for i in range(3):
         db.session.add(Order(
             client_id=client_record.id, item=f"Order {i}",
-            start=date(2026, 8, 1), due=date(2026, 8, 10), status="in_progress",
+            start=date(2026, 8, 1), due=date(2026, 8, 10), status="confirmed",
         ))
     db.session.commit()
 
@@ -606,7 +648,7 @@ def test_timeline_returning_client_star_shown_only_once_returning(logged_in, cli
     # the class's mere presence.
     order1 = Order(
         client_id=client_record.id, item="First",
-        start=date(2026, 1, 1), due=date(2026, 1, 10), status="in_progress",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
     )
     db.session.add(order1)
     db.session.commit()
@@ -615,7 +657,7 @@ def test_timeline_returning_client_star_shown_only_once_returning(logged_in, cli
 
     order2 = Order(
         client_id=client_record.id, item="Second",
-        start=date(2026, 1, 2), due=date(2026, 1, 11), status="in_progress",
+        start=date(2026, 1, 2), due=date(2026, 1, 11), status="confirmed",
     )
     db.session.add(order2)
     db.session.commit()
@@ -630,7 +672,7 @@ def test_timeline_returning_client_star_shown_only_once_returning(logged_in, cli
 # ---------------------------------------------------------------------------
 
 def _make_order(client, item, price, due):
-    order = Order(client_id=client.id, item=item, start=due - timedelta(days=14), due=due, status="in_progress")
+    order = Order(client_id=client.id, item=item, start=due - timedelta(days=14), due=due, status="confirmed")
     db.session.add(order)
     db.session.flush()
     db.session.add(OrderLine(order_id=order.id, description=item, quantity=1, unit_price=price))
@@ -695,7 +737,7 @@ def test_new_order_carries_return_to_through_to_the_redirect(logged_in, client_r
         data={
             "client_id": str(client_record.id), "item": "Tote",
             "start": "2026-08-01", "due": "2026-08-15", "price": "100",
-            "status": "in_progress",
+            "status": "confirmed",
         },
     )
     assert response.status_code == 302
@@ -707,7 +749,7 @@ def test_new_order_inline_client_creation_creates_both_rows(logged_in, company):
         "client_id": "new", "new_first_name": "Jean", "new_last_name": "Tremblay",
         "new_email": "jean@example.com", "new_phone": "",
         "item": "Belt", "start": "2026-08-01", "due": "2026-08-10",
-        "price": "60", "status": "in_progress",
+        "price": "60", "status": "confirmed",
     })
     assert response.status_code == 302
 
@@ -722,7 +764,7 @@ def test_new_order_inline_client_creation_requires_first_and_last_name(logged_in
     response = logged_in.post("/orders/new", data={
         "client_id": "new", "new_first_name": "", "new_last_name": "",
         "item": "Belt", "start": "2026-08-01", "due": "2026-08-10",
-        "price": "60", "status": "in_progress",
+        "price": "60", "status": "confirmed",
     })
     assert response.status_code == 400
 

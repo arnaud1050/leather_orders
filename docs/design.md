@@ -60,7 +60,13 @@ changes made:
     same regardless of whether the underlying delete is hard (a sender rule)
     or governed by `can_delete`/hide-don't-delete (`SourceOption` and
     friends) — the convention is about how the control looks, not what it
-    does underneath. **Never introduce a text "Remove" button** — the order
+    does underneath. The order page's **"This order"** section is the one
+    place the "Delete" button appears outside a `.settings-source-list`: it
+    deletes a whole record rather than a row in a list, so neither container
+    applies, and it takes the label rather than inventing a third look.
+    It's also the only delete in the app behind a confirm dialog, because
+    it's the only one that isn't a single row someone can re-add.
+    **Never introduce a text "Remove" button** — the order
     page's Line items and Payments sections, and three sender-rule buttons in
     `communications/templates/integrations.html`, used to read "Remove" and
     were switched to match this (trash icon for the two `.doc-list`
@@ -74,8 +80,37 @@ Current tokens (top of `style.css`):
 - `--hairline` — borders/dividers, dark charcoal-grey, **not** brown
 - `--status-progress` (steel blue), `--status-ready` (gold/amber),
   `--status-delivered` (forest green), `--status-rush` (brick red) — deliberately
-  distinct hues for the four order statuses; do not converge these back toward a
-  single earthy/brown family
+  distinct hues; do not converge these back toward a single earthy/brown family.
+  These were the four *order statuses* until the lifecycle landed; now they're
+  three stage colours plus rush, which is no longer a stage:
+  - **`confirmed` and `in_progress` share `--status-progress`.** They're one
+    stored stage under two names (`Order.display_status`), so a second hue
+    would imply a second stage.
+  - **`tentative` reuses `--badge-neutral`**, not a new colour — that token
+    already means "deliberately non-committal, nobody has decided yet", which
+    is what a tentative order is. Its timeline bar is **outlined and dashed
+    rather than filled**: every other bar is committed studio time, and a
+    solid bar in any colour reads as booked. The dashes carry the meaning; the
+    colour only has to stay out of the way.
+  - **`cancelled` uses `--ink-soft`** and gets no badge weight at all. It isn't
+    undecided, worth knowing, urgent or broken — it's just over. Rows render
+    muted via `.is-cancelled`, with the strikethrough on the item name only
+    (striking a row of numbers makes them unreadable for no gain).
+  - **`--status-rush` fills the whole bar**, overriding the stage colour.
+    An overlay treatment (an inset ring plus a marker) was tried first and
+    reverted: urgency is the thing that has to register first when scanning
+    a schedule, and layered over the stage colour it was too quiet to do
+    that job. Declared *after* the stage rules in `style.css` — same
+    specificity, so source order is what makes it win.
+
+    This does not re-create the old bug, because the fix was in the data
+    model, not the palette: rush is a boolean beside the status now, and
+    `Order.can_rush` confines it to `confirmed`. So the red replaces exactly
+    one colour — the steel blue — and can never disguise whether something
+    is ready or delivered. Its key sits under the timeline with the
+    returning-client star (`.timeline__legend-sep` separates them), not in
+    the filter row: rush isn't a stage you can filter to, so the "rush
+    first" sort options are how you single it out.
 - `--status-pending` (purple) — not an order status. The app's "something
   happened that you should know about" colour: the calendar's synced-event
   chip (`.chip--event`), the unopened-thread markers in the lead inbox
@@ -109,6 +144,26 @@ Current tokens (top of `style.css`):
   throughout instead), including the now-unused Roboto Mono request itself
   dropped from `base.html`'s Google Fonts `<link>`. Don't reintroduce mono
   anywhere without checking first.
+
+- **A legend row takes three kinds of thing, and they read differently.**
+  `.legend__item` buttons filter what's already on the page (statuses,
+  with/without orders); `.legend__new-order` is the one primary action,
+  pushed right by `margin-left: auto`; and `.legend__aside` is a quiet
+  `--ink-soft` link to a *different* list — currently only the hidden-clients
+  archive. The distinction is worth keeping: a filter that reloads the page
+  and a link that doesn't are the same gesture with different consequences,
+  so they shouldn't look alike. `.legend__aside` matches `.back-link`'s weight
+  and hover, and exists separately only because that one carries a bottom
+  margin for the top of a detail page.
+
+- **`.detail-lifecycle` is "things you can do to this record that aren't a
+  field edit"** — the order page's rush/cancel/delete, the client page's
+  Hide. Always the same shape: an `<h2>` naming the record ("This order",
+  "This client"), a `.lifecycle-actions` row of buttons, and a
+  `.detail-note` underneath that says what the buttons will and won't touch —
+  *and why a button isn't there when it isn't*. That note is the load-bearing
+  part; a control that vanishes without explanation is the failure mode the
+  whole block was built to avoid.
 
 - **`.detail-form` caps at 360px**, which is right for a name, a date or an
   amount and wrong for prose. Two places override it rather than widening the

@@ -251,6 +251,22 @@ body {
   margin-left: auto;
 }
 
+/* A quiet link sitting in a legend row beside the filter buttons — the
+   hidden-clients archive, and anything else that's a sideways move rather
+   than an action. Same weight and hover as .back-link, which is the same
+   kind of thing; its own class only because .back-link carries a bottom
+   margin for the top of a detail page. */
+.legend__aside {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.legend__aside:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
 /* Connect + "sync everything", side by side under the account list. Its own
    class rather than reusing .settings-source-add's layout alone, which
    stacks a single form's fields rather than sitting two forms in a row. */
@@ -364,14 +380,30 @@ body {
   display: inline-block;
 }
 
+/* Tentative reuses --badge-neutral rather than minting a fifth hue: that
+   token already means "deliberately non-committal, nobody has decided yet",
+   which is exactly what a tentative order is. Confirmed and In progress
+   share the steel blue because they're one stage under two names (see
+   Order.display_status) — a second colour would imply a second stage.
+   Cancelled is --ink-soft: dead, not urgent, so it gets no weight at all. */
+.dot--tentative, .chip--tentative { --chip-color: var(--badge-neutral); }
+.dot--confirmed, .chip--confirmed { --chip-color: var(--status-progress); }
 .dot--in_progress, .chip--in_progress { --chip-color: var(--status-progress); }
 .dot--ready, .chip--ready { --chip-color: var(--status-ready); }
 .dot--delivered, .chip--delivered { --chip-color: var(--status-delivered); }
+.dot--cancelled, .chip--cancelled { --chip-color: var(--ink-soft); }
+/* .dot--rush isn't produced by the STATUS_LABELS loop (rush isn't in it) —
+   it's used by hand for the timeline's rush key, below the table with the
+   returning-client star. `.pill--rush` likewise: the orders list renders it
+   as a second pill *beside* the stage pill, not instead of it. */
 .dot--rush, .chip--rush { --chip-color: var(--status-rush); }
 
+.dot--tentative { background: var(--badge-neutral); }
+.dot--confirmed { background: var(--status-progress); }
 .dot--in_progress { background: var(--status-progress); }
 .dot--ready { background: var(--status-ready); }
 .dot--delivered { background: var(--status-delivered); }
+.dot--cancelled { background: var(--ink-soft); }
 .dot--rush { background: var(--status-rush); }
 
 /* ---------------------------------------------------------------------
@@ -625,9 +657,37 @@ body {
   filter: brightness(1.1);
 }
 
+.timeline__bar--confirmed { --chip-color: var(--status-progress); }
 .timeline__bar--in_progress { --chip-color: var(--status-progress); }
 .timeline__bar--ready { --chip-color: var(--status-ready); }
 .timeline__bar--delivered { --chip-color: var(--status-delivered); }
+
+/* Tentative is outlined, not filled. Every other bar is a block of studio
+   time that's been committed; this one hasn't been, and a solid bar in a
+   fifth colour would still read as booked. Dashes say "pencilled in" in a
+   way no hue can. Label flips to ink since there's no dark fill under it. */
+.timeline__bar--tentative {
+  --chip-color: var(--badge-neutral);
+  background: transparent;
+  border: 1px dashed var(--badge-neutral);
+}
+
+.timeline__bar--tentative .timeline__bar-label {
+  color: var(--ink-soft);
+}
+
+/* A rush order's bar is red outright, overriding its stage colour —
+   urgency is the thing you need to see first when scanning a schedule,
+   and a marker layered over the stage colour was too quiet to do that job.
+   Declared after the stage rules on purpose: same specificity, so source
+   order is what makes it win.
+
+   Rush only ever sits on `confirmed` (Order.can_rush), so this replaces
+   exactly one colour — the steel blue — and never hides whether something
+   is ready or delivered. Which is why losing the stage to the colour is
+   affordable here in a way it wasn't when rush was itself a status. The
+   key for it sits under the table with the returning-client star, since
+   it isn't a stage you can filter to. */
 .timeline__bar--rush { --chip-color: var(--status-rush); }
 
 /* Orders that start/end outside the visible window get a cut/angled edge
@@ -666,9 +726,9 @@ body {
   font-style: italic;
 }
 
-/* Key for the returning-client star, below the table rather than in
-   .legend-row — it isn't a filter, so it shouldn't sit among the buttons
-   that are. */
+/* Key for the returning-client star and the red rush bar, below the table
+   rather than in .legend-row — neither is a filter, so neither should sit
+   among the buttons that are. (Rush is reachable from the sort instead.) */
 .timeline__legend-note {
   display: inline-flex;
   align-items: center;
@@ -680,6 +740,10 @@ body {
 
 .timeline__legend-note .timeline__star {
   margin-left: 0;
+}
+
+.timeline__legend-sep {
+  color: var(--paper-deep);
 }
 
 /* ---------------------------------------------------------------------
@@ -886,6 +950,28 @@ dialog.modal::backdrop {
 .modal__field textarea:focus {
   outline: none;
   border-color: var(--ink);
+}
+
+/* A checkbox reads as "[x] label", not as a label stacked above a control,
+   so this variant runs as a row and opts out of the text-input styling
+   above — which would otherwise put a border and 8px of padding around a
+   13px box. Accent is the rush red, so the control looks like what it does
+   to the bar. */
+.modal__field--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.modal__field--check input[type="checkbox"] {
+  flex: none;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--status-rush);
 }
 
 /* A date and a time side by side in one field slot (an event's start/end).
@@ -1177,6 +1263,7 @@ dialog.modal::backdrop {
 .detail-payments h2,
 .detail-lines h2,
 .detail-invoice h2,
+.detail-lifecycle h2,
 .invoice-admin h2 {
   font-size: 0.9rem;
   font-weight: 600;
@@ -1546,8 +1633,32 @@ dialog.modal::backdrop {
 .detail-payments,
 .detail-lines,
 .detail-invoice,
+.detail-lifecycle,
 .invoice-admin {
   margin-bottom: 40px;
+}
+
+/* Both the order and client pages put this directly under a form's Save
+   button, and .detail-form's own margin isn't enough to stop "This order" /
+   "This client" reading as part of the form it follows. Matches the gap the
+   Documents block already sits at. */
+.detail-lifecycle {
+  margin-top: 32px;
+}
+
+/* Lifecycle actions on the order page — rush toggle, cancel, delete. Each
+   is its own little <form>, so they need laying out as a row rather than
+   inheriting the stacked .detail-form grid above them. */
+.lifecycle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.lifecycle-actions form {
+  margin: 0;
 }
 
 /* ---------------------------------------------------------------------
@@ -1752,10 +1863,31 @@ dialog.modal::backdrop {
 .pill--void { --pill-color: var(--status-rush); }
 
 /* Order statuses, same colors as the timeline/calendar dots+bars. */
+.pill--tentative { --pill-color: var(--badge-neutral); }
+.pill--confirmed { --pill-color: var(--status-progress); }
 .pill--in_progress { --pill-color: var(--status-progress); }
 .pill--ready { --pill-color: var(--status-ready); }
 .pill--delivered { --pill-color: var(--status-delivered); }
+.pill--cancelled { --pill-color: var(--ink-soft); }
 .pill--rush { --pill-color: var(--status-rush); }
+
+/* A cancelled order's row in the orders list / a client's orders tab.
+   Muted rather than badged: it isn't undecided, worth knowing, urgent or
+   broken, so it earns none of the four badge weights — it's just over.
+   The item name takes the strikethrough; striking a whole row of numbers
+   makes them hard to read for no gain. */
+.is-cancelled {
+  color: var(--ink-soft);
+}
+
+.is-cancelled td:first-child {
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-soft);
+}
+
+.is-cancelled a {
+  color: var(--ink-soft);
+}
 
 /* Sortable column headers (orders_list.html / clients_list.html) */
 .sort-link {

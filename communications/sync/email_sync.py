@@ -54,6 +54,7 @@ class SyncResult:
     threads_recovered: int = 0
     threads_auto_hidden: int = 0
     clients_auto_created: int = 0
+    clients_resurfaced: int = 0
     attachments_saved: int = 0
     error: str | None = None
     errors: list[str] = field(default_factory=list)
@@ -78,6 +79,8 @@ class SyncResult:
                if self.threads_auto_hidden else "")
             + (f", {self.clients_auto_created} client(s) created by a rule"
                if self.clients_auto_created else "")
+            + (f", {self.clients_resurfaced} hidden client(s) back on the list"
+               if self.clients_resurfaced else "")
         )
 
 
@@ -331,6 +334,21 @@ def _store_message(account, settings, thread, fetched, result, provider) -> None
     ):
         thread.restore()
         result.threads_resurfaced += 1
+
+    # Same argument one level up: a client taken off the roster who writes
+    # in again is back in the studio's life, and the roster should say so
+    # rather than making someone remember they hid them. Gated identically
+    # — incoming only (us mailing them isn't them writing back), and only
+    # on a message this function hasn't stored before, so re-syncing an
+    # overlapping window can't un-hide the same person twice.
+    #
+    # No rule-hidden exemption to mirror here: there is no such thing as an
+    # automatically hidden client. Hiding one is always a person's
+    # judgement, which is precisely the case L-15 says to undo.
+    if fetched.direction == DIRECTION_INCOMING and thread.client is not None:
+        if thread.client.is_hidden:
+            thread.client.is_hidden = False
+            result.clients_resurfaced += 1
 
     for attachment in fetched.attachments:
         _store_attachment(account, settings, message, attachment, result, provider)

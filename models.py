@@ -13,6 +13,7 @@ production deployment starts empty. The demo dataset lives in
 """
 
 import re
+from datetime import date
 
 import sqlalchemy as sa
 from flask_login import UserMixin
@@ -213,6 +214,18 @@ class Client(db.Model):
     # no timeline modal for clients to omit it from in the first place, so
     # it's just on the one edit form the client page already has.
     notes = db.Column(db.Text)
+    # Hide, don't delete — a client is referenced by orders, invoices and
+    # email threads, so there is no delete here at all, not even a
+    # can_delete escape hatch like SourceOption's.
+    #
+    # Hiding is a statement about the *roster* and nothing else: it takes
+    # the client off /clients and out of the new-order dropdown, and
+    # touches none of their orders, invoices, payments or mail. An order is
+    # time the studio actually spent and money it was actually owed, and no
+    # decision about a contact list gets to retract that — which is the
+    # same argument behind cancelled orders staying in the lists and hidden
+    # SourceOptions still counting in the analytics breakdown.
+    is_hidden = db.Column(db.Boolean, nullable=False, default=False)
 
     company = db.relationship("Company", back_populates="clients")
     orders = db.relationship("Order", back_populates="client")
@@ -233,7 +246,20 @@ class Client(db.Model):
 
     @property
     def lifetime_value(self):
-        return sum(order.total for order in self.orders)
+        """What this client's kept orders are worth.
+
+        Cancelled orders are excluded: work that was called off was never
+        business done, and counting it makes a client look better than they
+        were — which matters, because this figure ranks the "Top 5 paying
+        clients" and the timeline's highest-paying-client sort.
+
+        Still `total` and not `amount_paid`, so this stays "value of orders
+        placed", tax-inclusive, not "money received" — Analytics' Revenue
+        reads `Payment` rows for that.
+        """
+        return sum(
+            order.total for order in self.orders if order.status != "cancelled"
+        )
 
 
 class Order(db.Model):
@@ -249,6 +275,10 @@ class Order(db.Model):
     # done by) rather than reusing it.
     pickup_date = db.Column(db.Date)
     status = db.Column(db.String(20), nullable=False)
+    # Urgency, not a lifecycle stage — the two shared an enum once and an
+    # order could not be both rush and ready for pickup. Only meaningful
+    # while the order is active; see `is_active`.
+    is_rush = db.Column(db.Boolean, nullable=False, default=False)
     notes = db.Column(db.Text)
     # Optional — a company with no OrderTypes defined never shows the
     # dropdown at all (see new_order()/order_page() in app.py), so this
@@ -268,6 +298,105 @@ class Order(db.Model):
         "Invoice", uselist=False, cascade="all, delete-orphan",
         primaryjoin="Order.id == foreign(Invoice.subject_id)",
     )
+
+    # ----- lifecycle -------------------------------------------------
+    # All derived from `status` and the dates, never stored: a second
+    # column recording "is this active" is a column that can disagree
+    # with the status it was derived from (hard rule 10).
+
+    @property
+    def is_active(self):
+        """Work the studio still owes someone. The timeline shows these
+        plus `tentative`; the two final stages come off it."""
+        return self.status in ("confirmed", "ready")
+
+    @property
+    def display_status(self):
+        """The stage's name *for display*, which depends on the calendar.
+
+        `confirmed` and `in_progress` are one stored stage wearing two
+        labels: an order is "Confirmed" until its start date arrives and
+        "In progress" from then on. Deriving it off `start` rather than
+        storing a separate stage means it can never sit at "confirmed"
+        three weeks into the work because nobody advanced a dropdown —
+        same reasoning as `invoice_status` below.
+        """
+        if self.status == "confirmed" and self.start <= date.today():
+            return "in_progress"
+        return self.status
+
+    @property
+    def can_delete(self):
+        """Hard delete is for orders that never became real.
+
+        Tentative is the only stage that qualifies, and even then not once
+        something is attached that deleting would have to make a decision
+        about. Everything else follows hard rule 8 — hide, don't delete.
+
+        Three blockers, each for the same reason: the app must not decide
+        on the user's behalf.
+
+        * **an invoice or a payment** — money attached is a record worth
+          keeping, so the order gets cancelled instead
+        * **materials drawn from stock** — deleting can either put that
+          stock back or leave it spent, and only the maker knows which. A
+          prototype cut from that leather consumed it whether or not the
+          order survived. So the user clears the materials on the Materials
+          tab first, deciding restock-or-not one row at a time (which is
+          exactly what `delete_material()` asks them), and only then can the
+          order go. Cancelling is the path that keeps them untouched.
+
+        One-off "Other" costs don't block: they carry no stock, so removing
+        them decides nothing — same as the order's own line items.
+        """
+        # Imported here, not at module scope: inventory.models imports `db`
+        # out of this file, so a top-level import would be circular. Same
+        # dodge as the billing properties below.
+        from inventory import services as inventory_service
+
+        return (
+            self.status == "tentative"
+            and self.invoice is None
+            and not self.payments
+            and not inventory_service.list_materials_for_order(self.id)
+        )
+
+    @property
+    def blocking_materials(self):
+        """The materials standing between this order and being deletable.
+
+        Rendered so the order page can say *why* the button is missing and
+        point at the tab that fixes it — a disabled control with no
+        explanation is the thing this avoids.
+        """
+        from inventory import services as inventory_service
+
+        if self.status != "tentative":
+            return []
+        return inventory_service.list_materials_for_order(self.id)
+
+    @property
+    def can_rush(self):
+        """Rush means "put this one on the bench first", so it only applies
+        to work still on its way *to* the bench or on it.
+
+        Narrower than `is_active`, which also covers `ready`: a finished
+        piece waiting on its owner can't be hurried by the studio, and
+        "rush, ready for pickup" describes nothing. Moving an order to
+        `ready` therefore clears the flag rather than carrying it over.
+        """
+        return self.status == "confirmed"
+
+    @property
+    def can_cancel(self):
+        """Anything that hasn't finished can be called off — except while
+        an issued invoice is outstanding.
+
+        Voiding an invoice is billing's decision and hard rule 11 keeps an
+        issued one frozen, so cancelling must not do it as a side effect.
+        The user voids first, then cancels.
+        """
+        return (self.is_active or self.status == "tentative") and not self.is_issued
 
     @property
     def subtotal(self):
@@ -436,6 +565,13 @@ _ADDED_COLUMNS = [
     # this one belongs to the root, not to ai/, because User is a host model
     # (hard rule 12 sends module columns to the module's own file).
     ("users", "signature", "TEXT"),
+    # Rush stopped being a status and became a flag that sits on top of one —
+    # an order could never be both "rush" and "ready for pickup" while the two
+    # shared an enum. _migrate_order_statuses() below moves the existing rows.
+    ("orders", "is_rush", "BOOLEAN NOT NULL DEFAULT 0"),
+    # Every client already on file was on the roster before hiding existed,
+    # so the default has to be 0 — a migration records what shipped.
+    ("clients", "is_hidden", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
@@ -461,6 +597,9 @@ def run_migrations() -> None:
 
     if "price" in existing.get("orders", ()):
         _migrate_order_price_to_lines()
+
+    if "orders" in tables:
+        _migrate_order_statuses()
 
     for table in _SPLIT_ADDRESS_TABLES:
         if "address" in existing.get(table, ()):
@@ -509,6 +648,38 @@ def _migrate_free_text_address(table: str) -> None:
             values,
         )
     db.session.execute(sa.text(f"ALTER TABLE {table} DROP COLUMN address"))  # noqa: S608
+    db.session.commit()
+
+
+def _migrate_order_statuses() -> None:
+    """Move the old four-value status vocabulary onto the lifecycle.
+
+    Two changes land together because they touch the same column:
+
+    * `rush` was never a lifecycle stage, it was urgency wearing one's
+      clothes — so an order could not be both rush and ready for pickup.
+      It becomes `is_rush` on top of whatever stage the order is actually
+      at, and every former rush order lands at `confirmed`.
+    * `in_progress` was renamed `confirmed`, because with `tentative` in
+      front of it the stage now starts when the deposit lands, not when
+      the work does. "In progress" survives as a *display* label that
+      `Order.display_status` derives from the start date.
+
+    Idempotent by construction: it only ever reads rows still holding a
+    retired value, so a second boot matches nothing.
+    """
+    retired = db.session.execute(
+        sa.text("SELECT COUNT(*) FROM orders WHERE status IN ('rush', 'in_progress')")
+    ).scalar()
+    if not retired:
+        return
+
+    db.session.execute(
+        sa.text("UPDATE orders SET status = 'confirmed', is_rush = 1 WHERE status = 'rush'")
+    )
+    db.session.execute(
+        sa.text("UPDATE orders SET status = 'confirmed' WHERE status = 'in_progress'")
+    )
     db.session.commit()
 
 

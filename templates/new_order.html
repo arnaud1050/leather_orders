@@ -43,10 +43,13 @@
       </select>
     </label>
     {% endif %}
+    {# Only the two stages an order can *begin* at — you don't create an
+       order that's already been delivered. Tentative is the default: a new
+       order is usually still a conversation. #}
     <label>Status
       <select name="status">
-        {% for key, label in status_labels.items() %}
-        <option value="{{ key }}" {% if key == 'in_progress' %}selected{% endif %}>{{ label }}</option>
+        {% for key in initial_statuses %}
+        <option value="{{ key }}" {% if key == 'tentative' %}selected{% endif %}>{{ status_labels[key] }}</option>
         {% endfor %}
       </select>
     </label>

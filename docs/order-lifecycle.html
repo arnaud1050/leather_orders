@@ -1,0 +1,419 @@
+<!doctype html>
+<!--
+  The order lifecycle explained for the person *using* the app, not for
+  whoever maintains it. That audience is the whole point: it's written to be
+  handed to the studio or published as a help page, so it says "your stock"
+  and "the bench", never "status enum" or "transition".
+
+  Standalone on purpose — the CSS is inline and the diagram is hand-authored
+  SVG with no script, so the single file survives being emailed. Nothing in
+  the app loads it. To serve it as a real page instead, lift the <body>
+  content into a template and drop the <style> block in favour of
+  style.css: the palette below is copied from there, so the colours already
+  agree.
+
+  ** It goes stale silently. ** No test covers it and no import reaches it,
+  so a lifecycle change breaks nothing visible here — it just quietly turns
+  this page into a lie. It has already drifted twice. Treat it exactly like
+  REQUIREMENTS.md: update it in the same commit as the behaviour. The
+  authoritative rules are REQUIREMENTS.md OR1 … OR1h.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The life of an order</title>
+<style>
+  :root {
+    --paper: #f7f5f1;
+    --paper-deep: #dadada;
+    --ink: #1c1a17;
+    --ink-soft: #7e7a78;
+    --hairline: #83898d;
+
+    --tentative: #6b7075;
+    --progress:  #2f6fa6;
+    --ready:     #c98f00;
+    --delivered: #2f7d4f;
+    --rush:      #c23b34;
+    --cancelled: #7e7a78;
+    --removed:   #a5a2a0;
+
+    --radius: 2px;
+    --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 56px 24px 72px;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { border-bottom: 1px solid var(--hairline); padding-bottom: 24px; margin-bottom: 40px; }
+
+  .masthead__eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 12px;
+  }
+
+  .masthead h1 {
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0 0 12px;
+    line-height: 1.15;
+  }
+
+  .masthead p {
+    margin: 0;
+    max-width: 62ch;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- section furniture ---------- */
+
+  .section { margin-bottom: 48px; }
+
+  .section__title {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--paper-deep);
+  }
+
+  /* ---------- diagram ---------- */
+
+  .diagram {
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid var(--paper-deep);
+    border-radius: var(--radius);
+    padding: 8px 4px;
+  }
+
+  .diagram svg { display: block; min-width: 900px; width: 100%; height: auto; }
+
+  .node-name  { font-size: 15px; font-weight: 600; fill: var(--ink); }
+  .node-sub   { font-size: 11px; fill: var(--ink-soft); }
+  .edge-label { font-size: 11px; fill: var(--ink-soft); }
+  .aside-note { font-size: 11px; font-style: italic; fill: var(--ink-soft); }
+  /* Solid red, matching what a rush order's bar actually looks like on the
+     schedule rather than merely referring to it. */
+  .rush-label { font-size: 12px; font-weight: 600; fill: #fff; letter-spacing: 0.06em; }
+  .node-box   { fill: #fff; stroke: var(--hairline); stroke-width: 1; }
+  .node-box--ghost { fill: #fff; stroke: var(--removed); stroke-width: 1; stroke-dasharray: 4 3; }
+  .edge       { stroke: var(--hairline); stroke-width: 1.5; fill: none; }
+  .edge--soft { stroke: var(--removed); stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; }
+
+  /* ---------- stage cards ---------- */
+
+  .stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1px; background: var(--paper-deep); border: 1px solid var(--paper-deep); }
+
+  .stage { background: #fff; padding: 20px 22px; border-left: 4px solid var(--bar, var(--hairline)); }
+  .stage--tentative { --bar: var(--tentative); }
+  .stage--progress  { --bar: var(--progress); }
+  .stage--ready     { --bar: var(--ready); }
+  .stage--delivered { --bar: var(--delivered); }
+  .stage--cancelled { --bar: var(--cancelled); }
+
+  .stage__name { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+
+  .stage__tag {
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border: 1px solid var(--paper-deep);
+    border-radius: var(--radius);
+    padding: 2px 6px;
+    margin-bottom: 12px;
+  }
+
+  .stage__body { margin: 0 0 14px; font-size: 14px; line-height: 1.6; color: var(--ink); }
+  .stage__body:last-child { margin-bottom: 0; }
+
+  .stage__next { margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
+  .stage__next strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- two-up explanatory notes ---------- */
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+
+  .note {
+    background: #fff;
+    border: 1px solid var(--paper-deep);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+
+  .note--rush { border-left: 4px solid var(--rush); }
+
+  .note h3 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+  .note p { margin: 0 0 12px; font-size: 14px; line-height: 1.65; }
+  .note p:last-child { margin-bottom: 0; }
+  .note em { color: var(--ink-soft); font-style: normal; }
+
+  .swatch {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 1px;
+    margin-right: 7px;
+    vertical-align: baseline;
+    position: relative;
+    top: 0;
+  }
+  .swatch--rush { background: var(--rush); }
+
+  /* ---------- comparison table ---------- */
+
+  .compare { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; border: 1px solid var(--paper-deep); }
+  .compare th, .compare td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--paper-deep); vertical-align: top; line-height: 1.55; }
+  .compare tr:last-child th, .compare tr:last-child td { border-bottom: 0; }
+  .compare th { font-weight: 600; width: 34%; }
+  .compare thead th { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); font-weight: 500; }
+  .compare td { color: var(--ink); }
+
+  /* ---------- footer ---------- */
+
+  .colophon {
+    margin-top: 8px;
+    padding-top: 20px;
+    border-top: 1px solid var(--hairline);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+
+  @media print {
+    body { background: #fff; }
+    .sheet { padding: 0; max-width: none; }
+    .section, .note, .stage, .diagram { break-inside: avoid; }
+    .diagram svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="masthead">
+    <p class="masthead__eyebrow">Atelier Order Book</p>
+    <h1>The life of an order</h1>
+    <p>Every order moves through a handful of stages, from first conversation to finished piece in the client's hands. This page shows the whole path — what each stage means, and what can happen next from each one.</p>
+  </header>
+
+  <section class="section">
+    <h2 class="section__title">The whole path at a glance</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 1160 620" role="img" aria-labelledby="diagram-title diagram-desc" xmlns="http://www.w3.org/2000/svg">
+        <title id="diagram-title">How an order moves from tentative to delivered</title>
+        <desc id="diagram-desc">An order starts as Tentative. From there it can be removed entirely if it never went ahead, or become Confirmed once a deposit is received. A confirmed order renames itself to In progress on its start date, then becomes Ready for pickup when the work is finished, and Delivered when the client collects it. Tentative, Confirmed, In progress and Ready for pickup orders can all be cancelled.</desc>
+
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#83898d"></path>
+          </marker>
+          <marker id="arrow-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#a5a2a0"></path>
+          </marker>
+        </defs>
+
+        <!-- ============ removed (not a stage) ============ -->
+        <rect class="node-box--ghost" x="40" y="96" width="170" height="56" rx="2"></rect>
+        <text class="node-sub" x="125" y="120" text-anchor="middle" style="font-size:14px;font-weight:600;fill:#a5a2a0">Removed</text>
+        <text class="node-sub" x="125" y="138" text-anchor="middle" fill="#a5a2a0">gone for good</text>
+
+        <path class="edge--soft" d="M 125 247 L 125 158" marker-end="url(#arrow-soft)"></path>
+        <text class="edge-label" x="140" y="200">never went ahead</text>
+
+        <!-- ============ rush marker ============ -->
+        <rect x="380" y="194" width="140" height="30" rx="2" fill="#c23b34"></rect>
+        <text class="rush-label" x="450" y="214" text-anchor="middle">RUSH</text>
+        <path class="edge" d="M 450 224 L 450 245" stroke-dasharray="3 3" stroke="#c23b34"></path>
+        <text class="edge-label" x="534" y="210">added only at this stage — the bar turns red,</text>
+        <text class="edge-label" x="534" y="224">and comes off again at Ready for pickup</text>
+
+        <!-- ============ the spine ============ -->
+
+        <!-- tentative -->
+        <rect class="node-box" x="40" y="247" width="170" height="66" rx="2"></rect>
+        <rect x="40" y="247" width="5" height="66" fill="#6b7075"></rect>
+        <text class="node-name" x="132" y="275" text-anchor="middle">Tentative</text>
+        <text class="node-sub"  x="132" y="294" text-anchor="middle">still being discussed</text>
+
+        <!-- confirmed / in progress (one stage, two names) -->
+        <rect class="node-box" x="300" y="247" width="300" height="66" rx="2"></rect>
+        <rect x="300" y="247" width="5" height="66" fill="#2f6fa6"></rect>
+        <line x1="450" y1="253" x2="450" y2="307" stroke="#dadada" stroke-width="1" stroke-dasharray="3 3"></line>
+        <text class="node-name" x="378" y="275" text-anchor="middle">Confirmed</text>
+        <text class="node-sub"  x="378" y="294" text-anchor="middle">booked, not started</text>
+        <text class="node-name" x="527" y="275" text-anchor="middle">In progress</text>
+        <text class="node-sub"  x="527" y="294" text-anchor="middle">on the bench</text>
+        <text class="aside-note" x="378" y="337" text-anchor="middle">renames itself on the start date</text>
+
+        <!-- ready -->
+        <rect class="node-box" x="690" y="247" width="170" height="66" rx="2"></rect>
+        <rect x="690" y="247" width="5" height="66" fill="#c98f00"></rect>
+        <text class="node-name" x="778" y="275" text-anchor="middle">Ready for pickup</text>
+        <text class="node-sub"  x="778" y="294" text-anchor="middle">waiting for the client</text>
+
+        <!-- delivered -->
+        <rect class="node-box" x="950" y="247" width="170" height="66" rx="2"></rect>
+        <rect x="950" y="247" width="5" height="66" fill="#2f7d4f"></rect>
+        <text class="node-name" x="1038" y="275" text-anchor="middle">Delivered</text>
+        <text class="node-sub"  x="1038" y="294" text-anchor="middle">collected — all done</text>
+
+        <!-- spine arrows -->
+        <path class="edge" d="M 215 280 L 293 280" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="254" y="269" text-anchor="middle">deposit taken</text>
+
+        <path class="edge" d="M 605 280 L 683 280" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="644" y="269" text-anchor="middle">work finished</text>
+
+        <path class="edge" d="M 865 280 L 943 280" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="904" y="269" text-anchor="middle">client collects</text>
+
+        <!-- ============ the cancel bus ============ -->
+        <path class="edge" d="M 125 313 L 125 430"></path>
+        <path class="edge" d="M 530 313 L 530 430"></path>
+        <path class="edge" d="M 778 313 L 778 430"></path>
+        <path class="edge" d="M 125 430 L 778 430"></path>
+        <circle cx="530" cy="430" r="3.5" fill="#83898d"></circle>
+        <circle cx="600" cy="430" r="3.5" fill="#83898d"></circle>
+        <path class="edge" d="M 600 430 L 600 474" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="614" y="459">called off</text>
+
+        <!-- cancelled -->
+        <rect class="node-box" x="500" y="476" width="200" height="66" rx="2"></rect>
+        <rect x="500" y="476" width="5" height="66" fill="#7e7a78"></rect>
+        <text class="node-name" x="603" y="504" text-anchor="middle" fill="#7e7a78">Cancelled</text>
+        <text class="node-sub"  x="603" y="523" text-anchor="middle">called off, reason kept</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">What each stage means</h2>
+    <div class="stages">
+
+      <div class="stage stage--tentative">
+        <p class="stage__name">Tentative</p>
+        <span class="stage__tag">Not yet committed</span>
+        <p class="stage__body">The conversation is still going. Details aren't settled, the deposit hasn't arrived, and nothing has been promised. It sits on the schedule anyway, so you can see whether you'd actually have room for it.</p>
+        <p class="stage__next"><strong>Next:</strong> becomes Confirmed once the deposit is taken — or, if it never goes ahead, it's the one stage that can be removed completely.</p>
+      </div>
+
+      <div class="stage stage--progress">
+        <p class="stage__name">Confirmed &rarr; In progress</p>
+        <span class="stage__tag">Underway</span>
+        <p class="stage__body">The order is real: agreed, deposited, and holding a slot on the schedule. Until its start date arrives it reads <em>Confirmed</em>; on the start date it renames itself to <em>In progress</em>. You don't have to do anything to make that happen.</p>
+        <p class="stage__next"><strong>Next:</strong> Ready for pickup when the work is done. Can be cancelled, but no longer removed.</p>
+      </div>
+
+      <div class="stage stage--ready">
+        <p class="stage__name">Ready for pickup</p>
+        <span class="stage__tag">Underway</span>
+        <p class="stage__body">Finished and waiting for the client to collect it. The piece is done; the order isn't closed until it's actually in their hands.</p>
+        <p class="stage__next"><strong>Next:</strong> Delivered when the client collects it. Can still be cancelled if something goes wrong at the last moment.</p>
+      </div>
+
+      <div class="stage stage--delivered">
+        <p class="stage__name">Delivered</p>
+        <span class="stage__tag">Closed</span>
+        <p class="stage__body">The client has the piece. Nothing more is owed. It keeps its place on the schedule — those weeks were genuinely spent on it — and simply scrolls out of view as time moves on. It stays in the orders list and on the client's record for good.</p>
+        <p class="stage__next"><strong>Next:</strong> nothing — this is the end of the road.</p>
+      </div>
+
+      <div class="stage stage--cancelled">
+        <p class="stage__name">Cancelled</p>
+        <span class="stage__tag">Closed</span>
+        <p class="stage__body">An order that was real but was called off — by the client, or by you. It disappears from the schedule so it stops taking up space you could be using, but it isn't erased.</p>
+        <p class="stage__next"><strong>Next:</strong> nothing — this is the end of the road.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Two things worth knowing</h2>
+    <div class="notes">
+
+      <div class="note note--rush">
+        <h3><span class="swatch swatch--rush"></span>Marking an order as rush</h3>
+        <p>Rush isn't a stage of its own — it's a flag you add on top of one, so a rush order still moves through the same path as everything else. Its bar turns <strong>red</strong> on the schedule, and the schedule can be sorted to float rush orders to the top.</p>
+        <p>It applies only while an order is <strong>Confirmed or In progress</strong> — work that's on its way to the bench, or on it. Once a piece is finished and waiting to be collected there's nothing left for the studio to hurry, so moving an order to Ready for pickup takes the flag off by itself.</p>
+        <p>Until then you can add or remove it whenever you like.</p>
+      </div>
+
+      <div class="note">
+        <h3>Removing vs. cancelling</h3>
+        <p>These sound similar and aren't. <strong>Removing</strong> is only possible while an order is still Tentative, and only while nothing is attached to it — an enquiry that came to nothing, or something entered by mistake. It disappears entirely, with no trace left.</p>
+        <p>Once an order is real, it can never be removed — only <strong>cancelled</strong>. You'll be asked to say why, and that reason is saved onto the order's notes, so months later you can still see what happened and why.</p>
+        <p><em>Cancelling never touches your stock.</em> Materials drawn against an order stay exactly as they are.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section__title">Quick answers</h2>
+    <table class="compare">
+      <thead>
+        <tr><th scope="col">Question</th><td>Answer</td></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Which orders show on the schedule?</th>
+          <td>Everything except cancelled orders. A cancelled order disappears from the schedule the moment you call it off, because it stops needing your time. A delivered one stays on its dates — it did take that time, and hiding it would leave a gap in a week you were actually busy. It scrolls out of view naturally as the weeks move on.</td>
+        </tr>
+        <tr>
+          <th scope="row">Why show tentative orders at all?</th>
+          <td>So you can see what <em>might</em> land before you agree to it. A month that looks empty but has four tentative orders in it isn't an empty month.</td>
+        </tr>
+        <tr>
+          <th scope="row">Can an order ever go backwards?</th>
+          <td>No. An order only moves forward, or gets cancelled. If something was marked too early, correct it by editing the order rather than by moving it back a stage.</td>
+        </tr>
+        <tr>
+          <th scope="row">Where do closed orders go?</th>
+          <td>Nowhere. Delivered and cancelled orders both stay in the orders list and on the client's record for good — a cancelled one shown greyed out and struck through, so it reads as closed at a glance.</td>
+        </tr>
+        <tr>
+          <th scope="row">What if a tentative order has a deposit on it?</th>
+          <td>Then it can't be removed, even while tentative. Once money is attached to an order, there's a record to keep.</td>
+        </tr>
+        <tr>
+          <th scope="row">What if I've already cut materials for it?</th>
+          <td>Then it can't be removed either, until you clear those materials yourself. Only you know whether the leather went back on the shelf or was used up on a prototype — so the app won't guess, and won't quietly put stock back. Clear the materials on the order's Materials tab, deciding one at a time, and the option to remove it appears. Cancelling instead leaves everything as it is.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <p class="colophon">Atelier Order Book — order lifecycle reference. Colours on this page match the ones used throughout the app, so a grey bar on the schedule means the same thing as a grey bar here.</p>
+
+</div>
+</body>
+</html>

@@ -189,12 +189,56 @@ PAYMENT_METHOD_LABELS = billing_config.PAYMENT_METHOD_LABELS
 INVOICE_STATUS_LABELS = billing_config.STATUS_LABELS
 SETTABLE_INVOICE_STATUSES = billing_config.SETTABLE_STATUSES
 
+# The order lifecycle. Two inactive ends (`tentative` before the work is
+# real, `delivered`/`cancelled` after it's over) around the active middle.
+#
+# `in_progress` is in here for its label only — it is never stored. An
+# order sits at `confirmed` and `Order.display_status` renames it once the
+# start date arrives, so the timeline can't show "confirmed" three weeks
+# into the work. Anything writing a status goes through ALLOWED_TRANSITIONS
+# below, which has no `in_progress` key for exactly that reason.
 STATUS_LABELS = {
+    "tentative": "Tentative",
+    "confirmed": "Confirmed",
     "in_progress": "In progress",
     "ready": "Ready for pickup",
     "delivered": "Delivered",
-    "rush": "Rush",
+    "cancelled": "Cancelled",
 }
+
+# Where an order may go from where it is. Both final stages map to nothing:
+# an order moves forward or it gets called off, never backwards (correct a
+# mis-stage by editing the order, not by reversing it).
+ALLOWED_TRANSITIONS = {
+    "tentative": ("confirmed", "cancelled"),
+    "confirmed": ("ready", "cancelled"),
+    "ready": ("delivered", "cancelled"),
+    "delivered": (),
+    "cancelled": (),
+}
+
+# What a brand-new order may start at. An order that's already finished
+# isn't something you create, it's something you arrive at.
+INITIAL_STATUSES = ("tentative", "confirmed")
+
+
+def settable_statuses(status: str) -> list[str]:
+    """Stages the plain edit form may move an order to, from `status`.
+
+    Where it is now plus its forward transitions — `cancelled` is
+    deliberately excluded even though it's a legal transition, because
+    cancelling has to collect a reason and so goes through its own route
+    and confirm dialog. Takes the status string rather than the order so
+    the timeline (whose rows are dicts, not `Order`s) can call it too.
+    Used by the templates to build the dropdown *and* by `edit_order()` to
+    check what came back, so the two can't drift apart.
+    """
+    return [status] + [
+        s for s in ALLOWED_TRANSITIONS.get(status, ()) if s != "cancelled"
+    ]
+
+
+app.jinja_env.globals["settable_statuses"] = settable_statuses
 
 
 # Zones offered at /settings/general. A curated list, not
@@ -231,9 +275,11 @@ def _uninvoiced_rows(company_id: int):
     """Orders with no invoice yet — the to-do list the invoice page exists
     for, shaped the way the module's template expects."""
     invoiced = invoicing.invoiced_subject_ids(company_id)
+    # A called-off order is never going to be invoiced, so it has no place
+    # on a list whose whole purpose is "these still need billing".
     orders = (
         Order.query.join(Client)
-        .filter(Client.company_id == company_id)
+        .filter(Client.company_id == company_id, Order.status != "cancelled")
         .order_by(Order.due)
         .all()
     )
@@ -245,7 +291,9 @@ def _uninvoiced_rows(company_id: int):
             "payer_url": url_for("client_page", client_id=order.client.id),
             "total": order.total,
             "due": order.due,
-            "status": order.status,
+            # display_status, not status: this feeds a `dot--{{ row.status }}`
+            # colour chip, and the chip should say what the timeline says.
+            "status": order.display_status,
         }
         for order in orders if order.id not in invoiced
     ]
@@ -507,7 +555,13 @@ def back_label(return_to: str) -> str:
     label could be hardcoded. They're linked from the invoice list now too,
     and a link that says "Back to timeline" but doesn't go there is worse
     than a generic one.
+
+    Matched on the path alone: a return_to can carry a query string (the
+    hidden-clients view is `/clients?hidden=1`, and every sort link adds
+    `?sort=`), and every one of those used to fall through to a bare
+    "Back".
     """
+    return_to = return_to.split("?", 1)[0]
     if return_to == "/" or return_to.startswith("/timeline"):
         return "Back to timeline"
     if return_to.startswith("/invoices"):
@@ -709,9 +763,17 @@ def timeline_window(year: int, month: int, day: int):
 
     week_headers = [window_start + timedelta(days=w * 7) for w in range(TIMELINE_WEEKS)]
 
+    # Cancelled orders leave the schedule entirely — the timeline is for
+    # work that still needs studio time, and a called-off order needs none.
+    # It stays on /orders and on the client's record; it just stops taking
+    # up a row here. Delivered orders keep their row: they only drop out
+    # when the window moves past them, same as always.
     all_orders = (
         Order.query.join(Client)
-        .filter(Client.company_id == current_user.company_id)
+        .filter(
+            Client.company_id == current_user.company_id,
+            Order.status != "cancelled",
+        )
         .order_by(Order.start)
         .all()
     )
@@ -736,6 +798,16 @@ def timeline_window(year: int, month: int, day: int):
             "start": order.start,
             "due": order.due,
             "status": order.status,
+            # What the bar is labelled/coloured by — `confirmed` reads as
+            # "In progress" once its start date has arrived (see
+            # Order.display_status). The raw `status` above is what the
+            # edit form posts back, so both travel together.
+            "display_status": order.display_status,
+            "is_rush": order.is_rush,
+            "can_rush": order.can_rush,
+            "can_delete": order.can_delete,
+            "can_cancel": order.can_cancel,
+            "is_active": order.is_active,
             "order_type": order.order_type,
             "notes": order.notes,
             "col_start": col_start,
@@ -774,11 +846,16 @@ def timeline_window(year: int, month: int, day: int):
 # fine at this table's scale, revisit if the row count ever gets large.
 # ---------------------------------------------------------------------------
 
+# Sorting the Status column alphabetically would run cancelled, confirmed,
+# delivered, ready, tentative — an order nobody thinks in. STATUS_LABELS is
+# already declared in lifecycle order, so its key order *is* the sort.
+_STATUS_SORT = {key: i for i, key in enumerate(STATUS_LABELS)}
+
 ORDER_SORT_KEYS = {
     "item": lambda o: o.item.lower(),
     "client": lambda o: o.client.name.lower(),
     "type": lambda o: o.order_type.label.lower() if o.order_type else "",
-    "status": lambda o: o.status,
+    "status": lambda o: _STATUS_SORT.get(o.display_status, len(_STATUS_SORT)),
     "start": lambda o: o.start,
     "due": lambda o: o.due,
     "total": lambda o: o.total,
@@ -793,7 +870,7 @@ ORDER_SORT_KEYS = {
 # wouldn't in the company-wide list (that already has its own /invoices page).
 CLIENT_ORDER_SORT_KEYS = {
     "item": lambda o: o.item.lower(),
-    "status": lambda o: o.status,
+    "status": lambda o: _STATUS_SORT.get(o.display_status, len(_STATUS_SORT)),
     "start": lambda o: o.start,
     "due": lambda o: o.due,
     "total": lambda o: o.total,
@@ -972,7 +1049,19 @@ def clients_list():
     # badge — the client is already there, so looking at it is the whole of
     # the response required. (Unlike the lead badge, which counts work.)
     sender_rules.acknowledge_all(current_user.company_id)
-    clients = Client.query.filter_by(company_id=current_user.company_id).all()
+    # Hidden clients are filtered server-side rather than client-side like
+    # the orders filter below: that one is a view of rows already on the
+    # page, this one is "these aren't part of the roster any more" and
+    # shouldn't be shipped to the browser at all. ?hidden=1 is the archive
+    # view — only the hidden ones, so the two never mix into one list
+    # someone has to read a marker to tell apart.
+    showing_hidden = request.args.get("hidden") == "1"
+    clients = Client.query.filter_by(
+        company_id=current_user.company_id, is_hidden=showing_hidden
+    ).all()
+    hidden_count = Client.query.filter_by(
+        company_id=current_user.company_id, is_hidden=True
+    ).count()
     # One grouped query for the whole table, not a count per row.
     unread_by_client = email_service.unread_counts_by_client(current_user.company_id)
     sort_by, sort_dir = _sort_args(CLIENT_SORT_KEYS, "name")
@@ -981,6 +1070,8 @@ def clients_list():
         "clients_list.html",
         clients=clients,
         unread_by_client=unread_by_client,
+        showing_hidden=showing_hidden,
+        hidden_count=hidden_count,
         # Both groups start shown and every client stays in the DOM; the
         # filter buttons hide a group client-side — see clients_list.html's
         # script. This just tells the template whether the filter is worth
@@ -1135,11 +1226,39 @@ def edit_client(client_id: int):
     return redirect(return_to)
 
 
+@app.route("/clients/<int:client_id>/hide", methods=["POST"])
+@login_required
+def toggle_client_hidden(client_id: int):
+    """Take a client off the roster, or put them back.
+
+    One toggle rather than a hide route and a show route, matching
+    toggle_order_type / toggle_source_option — and there is no delete
+    counterpart at all, unlike those two: a client is referenced by orders,
+    invoices and email threads, so `can_delete` could never be true.
+
+    Deliberately narrow. It writes one boolean and touches nothing else:
+    the client's orders stay on the timeline, in /orders and in Analytics,
+    their invoices stay issued, their mail stays matched. Hiding answers
+    "do I still deal with this person", which is not a question the
+    schedule or the books get to be re-written by.
+    """
+    client = get_client_or_404(client_id)
+    client.is_hidden = not client.is_hidden
+    db.session.commit()
+    return_to = request.form.get("return_to") or url_for("clients_list")
+    return redirect(return_to)
+
+
 @app.route("/orders/new", methods=["GET", "POST"])
 @login_required
 def new_order():
+    # Active clients only, the same way new_order() offers only active
+    # OrderTypes (OT5): hiding is a statement about who the studio still
+    # deals with, and the picker is exactly where that statement is worth
+    # something. It's the *new* selection that's filtered — an order a
+    # hidden client already has still shows their name everywhere.
     clients = (
-        Client.query.filter_by(company_id=current_user.company_id)
+        Client.query.filter_by(company_id=current_user.company_id, is_hidden=False)
         .order_by(Client.first_name, Client.last_name)
         .all()
     )
@@ -1190,7 +1309,7 @@ def new_order():
             item=item,
             start=date.fromisoformat(request.form.get("start")),
             due=date.fromisoformat(request.form.get("due")),
-            status=status if status in STATUS_LABELS else "in_progress",
+            status=status if status in INITIAL_STATUSES else "tentative",
             order_type_id=order_type.id if order_type else None,
             notes=request.form.get("notes", "").strip(),
         )
@@ -1215,6 +1334,7 @@ def new_order():
         clients=clients,
         order_types=order_types,
         status_labels=STATUS_LABELS,
+        initial_statuses=INITIAL_STATUSES,
         return_to=return_to,
         back_label=back_label(return_to),
         today=date.today(),
@@ -1328,9 +1448,28 @@ def edit_order(order_id: int):
         pickup_str = request.form.get("pickup_date", "")
         order.pickup_date = date.fromisoformat(pickup_str) if pickup_str else None
 
+    # Not "is this a real status" but "is this a legal move from here" —
+    # otherwise the dropdown's own markup is the only thing stopping a
+    # delivered order going back to tentative.
     status = request.form.get("status")
-    if status in STATUS_LABELS:
+    if status and status != order.status:
+        if status not in settable_statuses(order.status):
+            abort(400)
         order.status = status
+
+    # Rush travels with the modal's Save rather than as its own button: a
+    # button in there would reload the page and lose whatever else was
+    # being edited. Unchecked checkboxes post nothing, hence the marker
+    # field — without it "unchecked" and "form didn't render this" look
+    # identical, and hard rule 9 says those must not.
+    #
+    # Read after the status write on purpose: moving to `ready` clears the
+    # flag even if the box came back ticked, and the `elif` catches the
+    # same move arriving from a form that has no rush field at all.
+    if "rush_field" in request.form:
+        order.is_rush = order.can_rush and "is_rush" in request.form
+    elif not order.can_rush:
+        order.is_rush = False
 
     if "order_type_id" in request.form:
         order_type_id = request.form.get("order_type_id", "")
@@ -1341,10 +1480,91 @@ def edit_order(order_id: int):
             if order_type_id.isdigit() else None
         )
 
-    order.notes = request.form.get("notes", "").strip()
+    # Guarded, not unconditional: the timeline's quick-edit modal posts here
+    # without a notes field (OR4 keeps notes on the full order page), and an
+    # unguarded write blanked them. Hard rule 9.
+    if "notes" in request.form:
+        order.notes = request.form.get("notes", "").strip()
+
     db.session.commit()
     return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle moves that aren't a plain field edit. Each re-checks the same
+# `can_*` property the template used to decide whether to render its
+# button: a hidden control is a UI convenience, not a permission check.
+# ---------------------------------------------------------------------------
+
+@app.route("/orders/<int:order_id>/delete", methods=["POST"])
+@login_required
+def delete_order(order_id: int):
+    """Hard delete — the one place the app does this to an order.
+
+    Only reachable while `can_delete`: tentative, with no invoice, payment
+    or material attached. Anything further along has history worth keeping
+    and gets cancelled instead (hard rule 8).
+    """
+    order = get_order_or_404(order_id)
+    if not order.can_delete:
+        abort(400)
+
+    # Lines and payments cascade off the relationships; an invoice and any
+    # stock-drawing materials can't exist here (can_delete says so). What
+    # doesn't cascade is anything a *module* owns by plain order_id — Order
+    # has no relationship to reach it with, so each module is asked to
+    # clean up its own through its services (hard rule 4). Documents matter
+    # because they leave bytes on disk, not just rows; one-off "Other"
+    # costs are plain rows with no stock behind them.
+    for document in documents_service.list_for_order(order.id):
+        documents_service.delete(document)
+    for other in inventory_service.list_others_for_order(order.id):
+        inventory_service.delete_other(order.id, other.id)
+
+    db.session.delete(order)
+    db.session.commit()
+    return redirect(request.form.get("return_to") or url_for("timeline_view"))
+
+
+@app.route("/orders/<int:order_id>/cancel", methods=["POST"])
+@login_required
+def cancel_order(order_id: int):
+    """Call off a real order, recording why.
+
+    The reason is appended to `notes` rather than kept in a column of its
+    own: it's a sentence a person writes and a person reads, and nothing
+    queries it. Dated on the way in, because "client changed their mind"
+    is worth much less in a year without knowing when.
+    """
+    order = get_order_or_404(order_id)
+    if not order.can_cancel:
+        abort(400)
+
+    order.status = "cancelled"
+    order.is_rush = False  # urgency is meaningless once nothing is owed
+
+    reason = request.form.get("reason", "").strip()
+    if reason:
+        entry = f"Cancelled {date.today().isoformat()}: {reason}"
+        order.notes = f"{order.notes}\n\n{entry}" if order.notes else entry
+
+    db.session.commit()
+    return redirect(request.form.get("return_to") or url_for("timeline_view"))
+
+
+@app.route("/orders/<int:order_id>/rush", methods=["POST"])
+@login_required
+def toggle_rush(order_id: int):
+    """Flag/unflag a time-sensitive order. `confirmed` only — see
+    `Order.can_rush` for why `ready` doesn't qualify."""
+    order = get_order_or_404(order_id)
+    if not order.can_rush:
+        abort(400)
+
+    order.is_rush = not order.is_rush
+    db.session.commit()
+    return redirect(request.form.get("return_to") or url_for("timeline_view"))
 
 
 # ---------------------------------------------------------------------------

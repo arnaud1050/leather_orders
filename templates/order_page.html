@@ -38,10 +38,13 @@
       </select>
     </label>
     {% endif %}
+    {# Where it is now plus where it may legally go — never the whole
+       vocabulary, so an order can't be walked backwards. Cancelling isn't
+       here on purpose: it needs a reason, so it has its own dialog below. #}
     <label>Status
       <select name="status">
-        {% for key, label in status_labels.items() %}
-        <option value="{{ key }}" {% if key == order.status %}selected{% endif %}>{{ label }}</option>
+        {% for key in settable_statuses(order.status) %}
+        <option value="{{ key }}" {% if key == order.status %}selected{% endif %}>{{ status_labels[key] }}</option>
         {% endfor %}
       </select>
     </label>
@@ -50,6 +53,109 @@
       <button type="submit" class="btn-primary">Save changes</button>
     </div>
   </form>
+
+  {# Lifecycle moves that aren't a field edit. All three live here rather
+     than in the timeline's quick-edit modal: cancelling collects a reason,
+     a reason is a note, and OR4 keeps notes on this page. Every button is
+     gated on the same property its route re-checks server-side. #}
+  {% if order.can_rush or order.can_cancel or order.can_delete %}
+  <section class="detail-lifecycle">
+    <h2>This order</h2>
+
+    <div class="lifecycle-actions">
+      {% if order.can_rush %}
+      <form method="post" action="{{ url_for('toggle_rush', order_id=order.id) }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <button type="submit" class="btn-secondary">{{ 'Remove rush flag' if order.is_rush else 'Mark as rush' }}</button>
+      </form>
+      {% endif %}
+      {% if order.can_cancel %}
+      <button type="button" class="btn-secondary" data-open-lifecycle="cancel-order-modal">Cancel order</button>
+      {% endif %}
+      {% if order.can_delete %}
+      <button type="button" class="btn-secondary" data-open-lifecycle="delete-order-modal">Delete</button>
+      {% endif %}
+    </div>
+
+    {# Say why a button isn't there. The materials case especially: "Delete
+       is missing" is not a useful thing to leave someone staring at when
+       the fix is two clicks away on another tab. #}
+    <p class="detail-note">
+      {% if order.status == 'confirmed' %}
+        This order reads as “{{ status_labels[order.display_status] }}” — the name changes by itself on the start date.
+      {% endif %}
+      {% if order.can_delete %}
+        A tentative order with no invoice or payment against it can still be deleted outright. Once either exists, or once it's confirmed, cancelling is the only way out.
+      {% elif order.blocking_materials %}
+        This order can't be deleted while materials are drawn against it —
+        deleting can't decide for you whether that stock went back on the shelf
+        or was used up on a prototype. Clear them on the
+        <a href="{{ url_for('order_materials', order_id=order.id, return_to=return_to) }}">Materials tab</a>
+        first, choosing per material whether to restock it, and Delete will
+        appear here. Cancelling instead leaves the materials exactly as they are.
+      {% elif not order.can_cancel and order.is_active %}
+        This order has an issued invoice, so it can't be cancelled until that invoice is voided on the Billing tab.
+      {% elif order.can_cancel %}
+        Cancelling keeps the order and its history — it just comes off the schedule.
+      {% endif %}
+    </p>
+  </section>
+
+  {% if order.can_cancel %}
+  <dialog id="cancel-order-modal" class="modal">
+    <form method="post" action="{{ url_for('cancel_order', order_id=order.id) }}" class="modal__form">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <h2 class="modal__title">Cancel this order?</h2>
+      <p class="modal__subtitle">{{ order.item }} — {{ order.client.name }}</p>
+      <p class="modal__hint">It comes off the timeline but stays in the orders list and on {{ order.client.name }}'s record. This can't be undone.</p>
+      <label class="modal__field">Reason
+        <textarea name="reason" rows="3" placeholder="Why is this being cancelled?"></textarea>
+      </label>
+      <p class="modal__hint">Saved to the order's notes, with today's date.</p>
+      <div class="modal__actions">
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Keep order</button>
+          <button type="submit" class="btn-primary">Cancel order</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
+
+  {% if order.can_delete %}
+  <dialog id="delete-order-modal" class="modal">
+    <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" class="modal__form">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <h2 class="modal__title">Delete this order?</h2>
+      <p class="modal__subtitle">{{ order.item }} — {{ order.client.name }}</p>
+      <p class="modal__hint">It will be removed completely, along with its line items and documents. Nothing is kept. If you want a record of it, cancel it instead.</p>
+      <p class="modal__hint">Stock isn't affected — an order with materials drawn against it can't reach this point.</p>
+      <div class="modal__actions">
+        <div class="modal__buttons">
+          <button type="button" class="btn-secondary" data-close-modal>Keep order</button>
+          <button type="submit" class="btn-primary">Delete</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+  {% endif %}
+
+  <script>
+    document.querySelectorAll('[data-open-lifecycle]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var modal = document.getElementById(el.dataset.openLifecycle);
+        if (modal) modal.showModal();
+      });
+    });
+    {# Scoped to these two dialogs on purpose — the documents explorer and
+       ai/ render modal on this page bind their own close buttons. #}
+    document.querySelectorAll('#cancel-order-modal [data-close-modal], #delete-order-modal [data-close-modal]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        el.closest('dialog').close();
+      });
+    });
+  </script>
+  {% endif %}
 
   <section class="detail-documents">
     <h2>Documents</h2>

@@ -207,7 +207,7 @@ def order(client_record):
 
     row = Order(
         client_id=client_record.id, item="Full-grain briefcase",
-        start=date(2026, 7, 1), due=date(2026, 7, 15), status="in_progress",
+        start=date(2026, 7, 1), due=date(2026, 7, 15), status="confirmed",
     )
     db.session.add(row)
     db.session.flush()

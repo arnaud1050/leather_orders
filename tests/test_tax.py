@@ -205,7 +205,7 @@ def make_order(client_row, unit_price=100.0):
 
     row = Order(
         client_id=client_row.id, item="Test order",
-        start=date(2026, 7, 1), due=date(2026, 7, 15), status="in_progress",
+        start=date(2026, 7, 1), due=date(2026, 7, 15), status="confirmed",
     )
     db.session.add(row)
     db.session.flush()

@@ -15,9 +15,19 @@
   </a>
   {% endmacro %}
 
+  {# Every link off this page comes back to the view it was opened from, so
+     the hidden list doesn't bounce you to the roster on the way back. #}
+  {% set here = request.full_path if showing_hidden else request.path %}
+
   <header class="detail-header">
-    <h1>Clients</h1>
-    <p class="detail-subtitle">Every client on file</p>
+    <h1>{{ 'Hidden clients' if showing_hidden else 'Clients' }}</h1>
+    <p class="detail-subtitle">
+      {% if showing_hidden %}
+      Off the client list, and out of the client picker on a new order. Their orders are unaffected.
+      {% else %}
+      Every client on file
+      {% endif %}
+    </p>
   </header>
 
   {# Leads (unmatched email) is a sibling of the client roster rather than a
@@ -48,7 +58,17 @@
       <button type="button" class="legend__item" data-group="none">No orders</button>
     </div>
     {% endif %}
-    <a href="{{ url_for('new_client', return_to=request.path) }}" class="btn-primary legend__new-order">+ Add client</a>
+    {# The archive is its own list at its own URL rather than a filter
+       button: hidden clients aren't rendered here at all, so there'd be
+       nothing for a client-side toggle to reveal. #}
+    {% if showing_hidden %}
+    <a href="{{ url_for('clients_list') }}" class="legend__aside">&larr; Back to the client list</a>
+    {% elif hidden_count %}
+    <a href="{{ url_for('clients_list', hidden=1) }}" class="legend__aside">{{ hidden_count }} hidden client{{ 's' if hidden_count != 1 }} &rarr;</a>
+    {% endif %}
+    {% if not showing_hidden %}
+    <a href="{{ url_for('new_client', return_to=here) }}" class="btn-primary legend__new-order">+ Add client</a>
+    {% endif %}
   </div>
 
   {% if clients %}
@@ -67,7 +87,7 @@
         {% for client in clients %}
         <tr data-group="{{ 'with' if client.orders else 'none' }}" data-returning="{{ 1 if client.is_returning else 0 }}">
           <td>
-            <a href="{{ url_for('client_page', client_id=client.id) }}?return_to={{ request.path }}">{{ client.name }}</a>
+            <a href="{{ url_for('client_page', client_id=client.id) }}?return_to={{ here|urlencode }}">{{ client.name }}</a>
             {% if client.is_returning %}
             <svg class="timeline__star" viewBox="0 0 24 24" fill="currentColor" title="Returning client"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 16.9l-6.2 3.4 1.6-6.8L2.2 8.9l6.9-.6L12 2z"/></svg>
             {% endif %}
@@ -96,7 +116,7 @@
     Returning client
   </p>
   {% else %}
-  <p class="detail-note">No clients on file yet.</p>
+  <p class="detail-note">{{ 'No hidden clients.' if showing_hidden else 'No clients on file yet.' }}</p>
   {% endif %}
 
 </div>

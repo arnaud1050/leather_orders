@@ -55,7 +55,7 @@
       </thead>
       <tbody>
         {% for order in orders %}
-        <tr data-status="{{ order.status }}" data-balance="{{ order.balance_due }}">
+        <tr data-status="{{ order.display_status }}" data-balance="{{ order.balance_due }}" {% if order.status == 'cancelled' %}class="is-cancelled"{% endif %}>
           {% for col in columns %}
           {% if col.key == 'item' %}
           <td><a href="{{ url_for('order_page', order_id=order.id) }}?return_to={{ request.path }}">{{ order.item }}</a></td>
@@ -69,7 +69,10 @@
           {% elif col.key == 'type' %}
           <td>{% if order.order_type %}<span class="pill">{{ order.order_type.label }}</span>{% else %}&mdash;{% endif %}</td>
           {% elif col.key == 'status' %}
-          <td><span class="pill pill--{{ order.status }}">{{ status_labels[order.status] }}</span></td>
+          <td>
+            <span class="pill pill--{{ order.display_status }}">{{ status_labels[order.display_status] }}</span>
+            {% if order.is_rush %}<span class="pill pill--rush">Rush</span>{% endif %}
+          </td>
           {% elif col.key == 'start' %}
           <td>{{ order.start.strftime('%Y-%m-%d') }}</td>
           {% elif col.key == 'due' %}
