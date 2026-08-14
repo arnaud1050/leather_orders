@@ -47,6 +47,7 @@ os.environ["GOOGLE_REDIRECT_URI"] = "http://localhost:5000/integrations/google/c
 # -------------------------------------------------------------------------
 
 import pytest  # noqa: E402
+from flask import g  # noqa: E402
 
 import app as app_module  # noqa: E402
 from models import Client, Company, Order, OrderLine, User, db  # noqa: E402
@@ -74,6 +75,24 @@ def _app():
         "before `import app` — see this file's docstring."
     )
     flask_app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+
+    @flask_app.before_request
+    def _forget_cached_login():
+        """Make `current_user` resolve per request, as it does in production.
+
+        Flask-Login caches the user it resolved on `g`, which is scoped to
+        the *app context*. A real deployment pushes a fresh app context per
+        request, so that cache always starts empty. Here the `app` fixture
+        holds one app context open for the whole test and Flask reuses it
+        rather than pushing another, so without this the cache survives from
+        one request to the next — and a test driving two clients (a platform
+        admin and the tenant user they're acting on, say) would silently run
+        both as whoever signed in first. That failure looks like a bug in
+        the code under test, which is what makes it worth preventing here
+        rather than working around per test.
+        """
+        g.pop("_login_user", None)
+
     with flask_app.app_context():
         db.drop_all()
         db.create_all()
@@ -126,7 +145,33 @@ def other_company(app):
 
 @pytest.fixture
 def user(company):
-    row = User(company_id=company.id, username="admin")
+    """An ordinary member of the first company — no platform access.
+
+    Deliberately *not* a platform admin: almost every test in the suite
+    signs in through `logged_in`, and if that session could reach /admin
+    the tenant-facing tests would stop proving that a normal user can't.
+    Tests that need platform access ask for `platform_admin`.
+    """
+    row = User(company_id=company.id, email="admin@example.com", full_name="Admin")
+    row.set_password("changeme")
+    db.session.add(row)
+    db.session.flush()
+    return row
+
+
+@pytest.fixture
+def platform_admin(app):
+    """Platform staff: **no company**, and that's the whole point.
+
+    Depends on `app` rather than on `company`, because a platform admin
+    belongs to no studio — see `User` in models.py. A fixture that gave
+    them one would quietly re-create the arrangement the model exists to
+    forbid, and every access test built on it would be testing fiction.
+    """
+    row = User(
+        company_id=None, email="platform@example.com",
+        full_name="Platform Admin", is_platform_admin=True,
+    )
     row.set_password("changeme")
     db.session.add(row)
     db.session.flush()
@@ -220,10 +265,21 @@ def order(client_record):
 
 @pytest.fixture
 def logged_in(app, user):
-    """A test client with an authenticated session."""
+    """A test client authenticated as an ordinary tenant user."""
     with app.test_client() as test_client:
         test_client.post(
-            "/login", data={"username": "admin", "password": "changeme"},
+            "/login", data={"email": "admin@example.com", "password": "changeme"},
+            follow_redirects=True,
+        )
+        yield test_client
+
+
+@pytest.fixture
+def admin_client(app, platform_admin):
+    """A test client authenticated as a platform admin."""
+    with app.test_client() as test_client:
+        test_client.post(
+            "/login", data={"email": "platform@example.com", "password": "changeme"},
             follow_redirects=True,
         )
         yield test_client

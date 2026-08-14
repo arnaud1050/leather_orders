@@ -3,10 +3,10 @@ Atelier Order Book — prototype calendar/timeline view
 Custom leather goods order & inventory planner (Flask)
 
 This is a prototype: data lives in a local SQLite database (see models.py)
-and is scoped per Company, in anticipation of this eventually becoming a
-multi-tenant SaaS product. Today only one company ("By Monsieur") is
-seeded, but every query already filters by company_id so adding a second
-tenant later is additive.
+and is scoped per Company. One company ("By Monsieur") is seeded on an
+empty database; further tenants are provisioned by a platform admin from
+/admin (see admin/CLAUDE.md). Every query filters by company_id, which is
+what made that second tenant additive rather than an audit of query logic.
 """
 
 import json
@@ -38,8 +38,15 @@ from flask_login import (  # noqa: E402
 
 from models import (  # noqa: E402
     Client, Company, Order, OrderLine, OrderType, Payment,
-    SourceOption, User, db, run_migrations, seed_if_empty,
+    SourceOption, User, db, ensure_platform_admin, normalise_email,
+    run_migrations, seed_if_empty,
 )
+# NOT a self-contained module, unlike everything below it: the platform
+# admin area exists to manage Company and User, so it imports host models
+# on purpose and the module-boundary tests don't cover it. See
+# admin/__init__.py — it's a package rather than more routes in this file
+# only because this file is long enough already.
+import admin.routes as admin_routes  # noqa: E402
 # Self-contained module: its own model, services, blueprint and templates
 # (see ai/__init__.py). It holds a company's vendor API keys and prompts and
 # never sees a host model — everything it needs about an order, a document
@@ -140,7 +147,24 @@ login_manager.login_view = "login"
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, int(user_id))
+    """Resolve the session's user, refusing one that's been switched off.
+
+    The login route already blocks a deactivated user or company, but that
+    only guards the moment of signing in — somebody deactivated *while*
+    holding a live session would otherwise keep it until the cookie
+    expired, which would make deactivation a request to leave rather than
+    an instruction. Returning None here logs that session out on its very
+    next request, which is what the platform admin pressing the button
+    means.
+    """
+    user = db.session.get(User, int(user_id))
+    if user is None or not user.is_active:
+        return None
+    # Platform staff have no company, so there's no company to be inactive
+    # — the `and` is doing real work here, not defending against a null.
+    if user.company is not None and not user.company.is_active:
+        return None
+    return user
 
 
 with app.app_context():
@@ -176,7 +200,21 @@ with app.app_context():
     # OrderType starter lists. Deliberately no sample clients or orders: a
     # production deployment starts empty. To load the demo dataset in a test
     # environment, run scripts/seed_sample_data.py.
-    seed_if_empty(admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"))
+    # ADMIN_EMAIL because email is the login identity now — the fallback is
+    # an `.invalid` placeholder that can never be a real mailbox, which is
+    # the honest default for an address nobody has told us yet.
+    seed_if_empty(
+        admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"),
+        admin_email=os.environ.get("ADMIN_EMAIL", "admin@example.invalid"),
+    )
+    # Guarded on "is there any platform staff?", not on "is the database
+    # empty?" — which is why it's a separate call. A single-tenant database
+    # being migrated has a company already, so seeding returns early, and
+    # without this there'd be nobody who could reach /admin.
+    ensure_platform_admin(
+        email=os.environ.get("PLATFORM_ADMIN_EMAIL", "platform@example.invalid"),
+        password=os.environ.get("PLATFORM_ADMIN_PASSWORD", "changeme"),
+    )
 
 # Background mailbox/calendar sync. A no-op unless RUN_SCHEDULER=1 — with
 # two gunicorn workers an unguarded scheduler would start twice and race
@@ -326,6 +364,9 @@ def get_order_or_404(order_id: int) -> Order:
 
 documents_routes.register(app, resolve_order=get_order_or_404)
 inventory_routes.register(app, resolve_order=get_order_or_404)
+# TIME_ZONES is handed in rather than imported: admin/ can't import this
+# file without a circular import, and the list belongs to the app.
+admin_routes.register(app, time_zones=TIME_ZONES)
 
 
 def _attachable_documents(company_id: int, client_id: int) -> dict:
@@ -588,23 +629,87 @@ def get_client_or_404(client_id: int) -> Client:
 
 # ---------------------------------------------------------------------------
 # Auth
+#
+# Two kinds of signed-in user, and they don't overlap (see `User` in
+# models.py): a tenant user has a company and sees the app; platform staff
+# have no company and see only /admin. The guard below is what makes the
+# second half true — one hook rather than a `company_id is not None` check
+# threaded through 155 call sites, and it fails closed, so a route added
+# tomorrow is covered without anyone remembering to cover it.
 # ---------------------------------------------------------------------------
+
+# Endpoints reachable without a company. Everything else in the app needs a
+# `company_id` to answer at all — "which orders?" has no meaning for
+# somebody who isn't in a studio.
+_COMPANYLESS_ENDPOINTS = {"login", "logout", "privacy", "terms", "static"}
+
+
+def _landing_page() -> str:
+    """Where a signed-in user belongs when no particular page was asked for."""
+    if current_user.is_authenticated and current_user.is_staff:
+        return url_for("admin.companies")
+    return url_for("timeline_view")
+
+
+@app.before_request
+def _keep_staff_out_of_tenant_routes():
+    """Send platform staff back to /admin from any tenant route.
+
+    A redirect rather than a 403: for this user the timeline isn't
+    forbidden, it's meaningless — there's no company whose orders it could
+    show. They're already trusted with more than the page would reveal, so
+    there's nothing to withhold, and landing them on the one page that does
+    have an answer beats an error.
+
+    Impersonation passes straight through, because `current_user` is then
+    the tenant user being impersonated and has a company like anyone else.
+    """
+    if not current_user.is_authenticated or current_user.is_tenant_user:
+        return None
+    endpoint = request.endpoint
+    # No endpoint means no route matched. Let Flask 404 it: turning an
+    # unknown URL into "here's the admin page" would hide typos and make
+    # a deleted route look like it still half-exists.
+    if endpoint is None:
+        return None
+    if endpoint in _COMPANYLESS_ENDPOINTS or endpoint.startswith("admin."):
+        return None
+    return redirect(url_for("admin.companies"))
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("timeline_view"))
+        return redirect(_landing_page())
 
     error = None
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
+        # Normalised through the same helper that writes the column, so a
+        # capitalised address signs in rather than mystifying its owner.
+        email = normalise_email(request.form.get("email", ""))
         password = request.form.get("password", "")
-        user = User.query.filter_by(username=username).first()
-        if user is not None and user.check_password(password):
+        user = User.query.filter_by(email=email).first()
+        if user is None or not user.check_password(password):
+            # One message for "no such address" and "wrong password", as
+            # before: telling them apart tells a stranger which addresses
+            # have accounts on this installation.
+            error = "Incorrect email or password."
+        elif not user.is_active or (
+            user.company is not None and not user.company.is_active
+        ):
+            # Said plainly, and deliberately not folded into the message
+            # above. The credentials were right — someone who's been
+            # switched off needs to know to ask, not to keep retyping.
+            # Which of the two is off stays unsaid: it's the same phone
+            # call either way.
+            error = "That account is no longer active. Contact your administrator."
+        else:
             login_user(user)
-            next_url = request.args.get("next") or url_for("timeline_view")
-            return redirect(next_url)
-        error = "Incorrect username or password."
+            # `next` is honoured for a tenant user only. Platform staff have
+            # no timeline to be sent back to, and a bookmarked tenant URL
+            # would bounce off the guard below into a redirect loop.
+            next_url = request.args.get("next") if user.is_tenant_user else None
+            return redirect(next_url or _landing_page())
 
     return render_template("login.html", error=error, active_view=None)
 

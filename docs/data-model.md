@@ -21,6 +21,23 @@ orders, four invoices and a placeholder letterhead — lives in `sample_data.py`
 is loaded only by running `scripts/seed_sample_data.py` by hand (see **Sample
 data** below).
 
+**`create_company()` does the actual work, and is the one provisioning path.**
+`seed_if_empty()` calls it for the first tenant; the platform admin area
+(`/admin`, see [admin/CLAUDE.md](../admin/CLAUDE.md)) calls it for every one
+after. That's the point of it being a function rather than inline code — a
+starter list added here can't reach one caller and miss the other, so the tenth
+studio gets byte-for-byte what the first one got, with no exceptions — the
+user it creates is always a **tenant user**.
+
+**Platform staff are a different kind of account and have no company.**
+`users.company_id` is nullable for exactly that reason, and it's the only
+nullable `company_id` in the schema. A null there never means "no tenant
+filter" — it means the user isn't allowed on a tenant route at all, which
+`app.py`'s `_keep_staff_out_of_tenant_routes` enforces in one place.
+`ensure_platform_admin()` creates that account, guarded on whether any staff
+exist rather than on whether the database is empty; see
+[admin/CLAUDE.md](../admin/CLAUDE.md) for why those aren't the same question.
+
 Fixed reference data the app can't work without is **not seeded at all**: province
 tax rates (`billing/tax.py`) and the inventory unit catalog (`inventory/config.py`)
 are code constants, present in every deployment. Per-company rows that are fixed
@@ -30,9 +47,12 @@ letterhead (`invoicing.profile_for()`) and the "Each" unit
 than through `seed_if_empty()` gets them too.
 
 ```python
-Company(id, name, timezone,                                     # tenant boundary; letterhead moved
+Company(id, name, timezone, is_active,                          # tenant boundary; letterhead moved
         order_columns)                                          # to billing.BillingProfile, see below
-User(id, company_id, username, password_hash)                   # login belongs to a company
+User(id, company_id, email, full_name, password_hash,           # email is the login identity, and
+     signature, is_active, is_platform_admin)                   # the only globally unique column
+                                                                # company_id is NULL for platform
+                                                                # staff — the one nullable one
 Client(id, company_id, first_name, last_name, email, phone,     # .name -> "first last"
        street, city, province, postal_code,                     # province decides tax
        inquiry_type, first_message,                             # lead-capture fields, see below

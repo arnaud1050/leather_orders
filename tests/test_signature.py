@@ -92,7 +92,7 @@ def test_saving_a_signature_requires_a_login(app):
 def test_one_user_cannot_see_anothers_signature(logged_in, signed, company):
     """It's on the session's user, so this is really a check that nothing
     reads it off the company instead."""
-    other = User(company_id=company.id, username="second")
+    other = User(company_id=company.id, email="second@example.com", full_name="Second")
     other.set_password("changeme")
     other.signature = "Someone Else"
     db.session.add(other)

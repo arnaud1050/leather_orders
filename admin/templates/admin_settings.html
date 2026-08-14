@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Platform settings — Platform admin{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Platform admin</h1>
+    <p class="detail-subtitle">Installation-wide settings</p>
+  </header>
+
+  {% include "_admin_nav.html" %}
+
+  {% if notice %}
+  <p class="warning-note">{{ notice }}</p>
+  {% endif %}
+
+  <section class="detail-orders">
+    <h2>Announcement banner</h2>
+    <p class="detail-note">
+      Shown at the top of every page on this installation — every company,
+      and anyone not yet signed in. Use it for a maintenance window or
+      anything else that isn't one studio's own news.
+    </p>
+    <form method="post" action="{{ url_for('admin.update_announcement') }}" class="detail-form">
+      <label>Message
+        <textarea name="message" rows="3"
+                  placeholder="e.g. Brief downtime Sunday 2-4am Pacific for maintenance.">{{ settings.announcement or '' }}</textarea>
+      </label>
+      <label class="checkbox-group__item">
+        <input type="checkbox" name="active" value="1" {% if settings.is_active %}checked{% endif %}>
+        Show this banner now
+      </label>
+      <p class="detail-note">
+        Saving with the message blank and the banner off just clears the
+        draft — turning it on requires a message.
+      </p>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

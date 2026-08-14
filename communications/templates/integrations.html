@@ -378,7 +378,7 @@
           <td>{{ entry.created_at|local_datetime('%Y-%m-%d %H:%M') }}</td>
           <td>{{ audit_labels.get(entry.event, entry.event) }}</td>
           <td>{{ entry.detail or '—' }}</td>
-          <td>{{ entry.user.username if entry.user else 'system' }}</td>
+          <td>{{ entry.user.display_name if entry.user else 'system' }}</td>
         </tr>
         {% endfor %}
       </tbody>

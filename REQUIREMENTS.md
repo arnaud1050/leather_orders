@@ -54,6 +54,23 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   (`@login_required`); `/login`, `/privacy` and `/terms` are the only
   exceptions. `/login` redirects to `next` on success; an unauthenticated
   request to any other route redirects to `/login?next=...`.
+- **CO4e.** **Email is the login identity**, unique across the whole
+  platform rather than per company — usernames were globally unique, which
+  is fine for one tenant and impossible for many. `User.full_name` is
+  display only and carries no constraint. Both the login lookup and every
+  write fold the address through `models.normalise_email()`, so
+  capitalisation never splits one person into two accounts.
+- **CO4f.** A user whose own `is_active` is false, or whose company's is,
+  cannot sign in **and cannot keep a session already open** — the login
+  route refuses the credentials with a message saying so, and `load_user()`
+  drops the session on its next request. Both halves are required: guarding
+  only the login route makes deactivation a request to leave rather than an
+  instruction. Platform staff have no company, so only their own
+  `is_active` applies. See `admin/REQUIREMENTS.md` PA14–PA17.
+- **CO4g.** A successful sign-in lands a tenant user on the timeline and
+  platform staff on `/admin`. `?next=` is honoured for a tenant user only —
+  a staff session following a bookmarked tenant URL would bounce straight
+  off `CO6b`.
 - **CO4b.** `/privacy` and `/terms` are publicly reachable, render no
   tenant data, and are linked from the footer of every page including the
   login screen. Google's OAuth verification requires a policy URL a
@@ -99,17 +116,37 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   toggle is hidden and the links render as the same horizontal row as
   always. Both elements exist regardless of viewport — only CSS decides
   which is visible.
-- **CO6.** There is exactly one company created on first boot today (no signup flow, no
-  tenant switcher) — `CO1`–`CO3` are enforced as schema-and-query-level
-  guarantees anyway, so a second company can be added later without an audit
-  of query logic.
+- **CO6.** Exactly one company is created on first boot, and further tenants
+  are added by a **platform admin** from `/admin` — there is still no
+  self-serve signup and no tenant switcher. `CO1`–`CO3` were enforced as
+  schema-and-query-level guarantees from the start, which is why the second
+  tenant needed no audit of query logic.
+- **CO6a.** **A user is a tenant user or platform staff, never both.** A
+  tenant user has a `company_id` and sees the app; a platform admin has
+  `is_platform_admin`, **no company at all**, and sees `/admin` and nothing
+  else. Neither converts into the other. This is why `users.company_id` is
+  the one nullable `company_id` in the schema — every other table's is still
+  `NOT NULL`, and `CO1`–`CO3` are untouched.
+- **CO6b.** Tenant routes are closed to a company-less user by a single
+  `before_request` hook in `app.py`, which redirects them to `/admin`. One
+  hook rather than a check at 155 `current_user.company_id` call sites, and
+  it fails closed, so a route added later is covered by default. `CO2` is
+  unchanged: nothing anywhere treats a null `company_id` as "no filter".
+- **CO6c.** The way platform staff look at a studio's records is to
+  impersonate a user inside it, which borrows that user's `company_id` and
+  so runs through the ordinary filtered code path. The rules for that area
+  live in [admin/REQUIREMENTS.md](admin/REQUIREMENTS.md).
 
 ## 2. Company
 
-- **CO7.** `Company` holds `name` and `timezone` only — the invoicing
-  letterhead (address, tax registrations, invoice prefix) lives on
+- **CO7.** `Company` holds `name`, `timezone` and `is_active` only — the
+  invoicing letterhead (address, tax registrations, invoice prefix) lives on
   `billing.models.BillingProfile`, keyed by the same `company_id`, since a
   company is called the same thing whether or not it invoices.
+- **CO7a.** A `Company` is **never deleted** — the strict form of hard rule
+  8, as `Client` is. It owns invoices, and an issued invoice isn't ours to
+  erase. Deactivating is roster-scope only: it blocks sign-in and touches no
+  order, document or analytics figure.
 - **CO8.** `Company.timezone` is display-only. Every stored timestamp stays
   naive UTC; changing this setting re-labels what's on file, it never moves
   stored data. An unresolvable/unlisted zone name is **rejected outright** —
@@ -125,6 +162,22 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   starter lists. It creates **no** clients, orders, invoices or payments, and
   leaves the billing letterhead **empty** apart from the display name — a
   production deployment starts with nothing in it but the tenant.
+- **CO9f.** That work is done by `models.create_company()`, and it is the
+  **single provisioning path**: `seed_if_empty()` calls it for the first
+  company and `/admin` calls it for every one after, so the tenth tenant
+  gets exactly what the first did, with no exceptions. The user it creates
+  is always a tenant user (`CO6a`).
+- **CO9g.** `ensure_platform_admin()` is a *separate* bootstrap, called
+  from `app.py` right after seeding and guarded on "is there a **usable**
+  platform admin?" — company-less and active — rather than on "is this
+  database empty?". Seeding returns early on any database that already has
+  a company, so without this an upgraded single-tenant install would have
+  nobody able to reach `/admin`. It also repairs a user holding both a
+  company and the flag (`CO6a`) by dropping the flag, which is what makes
+  it able to rescue an installation locked out by deactivating the company
+  its platform admin was sitting in. Idempotent, and never resets a
+  password somebody has since changed. `PLATFORM_ADMIN_EMAIL` /
+  `PLATFORM_ADMIN_PASSWORD` override the defaults.
 - **CO9b.** Fixed reference data — province tax rates (`billing/tax.py`), the
   inventory `UNIT_CATALOG` (`inventory/config.py`) — is code, not seed rows,
   so every deployment has it without any insert. Per-company rows that are
@@ -710,15 +763,27 @@ each.
 
 - **N1.** No in-place edit of an existing `OrderLine` — remove and re-add
   only (OR7).
-- **N2.** No password *reset* — a forgotten password is still a Python-shell
-  job, because the app has no mail sender of its own (the Gmail accounts
-  under Email/Calendar are the studio's client correspondence, not app mail).
-  Nor is there any way to add a user, or for one user to change another's
-  password. *Changing your own* password is built — see CO4a. Changing it
-  also doesn't invalidate sessions signed in elsewhere; with one user per
-  deployment there's nothing yet for that to protect.
-- **N3.** No signup flow or tenant switcher — `Company` is schema-ready for
-  multiple tenants (CO1–CO3) but only one is ever seeded.
+- **N2.** No password reset *by email* — the app has no mail sender of its
+  own (the Gmail accounts under Email/Calendar are the studio's client
+  correspondence, not app mail). Adding a user and resetting someone else's
+  password are no longer shell jobs: a platform admin does both from
+  `/admin`, and hands the password over out of band (PA13). *Changing your
+  own* password is CO4a. Neither path invalidates sessions signed in
+  elsewhere — deactivating the account does (CO4f), and that's the tool for
+  a compromised login.
+- **N3.** No *self-serve* signup and no tenant switcher. A platform admin
+  provisions companies from `/admin` (CO6); nobody signs themselves up, and
+  a user belongs to exactly one company for the life of the account. To act
+  inside another tenant, a platform admin impersonates a user there — see
+  `admin/REQUIREMENTS.md` PA18–PA23.
+- **N7.** No roles *within* a company. Every user of a tenant can do
+  everything a tenant user can do; the only distinction the app draws is
+  `is_platform_admin`, which is about the installation rather than the
+  studio. An owner/member split is the obvious next step and deliberately
+  isn't in the first iteration.
+- **N8.** No audit log of platform-admin actions — who provisioned what, who
+  impersonated whom. `communications/` already has an audit table, so the
+  right move is probably to generalise that rather than start a second one.
 - ~~**N4.** No tax-collected report on `/analytics`.~~ *Built* — see AN9;
   `/analytics` now carries a "Tax billed YTD" card. A cash-basis version and
   a per-period (quarter/custom range) view remain unbuilt.

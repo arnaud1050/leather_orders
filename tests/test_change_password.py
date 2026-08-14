@@ -38,16 +38,16 @@ def test_the_new_password_is_what_logs_in_afterwards(app, logged_in, user):
 
     with app.test_client() as fresh:
         rejected = fresh.post(
-            "/login", data={"username": "admin", "password": "changeme"},
+            "/login", data={"email": "admin@example.com", "password": "changeme"},
             follow_redirects=True,
         )
-        assert b"Incorrect username or password." in rejected.data
+        assert b"Incorrect email or password." in rejected.data
 
         accepted = fresh.post(
-            "/login", data={"username": "admin", "password": "new-password"},
+            "/login", data={"email": "admin@example.com", "password": "new-password"},
             follow_redirects=True,
         )
-        assert b"Incorrect username or password." not in accepted.data
+        assert b"Incorrect email or password." not in accepted.data
 
 
 def test_a_wrong_current_password_changes_nothing(logged_in, user):

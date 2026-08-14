@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name }} — Platform admin{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>{{ company.name }}</h1>
+    <p class="detail-subtitle">
+      <a href="{{ url_for('admin.companies') }}">Platform admin</a>
+      {% if not company.is_active %} · deactivated{% endif %}
+    </p>
+  </header>
+
+  {% if notice %}
+  <p class="warning-note">{{ notice }}</p>
+  {% endif %}
+
+  <section class="detail-orders">
+    <h2>Company</h2>
+    <form method="post" action="{{ url_for('admin.update_company', company_id=company.id) }}" class="detail-form">
+      <label>Name<input type="text" name="name" value="{{ company.name }}" required></label>
+      <label>Time zone
+        <select name="timezone">
+          {% for value, label in time_zones %}
+          <option value="{{ value }}" {% if company.timezone == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Access</h2>
+    <p class="detail-note">
+      {% if company.is_active %}
+      Deactivating stops everyone here signing in. Nothing is deleted, no
+      invoice or figure changes, and reactivating puts it back exactly as it
+      was — this is how a tenant leaves, because a company that has issued
+      invoices can't be erased.
+      {% else %}
+      Nobody at this company can sign in. Their data is untouched and
+      reactivating restores access immediately.
+      {% endif %}
+    </p>
+    <form method="post" action="{{ url_for('admin.set_company_active', company_id=company.id) }}">
+      <input type="hidden" name="active" value="{{ '0' if company.is_active else '1' }}">
+      <button type="submit" class="btn-secondary">
+        {{ 'Deactivate company' if company.is_active else 'Reactivate company' }}
+      </button>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Users</h2>
+    <p class="detail-note">
+      People who can sign in as this company. They see this studio and nothing
+      else, and none of them can reach this admin area — platform admins are a
+      separate kind of account, belonging to no company at all. Signing in as
+      one of these users opens the app exactly as they see it, with a banner
+      and a way back.
+    </p>
+
+    <ul class="settings-source-list">
+      {% for user in users %}
+      <li class="settings-source-list__item {% if not user.is_active %}settings-source-list__item--hidden{% endif %}">
+        <span class="settings-source-list__label">
+          {{ user.display_name }}
+          {% if not user.is_active %}<span class="checkbox-group__hidden-tag">(deactivated)</span>{% endif %}
+          <span class="detail-note">{{ user.email }}</span>
+        </span>
+        <div class="settings-source-list__actions">
+          {% if user.is_active and user.id != current_user.id %}
+          <form method="post" action="{{ url_for('admin.impersonate', user_id=user.id) }}">
+            <button type="submit" class="btn-secondary">Sign in as</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('admin.set_user_active', user_id=user.id) }}">
+            <input type="hidden" name="active" value="{{ '0' if user.is_active else '1' }}">
+            <button type="submit" class="btn-secondary">
+              {{ 'Deactivate' if user.is_active else 'Reactivate' }}
+            </button>
+          </form>
+        </div>
+      </li>
+
+      {# The password reset sits under its row rather than in the actions
+         strip: it needs a field, and a text input wedged between buttons
+         reads as part of the row above or below it. `detail-form` alongside
+         `settings-source-add` is what every other add-a-thing form on the
+         site pairs it with — it's what actually styles the label and
+         input; without it this rendered as bare, unstyled HTML. #}
+      <li class="settings-source-list__item">
+        <form method="post" action="{{ url_for('admin.reset_password', user_id=user.id) }}" class="detail-form settings-source-add">
+          <label>New password for {{ user.display_name }}
+            <input type="password" name="password" autocomplete="new-password"
+                   minlength="{{ min_password_length }}" required>
+          </label>
+          <button type="submit" class="btn-secondary">Reset password</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="{{ url_for('admin.add_user', company_id=company.id) }}" class="detail-form settings-source-add">
+      <label>Name<input type="text" name="full_name" placeholder="e.g. Studio Admin"></label>
+      <label>Email<input type="email" name="email" autocomplete="off" required></label>
+      <label>Initial password
+        <input type="password" name="password" autocomplete="new-password"
+               minlength="{{ min_password_length }}" required>
+      </label>
+      <div>
+        <button type="submit" class="btn-primary">Add user</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

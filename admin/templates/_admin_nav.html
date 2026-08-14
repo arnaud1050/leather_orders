@@ -1,0 +1,16 @@
+{# Sub-nav shared by the top-level /admin pages — same convention as
+   _settings_nav.html and _clients_nav.html: extracted so a third category
+   doesn't mean copying this markup a second place to keep in sync. Not
+   used on admin_company.html, a single record's detail page, for the same
+   reason _clients_nav.html doesn't appear on client_page.html — the
+   roster-level nav belongs on the roster, not on one record's page, which
+   carries its own breadcrumb back instead.
+
+   "Settings" here is installation-wide config (admin_settings.html) —
+   distinct from a company's own /settings, which this area has no
+   business touching and never will. Each page passes `section`. #}
+<nav class="settings-nav">
+  <a href="{{ url_for('admin.companies') }}" class="settings-nav__link {{ 'is-active' if section == 'companies' else '' }}">Companies</a>
+  <a href="{{ url_for('admin.platform_admins') }}" class="settings-nav__link {{ 'is-active' if section == 'admins' else '' }}">Admin Users</a>
+  <a href="{{ url_for('admin.settings') }}" class="settings-nav__link {{ 'is-active' if section == 'settings' else '' }}">Settings</a>
+</nav>

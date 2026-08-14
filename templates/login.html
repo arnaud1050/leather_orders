@@ -12,7 +12,10 @@
     {% if error %}
     <p class="login-error">{{ error }}</p>
     {% endif %}
-    <label>Username<input type="text" name="username" required autofocus></label>
+    {# Email, not a username: usernames were globally unique, which stopped
+       working the moment a second company wanted an "admin". See User in
+       models.py. #}
+    <label>Email<input type="email" name="email" autocomplete="username" required autofocus></label>
     <label>Password<input type="password" name="password" required></label>
     <div>
       <button type="submit" class="btn-primary">Sign in</button>

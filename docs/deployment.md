@@ -49,12 +49,20 @@ via a shared base file.
 - Both compose files pass through **`SECRET_KEY`** from the host environment
   (`${SECRET_KEY:-dev-not-secure}`) — **set a real value in a local `.env` file
   before deploying anywhere reachable**; the fallback is dev-only and insecure.
-  `docker-compose-demo.yml` also passes through **`ADMIN_PASSWORD`**
-  (`${ADMIN_PASSWORD:-changeme}`), which only takes effect the *first* time that
-  deployment's database is created (see `seed_if_empty()` in [docs/data-model.md](data-model.md)) —
-  changing it later requires deleting `data-demo/atelier.db` and restarting so it
-  re-bootstraps, or resetting the password directly via a Python shell. `.env` is
-  already gitignored.
+  `docker-compose-demo.yml` also passes through the two bootstrap logins, and
+  they are for **two different kinds of account** (see
+  [admin/CLAUDE.md](../admin/CLAUDE.md)):
+  **`ADMIN_EMAIL`** / **`ADMIN_PASSWORD`** (default
+  `admin@example.invalid` / `changeme`) is the *studio's* own user, created by
+  `seed_if_empty()` and only on a genuinely empty database.
+  **`PLATFORM_ADMIN_EMAIL`** / **`PLATFORM_ADMIN_PASSWORD`** (default
+  `platform@example.invalid` / `changeme`) is the *platform admin* — belongs to
+  no company, sees only `/admin` — created by `ensure_platform_admin()`, which
+  fires whenever no platform staff exist yet, including on an already-populated
+  database being upgraded. Neither ever overwrites an account that's already
+  there; changing a password afterwards is a job for `/admin`, not the
+  environment. Deleting `data-demo/atelier.db` and restarting remains the blunt
+  instrument. `.env` is already gitignored.
 - **Two separate encryption keys**, both passed through by both compose files and
   both optional: **`COMMS_ENCRYPTION_KEY`** (OAuth tokens, `communications/`) and
   **`AI_ENCRYPTION_KEY`** (vendor API keys, `ai/`). Generate either with

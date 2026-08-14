@@ -14,7 +14,7 @@ from datetime import date, timedelta
 
 from models import (
     Client, Company, Order, OrderType, Payment, SourceOption, User, db,
-    seed_if_empty,
+    ensure_platform_admin, seed_if_empty,
 )
 from sample_data import seed_sample_data
 
@@ -32,8 +32,89 @@ def test_seed_if_empty_creates_one_company_with_an_admin(app):
     assert Company.query.count() == 1
     company = Company.query.first()
     assert company.name == "By Monsieur"
-    assert [u.username for u in User.query.all()] == ["admin"]
+    assert [u.email for u in User.query.all()] == ["admin@example.invalid"]
     assert User.query.first().company_id == company.id
+    # A *tenant* user — the studio's own login. Platform staff belong to no
+    # company and are created separately by ensure_platform_admin(), so
+    # seeding must not hand this one the flag.
+    assert User.query.first().is_platform_admin is False
+
+
+# --- ensure_platform_admin(): somebody can always reach /admin ------------
+
+def test_a_platform_admin_is_created_with_no_company(app):
+    admin = ensure_platform_admin()
+
+    assert admin.company_id is None
+    assert admin.is_platform_admin is True
+    assert admin.is_staff is True
+
+
+def test_it_runs_on_every_boot_without_adding_a_second(app):
+    ensure_platform_admin()
+
+    assert ensure_platform_admin() is None
+    assert User.query.filter_by(is_platform_admin=True).count() == 1
+
+
+def test_it_still_fires_on_a_database_that_already_has_a_company(app):
+    """The case `seed_if_empty()` can't cover, and the reason this is a
+    separate call guarded on a different question: a single-tenant database
+    being migrated has a company already, so seeding returns early and
+    nobody would be able to reach /admin."""
+    seed_if_empty()
+    assert User.query.filter_by(is_platform_admin=True).count() == 0
+
+    ensure_platform_admin()
+
+    assert User.query.filter_by(is_platform_admin=True).count() == 1
+
+
+def test_a_platform_admin_inside_a_company_is_repaired(app):
+    """The lockout this exists to undo.
+
+    An earlier version of the admin area flagged a user who still belonged
+    to a company. Deactivate that company and they can't sign in — an
+    installation with a platform admin on paper and nobody able to reach
+    /admin. Counting only company-less, *active* accounts is what lets this
+    rescue such a database rather than politely stepping aside from it.
+    """
+    seed_if_empty()
+    studio_user = User.query.first()
+    studio_user.is_platform_admin = True
+    Company.query.first().is_active = False
+    db.session.commit()
+
+    rescue = ensure_platform_admin()
+
+    assert rescue is not None
+    assert rescue.company_id is None
+    # And the arrangement the model forbids is gone: they keep their studio
+    # and lose the flag, which is the half that was wrong.
+    assert studio_user.is_platform_admin is False
+    assert studio_user.company_id is not None
+
+
+def test_a_deactivated_staff_account_does_not_count_as_cover(app):
+    """`is_active` is part of "usable" for the same reason: a switched-off
+    platform admin can't sign in either."""
+    first = ensure_platform_admin()
+    first.is_active = False
+    db.session.commit()
+
+    assert ensure_platform_admin(email="second@example.invalid") is not None
+
+
+def test_an_address_a_tenant_user_already_holds_does_not_break_the_boot(app):
+    """Colliding with the unique index would take the app down at import.
+    Stepping aside is the lesser evil — /admin can rename it afterwards."""
+    seed_if_empty(admin_email="shared@example.invalid")
+
+    admin = ensure_platform_admin(email="shared@example.invalid")
+
+    assert admin is not None
+    assert admin.email != "shared@example.invalid"
+    assert admin.company_id is None
 
 
 def test_seed_if_empty_creates_the_option_lists_forms_read_from(app):

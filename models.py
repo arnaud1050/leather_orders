@@ -2,14 +2,18 @@
 SQLAlchemy models + first-boot bootstrap.
 
 Company is the tenant boundary: everything else (users, clients, and
-transitively orders/documents) hangs off a company_id. Today only one
-company is created on first boot, but scoping queries by company_id from
-the start means adding a second tenant later is additive, not a rewrite.
+transitively orders/documents) hangs off a company_id. Scoping every query
+by company_id from the start is what made the second tenant additive rather
+than a rewrite — `create_company()` below provisions one, and `/admin` is
+where a platform admin calls it from (see admin/CLAUDE.md).
 
-`seed_if_empty()` below creates *only* that company, its admin user and the
+`seed_if_empty()` creates the *first* company, its admin user and the
 per-company option lists — no sample clients, orders or invoices, so a
 production deployment starts empty. The demo dataset lives in
 `sample_data.py`, loaded on demand by `scripts/seed_sample_data.py`.
+
+Both go through `create_company()`, deliberately: one provisioning path
+means the tenth tenant gets exactly what the first one did.
 """
 
 import re
@@ -50,6 +54,13 @@ class Company(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
 
+    # A tenant is switched off, never deleted — it owns invoices, and an
+    # issued invoice is not ours to erase (hard rules 8 and 11). Deactivating
+    # blocks sign-in for every user under it and greys the row in /admin; it
+    # changes no order, no invoice and no figure. Reactivating is the exact
+    # inverse, which is the whole point of doing it this way.
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
     # IANA zone name. Timestamps are stored as naive UTC everywhere (see the
     # communications module's docstring); this is only how they're *rendered*,
     # so changing it re-labels history rather than rewriting it.
@@ -81,12 +92,65 @@ class Company(db.Model):
 
 
 class User(db.Model, UserMixin):
+    """A person who signs in — either a tenant's user or platform staff.
+
+    **Email is the identity, not a username.** Usernames were globally
+    unique, which is fine for one tenant and impossible for many — the
+    second studio to sign up also wants to be `admin`. Email is naturally
+    unique across the whole platform, so it stays the single unique column
+    and `full_name` is free to repeat. It's also the only identifier a
+    password-reset flow could ever use, so switching now costs one
+    migration instead of two.
+
+    **The two kinds of user are mutually exclusive**, and that's the whole
+    shape of the thing:
+
+    * A **tenant user** has a `company_id` and no platform rights. They see
+      their studio and nothing else.
+    * A **platform admin** has `is_platform_admin` and **no company at
+      all**. They see `/admin` and nothing else — no timeline, no clients,
+      no invoices, because those questions have no answer for somebody who
+      isn't in a studio.
+
+    Nothing enforces this at the database level (SQLite has no partial
+    check we'd want to migrate around), so `is_tenant_user` /
+    `is_staff` below are the readable form of it and
+    `admin.services` refuses to create anything else. The invariant matters
+    because it's what stops the person who administers the installation
+    from quietly being a member of one customer's company.
+    """
+
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
-    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
-    username = db.Column(db.String(80), unique=True, nullable=False)
+    # Null for platform staff — see the class docstring. Every *tenant*
+    # query still filters on it (hard rule 1); the app simply refuses to
+    # serve a tenant route to somebody who hasn't got one, rather than
+    # letting a null leak into 155 call sites as "no filter".
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"))
+    # Stored lower-cased and stripped (see `normalise_email`) so that
+    # "Marie@..." and "marie@..." can't become two accounts. The uniqueness
+    # is a separate index rather than an inline UNIQUE, because SQLite can
+    # neither add a UNIQUE column by ALTER nor drop one later — which is
+    # exactly the corner the old `username` column painted us into.
+    email = db.Column(db.String(255), nullable=False, index=True, unique=True)
+    # Display only — what settings pages and the admin area call this person.
+    # Deliberately not unique: two companies may each have a "Studio Admin",
+    # and that's none of the platform's business.
+    full_name = db.Column(db.String(120))
     password_hash = db.Column(db.String(255), nullable=False)
+    # Same hide-don't-delete reasoning as Company.is_active: a user has
+    # written emails and drafted invoices, so the row has to stay. Flask-Login
+    # reads this attribute off UserMixin, so overriding it with a real column
+    # means `login_user()` refuses a deactivated account on its own — the
+    # login route checks it too, only so the message says something useful.
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    # Platform staff: may reach /admin, provision companies, and impersonate.
+    # Always paired with a null company_id — see the class docstring. The
+    # way staff look at a studio's data is to impersonate somebody inside
+    # it, which borrows that person's company_id and so goes through the
+    # ordinary filtered code path rather than around it.
+    is_platform_admin = db.Column(db.Boolean, nullable=False, default=False)
     # How this person signs off an email. Per user rather than per company
     # or per mailbox, because a signature is written by a person: two people
     # sharing one studio@ address each want their own, and a company-level
@@ -95,6 +159,32 @@ class User(db.Model, UserMixin):
     signature = db.Column(db.Text)
 
     company = db.relationship("Company", back_populates="users")
+
+    @property
+    def is_staff(self) -> bool:
+        """Platform staff — reaches /admin, belongs to no studio."""
+        return self.company_id is None
+
+    @property
+    def is_tenant_user(self) -> bool:
+        """A studio's own user — reaches the app, never /admin.
+
+        Written as "has a company" rather than "isn't a platform admin"
+        because the company is the thing every tenant route actually needs;
+        a user with no company has no answer to give the timeline, and
+        that's the condition worth testing.
+        """
+        return self.company_id is not None
+
+    @property
+    def display_name(self) -> str:
+        """What to call this person on screen.
+
+        Falls back to the email rather than to an empty string: a settings
+        page reading "Changes the password for **_____**" is worse than one
+        naming an address the reader recognises.
+        """
+        return (self.full_name or "").strip() or self.email
 
     @property
     def signature_block(self) -> str:
@@ -114,6 +204,17 @@ class User(db.Model, UserMixin):
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
+
+
+def normalise_email(value: str) -> str:
+    """The one place an address is folded to its stored form.
+
+    Called on every write *and* on the login lookup, so the two can't drift
+    apart — a user who registered as "Marie@Example.com" and types
+    "marie@example.com" is the same person, and a database that thinks
+    otherwise is a support ticket.
+    """
+    return (value or "").strip().lower()
 
 
 client_sources = db.Table(
@@ -572,6 +673,11 @@ _ADDED_COLUMNS = [
     # Every client already on file was on the roster before hiding existed,
     # so the default has to be 0 — a migration records what shipped.
     ("clients", "is_hidden", "BOOLEAN NOT NULL DEFAULT 0"),
+    # Every company that existed before the platform-admin area was a working
+    # tenant, so they all start active. The `users` columns that landed in the
+    # same change aren't here — they need the table rebuilt, not extended;
+    # see _migrate_users_to_email() below.
+    ("companies", "is_active", "BOOLEAN NOT NULL DEFAULT 1"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
@@ -595,6 +701,19 @@ def run_migrations() -> None:
             db.session.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
     db.session.commit()
 
+    # Runs after the ALTER loop above, which is what guarantees `signature`
+    # exists on a database old enough to predate it — the rebuild copies that
+    # column across by name.
+    if "username" in existing.get("users", ()):
+        _migrate_users_to_email()
+
+    # Runs after that one, and checks the live schema rather than the
+    # snapshot above, because the rebuild it may have just done already
+    # produces the right shape — this is only for databases that went
+    # through the *first* version of it, which wrote company_id NOT NULL.
+    if "users" in tables and not _users_company_id_is_nullable():
+        _migrate_users_company_nullable()
+
     if "price" in existing.get("orders", ()):
         _migrate_order_price_to_lines()
 
@@ -604,6 +723,168 @@ def run_migrations() -> None:
     for table in _SPLIT_ADDRESS_TABLES:
         if "address" in existing.get(table, ()):
             _migrate_free_text_address(table)
+
+
+# The current shape of `users`, as one string, because **two** migrations
+# build this table and a version skew between them is a boot failure rather
+# than a wrong number. Mirrors what db.create_all() emits for `User`.
+#
+# Unlike _ADDED_COLUMNS — where each entry is a frozen record of what
+# shipped — this one deliberately tracks the model: both callers below are
+# "make the table look like it does today", and a rebuild that recreated a
+# historical shape would just need rebuilding again.
+_USERS_TABLE_DDL = (
+    "CREATE TABLE users_new ("
+    " id INTEGER NOT NULL,"
+    # Nullable: platform staff belong to no company (see `User`).
+    " company_id INTEGER,"
+    " email VARCHAR(255) NOT NULL,"
+    " full_name VARCHAR(120),"
+    " password_hash VARCHAR(255) NOT NULL,"
+    " signature TEXT,"
+    " is_active BOOLEAN NOT NULL DEFAULT 1,"
+    " is_platform_admin BOOLEAN NOT NULL DEFAULT 0,"
+    " PRIMARY KEY (id),"
+    " FOREIGN KEY(company_id) REFERENCES companies (id))"
+)
+
+
+def _swap_in_rebuilt_users() -> None:
+    """Replace `users` with the freshly built `users_new`.
+
+    The tail both rebuilds share. SQLite re-parses the whole schema on
+    ALTER TABLE RENAME, and communications' `user_id` foreign key is
+    briefly dangling between the DROP and the rename;
+    `legacy_alter_table` makes the rename a plain schema-text change with
+    no re-parse and no reference rewriting, which is the recipe from
+    SQLite's own ALTER TABLE documentation.
+
+    The unique index goes on last because dropping the old table dropped
+    it. Its name and shape match what SQLAlchemy generates for a column
+    declared `index=True, unique=True`, so a rebuilt database and a fresh
+    `create_all()` one end up identical.
+    """
+    db.session.execute(sa.text("DROP TABLE users"))
+    db.session.execute(sa.text("PRAGMA legacy_alter_table=ON"))
+    db.session.execute(sa.text("ALTER TABLE users_new RENAME TO users"))
+    db.session.execute(sa.text("PRAGMA legacy_alter_table=OFF"))
+    db.session.execute(sa.text("CREATE UNIQUE INDEX ix_users_email ON users (email)"))
+    db.session.commit()
+
+
+def _users_company_id_is_nullable() -> bool:
+    """Read the live schema, not a reflected snapshot.
+
+    `PRAGMA table_info` rather than the inspector because this runs
+    *after* `_migrate_users_to_email()` may have rebuilt the table in the
+    same pass, and the pragma always reads what's actually there —
+    column 3 of each row is `notnull`.
+    """
+    rows = db.session.execute(sa.text("PRAGMA table_info(users)")).all()
+    for row in rows:
+        if row[1] == "company_id":
+            return row[3] == 0
+    return True
+
+
+def _migrate_users_company_nullable() -> None:
+    """Relax `users.company_id` to nullable.
+
+    A second rebuild of the same table, and an avoidable one: the first
+    version of the platform-admin area shipped with `company_id INTEGER
+    NOT NULL`, because platform staff still belonged to a company then.
+    Making the *model* nullable doesn't relax a constraint SQLite has
+    already written into the table, and SQLite has no ALTER for it — so
+    any database created or migrated in that window needs this, and
+    without it `ensure_platform_admin()` fails on insert and takes the
+    whole boot down with it.
+
+    Nothing about the rows changes; only the constraint does.
+    """
+    db.session.execute(sa.text(_USERS_TABLE_DDL))
+    db.session.execute(sa.text(
+        "INSERT INTO users_new (id, company_id, email, full_name,"
+        " password_hash, signature, is_active, is_platform_admin)"
+        " SELECT id, company_id, email, full_name, password_hash, signature,"
+        " is_active, is_platform_admin FROM users"
+    ))
+    _swap_in_rebuilt_users()
+
+
+# Where a username that isn't already an address is parked when the login
+# identity moves to email. `.invalid` is reserved by RFC 2606 and can never
+# resolve, so a backfilled address is incapable of being someone's real one
+# — it reads as a placeholder because it is one, and the platform admin is
+# expected to replace it from /admin.
+_BACKFILL_EMAIL_DOMAIN = "example.invalid"
+
+
+def _migrate_users_to_email() -> None:
+    """Rebuild `users` with email as the login identity.
+
+    A rebuild rather than an ALTER because SQLite can do neither half of
+    what's needed: it cannot add a UNIQUE column, and it cannot drop the
+    inline UNIQUE that `username` carried. Copying into a fresh table is
+    the documented way round both — and it's what actually *removes* the
+    global uniqueness rather than merely leaving it unused, which matters,
+    because that constraint is the thing stopping two studios from each
+    having an "admin".
+
+    `id` values are preserved, so communications' `users.id` foreign key
+    still points at the same people afterwards.
+
+    Two decisions are made here that cannot be made later:
+
+    * **The email backfill.** A username that already looks like an address
+      becomes that address; anything else is parked at
+      `<username>@example.invalid`. Should two usernames fold onto one
+      address (`Admin` and `admin` — possible, since SQLite's UNIQUE was
+      case-sensitive), the row id is appended rather than failing the boot.
+      An ugly address somebody can edit beats a deployment that won't start.
+    Everyone migrated stays a **tenant user** of the company they were
+    already in. Nobody is promoted to platform admin here, deliberately: a
+    platform admin has no company (see `User`), and silently detaching the
+    studio's only login from its studio would be a strange thing for a
+    migration to do. `ensure_platform_admin()` creates the staff account
+    separately, alongside rather than instead of this one.
+    """
+    rows = db.session.execute(sa.text(
+        "SELECT id, company_id, username, password_hash, signature "
+        "FROM users ORDER BY id"
+    )).all()
+
+    taken: set[str] = set()
+    migrated = []
+    for row in rows:
+        username = (row.username or "").strip()
+        email = username.lower()
+        if "@" not in email:
+            email = f"{email}@{_BACKFILL_EMAIL_DOMAIN}"
+        if email in taken:
+            local, _, domain = email.partition("@")
+            email = f"{local}+{row.id}@{domain}"
+        taken.add(email)
+        migrated.append({
+            "id": row.id,
+            "company_id": row.company_id,
+            "email": email,
+            # The old username becomes the display name, so nobody's account
+            # stops being recognisable on the day this runs.
+            "full_name": username or None,
+            "password_hash": row.password_hash,
+            "signature": row.signature,
+        })
+
+    db.session.execute(sa.text(_USERS_TABLE_DDL))
+    for values in migrated:
+        db.session.execute(sa.text(
+            "INSERT INTO users_new (id, company_id, email, full_name,"
+            " password_hash, signature, is_active, is_platform_admin)"
+            " VALUES (:id, :company_id, :email, :full_name, :password_hash,"
+            " :signature, 1, 0)"
+        ), values)
+
+    _swap_in_rebuilt_users()
 
 
 # "…\nCity, PROV  H1V 1M6" — the shape the old free-text addresses were
@@ -750,27 +1031,38 @@ _DEFAULT_ORDER_TYPES = [
 ]
 
 
-def seed_if_empty(admin_password: str = "changeme") -> None:
-    """Create the one company an empty database needs, and nothing else.
+def create_company(
+    name: str,
+    admin_email: str,
+    admin_password: str,
+    *,
+    timezone: str = DEFAULT_TIMEZONE,
+    admin_full_name: str | None = None,
+) -> tuple["Company", "User"]:
+    """Provision a tenant: the company, its billing letterhead, its first
+    user and the two option lists the app's own forms read from.
 
-    Bootstrap only — a company, its admin user, and the two option lists the
-    app's own forms read from. **No clients, orders or invoices**: a fresh
-    deployment is meant to be genuinely empty, so the first real order
-    entered is order #1. The demo dataset lives in `sample_data.py` and is
-    loaded on purpose by running `scripts/seed_sample_data.py`.
+    The user created here is a **tenant user** — a studio's own login, with
+    no platform rights. Platform staff are a different kind of account
+    entirely and are created by `ensure_platform_admin()`; see `User`.
 
-    The company's name is a starting value only — it's editable from
-    /settings, and this never overwrites it.
+    **The single provisioning path**, used both by `seed_if_empty()` for the
+    first company on an empty database and by the platform admin area for
+    every one after it. That's the point of it being a function rather than
+    inline code: the tenth studio gets byte-for-byte what the first one got,
+    and a starter list added here can't reach one and miss the other.
 
-    Runs on every boot and returns immediately once a company exists, so
-    it's never a reset mechanism.
+    What it deliberately does *not* create is anything fixed rather than
+    configurable — province tax rates and the inventory unit catalog are
+    code constants, and the per-company rows around them are created lazily
+    on first use, which already covers a company created here.
+
+    Flushes but does not commit, so a caller can add to the same
+    transaction; both current callers commit immediately after.
     """
-    if Company.query.count() > 0:
-        return
-
     from billing.services import invoicing
 
-    company = Company(name="By Monsieur")
+    company = Company(name=name.strip(), timezone=timezone)
     db.session.add(company)
     db.session.flush()  # assigns company.id
 
@@ -782,7 +1074,11 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
     # `update_profile` supplies the "INV" number prefix.
     invoicing.update_profile(company.id, display_name=company.name)
 
-    admin = User(company_id=company.id, username="admin")
+    admin = User(
+        company_id=company.id,
+        email=normalise_email(admin_email),
+        full_name=(admin_full_name or "").strip() or None,
+    )
     admin.set_password(admin_password)
     db.session.add(admin)
 
@@ -792,4 +1088,119 @@ def seed_if_empty(admin_password: str = "changeme") -> None:
     for i, label in enumerate(_DEFAULT_ORDER_TYPES):
         db.session.add(OrderType(company_id=company.id, label=label, sort_order=i))
 
+    db.session.flush()
+    return company, admin
+
+
+def seed_if_empty(
+    admin_password: str = "changeme",
+    admin_email: str = "admin@example.invalid",
+) -> None:
+    """Create the one company an empty database needs, and nothing else.
+
+    Bootstrap only — a company, its admin user, and the two option lists the
+    app's own forms read from. **No clients, orders or invoices**: a fresh
+    deployment is meant to be genuinely empty, so the first real order
+    entered is order #1. The demo dataset lives in `sample_data.py` and is
+    loaded on purpose by running `scripts/seed_sample_data.py`.
+
+    The company's name is a starting value only — it's editable from
+    /settings, and this never overwrites it. The admin address is the same
+    kind of starting value, and the same `.invalid` placeholder the username
+    migration uses: it has to be *some* address now that email is the login
+    identity, and one that can never be a real mailbox is the honest choice.
+    Override it with `ADMIN_EMAIL`, or change it from /admin after signing in.
+
+    That user is a **tenant user** — the studio's own login, with no access
+    to /admin. The platform staff account is a separate thing entirely and
+    is created by `ensure_platform_admin()`, which app.py calls right after
+    this one.
+
+    Runs on every boot and returns immediately once a company exists, so
+    it's never a reset mechanism.
+    """
+    if Company.query.count() > 0:
+        return
+
+    create_company(
+        "By Monsieur",
+        admin_email,
+        admin_password,
+        admin_full_name="Studio Admin",
+    )
     db.session.commit()
+
+
+def ensure_platform_admin(
+    email: str = "platform@example.invalid",
+    password: str = "changeme",
+) -> "User | None":
+    """Make sure the installation has somebody who can reach /admin.
+
+    Separate from `seed_if_empty()` on purpose, and guarded on a different
+    question. Seeding asks "is this database empty?"; this asks "is there
+    any platform staff?" — and those diverge in exactly the case that
+    matters, an existing single-tenant database being migrated, which has a
+    company already and so returns early from seeding while having nobody
+    who can administer anything.
+
+    Creates a user with **no company**, which is what platform staff are
+    (see `User`). Returns the new account, or None when one already
+    existed — so it's safe on every boot, and never a way to reset a
+    password somebody has since changed.
+
+    The `.invalid` default is the same reasoning as everywhere else here:
+    the address has to be *something* before anyone has said what, and one
+    that can never be a real mailbox is the honest placeholder. Override
+    with `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD`.
+
+    **It asks whether a *usable* platform admin exists, not whether the flag
+    appears anywhere**, and the difference is a lockout. An earlier version
+    of this feature put the flag on a user who still belonged to a company;
+    deactivate that company and the account can no longer sign in
+    (`load_user` in app.py drops it), leaving an installation with a
+    platform admin on paper and nobody who can reach /admin. Counting only
+    company-less, active accounts is what makes this function able to
+    rescue that database instead of stepping politely aside from it.
+    """
+    # Normalise away the arrangement the model no longer allows: a user with
+    # both a company and the flag. They keep their studio and lose the flag,
+    # which is the half that was wrong — see `User`. Done here rather than in
+    # run_migrations() because it's a repair for a state only a previous
+    # version of *this* function could produce, and it belongs next to the
+    # reasoning for it.
+    stale = User.query.filter(
+        User.is_platform_admin.is_(True), User.company_id.isnot(None),
+    ).all()
+    for user in stale:
+        user.is_platform_admin = False
+    if stale:
+        db.session.commit()
+
+    usable = User.query.filter(
+        User.is_platform_admin.is_(True),
+        User.company_id.is_(None),
+        User.is_active.is_(True),
+    ).count()
+    if usable > 0:
+        return None
+
+    # An address already taken by a tenant user would fail the unique index
+    # and take the whole boot down with it. Stepping aside is better than
+    # refusing to start: the staff account still gets created, under a name
+    # that says what happened, and /admin can rename it.
+    address = normalise_email(email)
+    if User.query.filter_by(email=address).first() is not None:
+        local, _, domain = address.partition("@")
+        address = f"{local}+platform@{domain}"
+
+    admin = User(
+        company_id=None,
+        email=address,
+        full_name="Platform Admin",
+        is_platform_admin=True,
+    )
+    admin.set_password(password)
+    db.session.add(admin)
+    db.session.commit()
+    return admin

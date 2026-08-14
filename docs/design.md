@@ -112,10 +112,14 @@ Current tokens (top of `style.css`):
     the filter row: rush isn't a stage you can filter to, so the "rush
     first" sort options are how you single it out.
 - `--status-pending` (purple) — not an order status. The app's "something
-  happened that you should know about" colour: the calendar's synced-event
-  chip (`.chip--event`), the unopened-thread markers in the lead inbox
-  (`.pill--new` and the row's left edge), and `.nav-badge--new`, the count of
-  clients a sender rule created by itself
+  worth knowing" colour: the calendar's synced-event chip (`.chip--event`),
+  the unopened-thread markers in the lead inbox (`.pill--new` and the row's
+  left edge), `.nav-badge--new` (the count of clients a sender rule created
+  by itself), and `.announcement-banner` — the platform-wide notice at the
+  very top of every page, authenticated or not (`/admin/settings`, see
+  admin/CLAUDE.md). Purple rather than the impersonation banner's amber on
+  purpose: the two can render at once, and nothing about an announcement is
+  broken or needs attention soon — there's just something to read
 - `--badge-neutral` (medium grey) — the plain `.nav-badge`, i.e. the lead
   count. Deliberately non-committal: a lead is by definition undecided —
   client, supplier or spam, nobody has looked yet — and a louder colour would
@@ -128,7 +132,10 @@ Current tokens (top of `style.css`):
   "needs attention *soon*" badge weight: `.nav-badge--low-stock`, the count of
   inventory items running low (above zero but at or below their own warning
   point), plus the amber-bordered `.warning-note` it mirrors on the order
-  Materials tab. One tier softer than red. **The four badge weights are the
+  Materials tab, and `.impersonation-banner` — the full-bleed bar under the
+  nav while a platform admin is signed in as somebody else. Amber rather than
+  red there for the same reason: impersonation is a state the admin chose and
+  can leave in one click, not a fault. One tier softer than red. **The four badge weights are the
   whole scheme: grey = undecided, purple = worth knowing, amber = needs
   attention soon, red = broken.** Amber was added deliberately with the
   inventory low-stock feature — a genuinely milder severity than the red

@@ -7,13 +7,31 @@
   driver (`psycopg2`/`pymysql`) — the ORM models and query code in `app.py` don't
   need to change as long as SQLite-only features are avoided (none are currently
   used).
-- **Multi-tenancy beyond schema prep**: `Company` exists and every query is scoped
-  to it, but there's no signup flow, no tenant switcher, and no way to create a
-  second company or invite additional users to one short of a Python shell. Only
-  worth building out if this actually becomes a multi-customer product.
-- **Password management**: no "forgot password" / change-password UI. Resetting
-  `admin`'s password (or adding a user) means dropping into a Python shell
-  (`User(...)`, `user.set_password(...)`, `db.session.add`/`commit`).
+- **Multi-tenancy**: *first iteration built* — a platform admin (`/admin`)
+  provisions companies, adds users to them, deactivates either, and can
+  impersonate a tenant user for support. Email replaced usernames as the login
+  identity to make it possible, and platform staff sit **outside** every
+  tenant: no company, no timeline, `/admin` only. `/admin` also carries the
+  installation's first genuinely platform-wide setting — a maintenance/
+  announcement banner (`/admin/settings`), shown on every page including
+  signed-out ones. See [admin/CLAUDE.md](../admin/CLAUDE.md).
+  Still unbuilt, in rough order of likely need: **roles within a company**
+  (owner vs. member — today every tenant user can do everything), an **audit
+  log of admin actions** (probably by generalising `communications/`'s existing
+  audit table rather than starting a second one), **self-serve signup**, and
+  **billing/plans**. A tenant switcher remains deliberately absent — a user
+  belongs to one company, and impersonation covers the support case. The
+  password-policy minimum (`MIN_PASSWORD_LENGTH`, currently duplicated as two
+  hardcoded `8`s in `app.py` and `admin/services.py`) is the next obvious
+  candidate for `/admin/settings` — same shape as the announcement, smaller
+  than the roles/audit-log items above.
+- **Password management**: *partly built*. Changing your own password is at
+  `/settings/account`; a platform admin adds users and resets anyone's password
+  from `/admin`. Still missing: **reset by email**, which is blocked on the app
+  having no address of its own to send from — the Gmail accounts under
+  Email/Calendar are the studio's client correspondence, not app mail. Until
+  that changes, a platform admin sets an initial password and hands it over out
+  of band.
 - **Communications, Phase 2**: not built, and the architecture is shaped for
   each of them — Gmail push notifications (`sync_account` already takes an
   explicit window), Microsoft Graph / IMAP (a module in `providers/` plus two

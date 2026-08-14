@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Admin users — Platform admin{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Platform admin</h1>
+    <p class="detail-subtitle">Staff accounts for this installation</p>
+  </header>
+
+  {% include "_admin_nav.html" %}
+
+  {% if notice %}
+  <p class="warning-note">{{ notice }}</p>
+  {% endif %}
+
+  <section class="detail-orders">
+    <h2>Platform admins</h2>
+    <p class="detail-note">
+      Staff accounts — they belong to no company, and see this page rather
+      than a timeline. There's deliberately no way to promote a studio's user
+      into one: whoever administers this installation shouldn't also be a
+      member of a customer's company. To look inside a studio, use
+      <strong>Sign in as</strong> on its page.
+    </p>
+
+    <ul class="settings-source-list">
+      {% for admin in platform_admins %}
+      <li class="settings-source-list__item {% if not admin.is_active %}settings-source-list__item--hidden{% endif %}">
+        <span class="settings-source-list__label">
+          {{ admin.display_name }}
+          {% if not admin.is_active %}<span class="checkbox-group__hidden-tag">(deactivated)</span>{% endif %}
+          {% if admin.id == current_user.id %}<span class="checkbox-group__hidden-tag">(you)</span>{% endif %}
+          <span class="detail-note">{{ admin.email }}</span>
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('admin.set_user_active', user_id=admin.id) }}">
+            <input type="hidden" name="active" value="{{ '0' if admin.is_active else '1' }}">
+            <button type="submit" class="btn-secondary">
+              {{ 'Deactivate' if admin.is_active else 'Reactivate' }}
+            </button>
+          </form>
+        </div>
+      </li>
+
+      {# Same arrangement as the tenant user list: the reset needs a field,
+         and a text input wedged between buttons reads as part of the wrong
+         row. `detail-form` is what actually styles the label and input —
+         see the note in admin_company.html. #}
+      <li class="settings-source-list__item">
+        <form method="post" action="{{ url_for('admin.reset_password', user_id=admin.id) }}" class="detail-form settings-source-add">
+          <label>New password for {{ admin.display_name }}
+            <input type="password" name="password" autocomplete="new-password"
+                   minlength="{{ min_password_length }}" required>
+          </label>
+          <button type="submit" class="btn-secondary">Reset password</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="{{ url_for('admin.add_platform_admin') }}" class="detail-form settings-source-add">
+      <label>Name<input type="text" name="full_name" placeholder="e.g. Platform Admin"></label>
+      <label>Email<input type="email" name="email" autocomplete="off" required></label>
+      <label>Initial password
+        <input type="password" name="password" autocomplete="new-password"
+               minlength="{{ min_password_length }}" required>
+      </label>
+      <div>
+        <button type="submit" class="btn-primary">Add platform admin</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

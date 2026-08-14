@@ -19,6 +19,49 @@ that came back — a redirect carrying the right words says nothing about what
 was written — and one test goes the whole way round through `/login` to prove
 the new password is the one that actually authenticates.
 
+**`tests/test_admin.py`** defends the platform admin area
+(`admin/REQUIREMENTS.md` `PA1`–`PA30`): who may reach `/admin` (every mutating
+route checked individually, since the guard on a list page is easy to
+remember and the guard on ten POSTs is not — plus all three top-level pages'
+GET routes, now that Companies, Admin Users and Settings are separate pages
+sharing `_admin_nav.html`), that a company provisioned there gets exactly what
+`seed_if_empty()` builds and no sample data, the platform-wide uniqueness of
+email, deactivation of both a company and a user, and impersonation.
+
+It also defends the **announcement banner** (`PA26`–`PA30`): that it shows on
+a tenant page, a staff page, and — the point of the feature —
+`/login` and `/privacy` while signed out; that turning it on with a blank
+message is refused outright while turning it off with one blank just clears
+the draft (nothing lost the next time the same maintenance window comes
+around); and that the message is rendered escaped, checked with a literal
+`<script>` tag that must survive as visible text, never as markup. The
+`get_platform_settings()` singleton is checked directly too — two calls in a
+row must return the same row, not create a second one.
+
+It also pins the **staff/tenant split**: that a platform admin has no company,
+that every tenant route redirects them back to `/admin` (parametrised over the
+nine of them, since the guard is one hook and the thing worth checking is its
+reach), and that no route exists to promote a tenant user — the `404` in
+`test_there_is_no_route_to_promote_a_tenant_user` is the assertion, because the
+absence *is* the rule. Note `platform_admin` in `conftest.py` deliberately
+depends on `app` rather than `company`: a fixture that gave staff a studio
+would re-create the arrangement the model forbids, and every access test built
+on it would be testing fiction.
+
+The load-bearing test is
+`test_admin_is_unreachable_while_impersonating`, checked from both sides —
+the shortcut implementation (`current_user.is_platform_admin` instead of the
+session key) passes whenever the impersonated user happens to hold the flag,
+and fails open silently.
+
+**`tests/test_user_migration.py`** covers the one migration in the project
+that rebuilds a table rather than extending one — `username` out, `email` in
+(`PA24`, `PA25`). Every fixture builds the *old* schema by hand; testing
+against `create_all`'s current shape would prove nothing. It checks the
+backfill, id preservation (communications' audit log has a foreign key into
+`users`), the case-collision fallback, that the new unique index really
+constrains, and that a second `run_migrations()` is a no-op.
+
 **`tests/test_client_hiding.py`** defends `CL17`–`CL21`, and most of it is one
 assertion from different angles: **hiding a client must not touch their
 orders.** The load-bearing test is
@@ -30,6 +73,17 @@ toggle (tenant scoping, login, `return_to`), the roster/archive split (`CL19`),
 the new-order picker (`CL20`), and the come-back-on-new-mail rule (`CL21`) —
 that last group living here rather than in `tests/test_lead_triage.py` even
 though the code is in `communications/`, since the rule is the host's.
+
+`tests/test_seeding.py` additionally covers `ensure_platform_admin()` (`CO9g`),
+whose whole reason for existing is a case `seed_if_empty()` can't reach — a
+database that already has a company, where seeding returns early and nobody
+would otherwise be able to sign in to `/admin`. The one to keep is
+`test_a_platform_admin_inside_a_company_is_repaired`, written against a real
+lockout: a platform admin who still belonged to a company, whose company was
+then deactivated, leaving an installation with the flag set on paper and
+nobody able to reach `/admin`. It's the reason that function tests for a
+*usable* admin (company-less and active) rather than for the flag — the
+flag-only version steps aside from exactly the database that needs it.
 
 **`tests/test_seeding.py`** defends the bootstrap/sample-data split (`CO9a`–
 `CO9c`, hard rule 16): that `seed_if_empty()` creates a tenant and *no* clients,
@@ -148,6 +202,16 @@ python -m pytest
 `db.create_all()` at module level, so Flask-SQLAlchemy builds and caches its
 engine during the import, and a script that sets `SQLALCHEMY_DATABASE_URI`
 *afterwards* silently writes to the real `data/atelier.db`. This bit us once.
+
+`_app` also registers a `before_request` hook that pops Flask-Login's cached
+user off `g`. That cache is scoped to the *app context*, and a real deployment
+pushes a fresh one per request — but the `app` fixture holds a single app
+context open for a whole test and Flask reuses it rather than pushing another.
+Without the hook, the first request's identity sticks, so a test driving two
+clients (a platform admin and the tenant user they're acting on, say) silently
+runs both as whoever signed in first. It reads as a bug in the code under test,
+which is what makes it worth preventing centrally. `tests/test_admin.py` is
+the file that needs it.
 
 Each test drops and recreates the schema. A rollback-per-test fixture was tried
 first and doesn't work here — `send_email()` and `create_event()` deliberately

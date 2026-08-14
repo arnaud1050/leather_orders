@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Platform admin — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Platform admin</h1>
+    <p class="detail-subtitle">Companies on this installation</p>
+  </header>
+
+  {% include "_admin_nav.html" %}
+
+  {% if notice %}
+  <p class="warning-note">{{ notice }}</p>
+  {% endif %}
+
+  <section class="detail-orders">
+    <h2>Companies</h2>
+    <p class="detail-note">
+      Each company is a separate tenant: its clients, orders, invoices and
+      settings are visible only to the people inside it. Deactivating one
+      stops everybody there signing in and changes nothing else — no order,
+      no invoice, no figure.
+    </p>
+
+    {# The settings-source-list convention, same as order types and document
+       types: label on the left, actions on the right, hidden/inactive rows
+       greyed by the --hidden modifier rather than removed. #}
+    <ul class="settings-source-list">
+      {% for row in companies %}
+      <li class="settings-source-list__item {% if not row.is_active %}settings-source-list__item--hidden{% endif %}">
+        <span class="settings-source-list__label">
+          <a href="{{ url_for('admin.company', company_id=row.id) }}">{{ row.name }}</a>
+          {% if not row.is_active %}<span class="checkbox-group__hidden-tag">(deactivated)</span>{% endif %}
+          <span class="detail-note">
+            {{ user_counts.get(row.id, 0) }} active user{{ 's' if user_counts.get(row.id, 0) != 1 }}
+            · {{ row.timezone }}
+          </span>
+        </span>
+        <div class="settings-source-list__actions">
+          <a href="{{ url_for('admin.company', company_id=row.id) }}" class="btn-secondary">Manage</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Add a company</h2>
+    <p class="detail-note">
+      Creates the tenant and its first user in one step. The new company gets
+      the same starting point a fresh installation does — the default source
+      and order-type lists, an empty invoice letterhead — and no clients,
+      orders or sample data.
+    </p>
+    <form method="post" action="{{ url_for('admin.create_company') }}" class="detail-form">
+      <label>Company name<input type="text" name="name" required></label>
+      <label>Time zone
+        <select name="timezone">
+          {% for value, label in time_zones %}
+          <option value="{{ value }}" {% if value == default_timezone %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>First user's name<input type="text" name="admin_full_name" placeholder="e.g. Studio Admin"></label>
+      <label>First user's email
+        <input type="email" name="admin_email" autocomplete="off" required>
+      </label>
+      <label>Initial password
+        <input type="password" name="admin_password" autocomplete="new-password"
+               minlength="{{ min_password_length }}" required>
+      </label>
+      <p class="detail-note">
+        At least {{ min_password_length }} characters. You'll need to pass it on
+        yourself — the app has no address of its own to send an invitation from.
+      </p>
+      <div>
+        <button type="submit" class="btn-primary">Create company</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

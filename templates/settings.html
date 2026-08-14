@@ -41,7 +41,7 @@
   <section class="detail-orders">
     <h2>Password</h2>
     <p class="detail-note">
-      Changes the password for <strong>{{ current_user.username }}</strong>,
+      Changes the password for <strong>{{ current_user.display_name }}</strong>,
       the account you're signed in as. Your current password is required.
     </p>
     <form method="post" action="{{ url_for('change_password') }}" class="detail-form">
@@ -71,7 +71,7 @@
   <section class="detail-orders">
     <h2>Email signature</h2>
     <p class="detail-note">
-      How <strong>{{ current_user.username }}</strong> signs off an email.
+      How <strong>{{ current_user.display_name }}</strong> signs off an email.
     </p>
     <form method="post" action="{{ url_for('update_signature') }}" class="detail-form ai-form">
       <label>Signature

@@ -9,6 +9,17 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/style.css') }}">
 </head>
 <body>
+  {# Platform announcement — a fact about the installation, not the
+     session, so it renders whether or not anyone is signed in and above
+     everything else, including the nav. A maintenance notice is most
+     useful to someone about to sign in, not just someone already in.
+     `platform_announcement()` is admin/routes.py's context processor;
+     purple rather than the impersonation banner's amber so the two never
+     read as the same kind of fact when both happen to show at once. #}
+  {% set announcement = platform_announcement() %}
+  {% if announcement %}
+  <div class="announcement-banner">{{ announcement }}</div>
+  {% endif %}
   {% if current_user.is_authenticated %}
   <nav class="view-switch">
     <button type="button" class="view-switch__toggle" id="nav-toggle" aria-expanded="false" aria-controls="view-switch-links" aria-label="Toggle navigation menu">
@@ -17,6 +28,13 @@
       </svg>
     </button>
     <div class="view-switch__links" id="view-switch-links">
+      {# The tenant views, all of which answer a question about *a company* —
+         so they render only for somebody who's in one. Platform staff have
+         no company (see User in models.py) and get the Admin link and Log
+         out alone; app.py's `_keep_staff_out_of_tenant_routes` is what makes
+         that a rule rather than a hidden link. During impersonation
+         `current_user` is the tenant user, so these come back. #}
+      {% if current_user.is_tenant_user %}
       <a href="{{ url_for('timeline_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'timeline' else '' }}">Timeline</a>
       <a href="{{ url_for('calendar_view') }}" class="view-switch__link {{ 'is-active' if active_view == 'calendar' else '' }}">Calendar</a>
       <a href="{{ url_for('clients_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'clients' else '' }}">
@@ -60,9 +78,38 @@
         {% set failing_integrations = integration_alert_count() %}
         {% if failing_integrations %}<span class="nav-badge nav-badge--alert" title="{{ failing_integrations }} integration{{ 's' if failing_integrations != 1 }} stopped syncing — see Settings → Email/Calendar">!</span>{% endif %}
       </a>
+      {% endif %}
+      {# Platform staff only, and last before Log out. `is_platform_admin()`
+         comes from admin/routes.py's context processor and is deliberately
+         false while impersonating, so the link disappears for the duration —
+         which is also why this sits outside the tenant block above rather
+         than being an else-branch of it. #}
+      {% if is_platform_admin() %}
+      <a href="{{ url_for('admin.companies') }}" class="view-switch__link {{ 'is-active' if active_view == 'admin' else '' }}">Admin</a>
+      {% endif %}
       <a href="{{ url_for('logout') }}" class="view-switch__logout">Log out</a>
     </div>
   </nav>
+
+  {# Impersonation banner. Above the content and on every page, because the
+     whole risk of impersonation is forgetting you're doing it — a signed-in
+     platform admin who thinks they're themselves could edit a client's
+     order believing it's their own. The exit is in the banner rather than
+     in Settings so it's never more than one click away from wherever the
+     realisation happens. #}
+  {% set impersonated = impersonating_as() %}
+  {% if impersonated %}
+  <div class="impersonation-banner">
+    <span>
+      Signed in as <strong>{{ impersonated.display_name }}</strong>
+      at <strong>{{ impersonated.company.name }}</strong>.
+      Anything you change here is theirs.
+    </span>
+    <form method="post" action="{{ url_for('admin.stop_impersonating') }}">
+      <button type="submit" class="btn-secondary">Return to admin</button>
+    </form>
+  </div>
+  {% endif %}
   <script>
     (function () {
       var toggle = document.getElementById('nav-toggle');
@@ -87,7 +134,7 @@
        screen: Google's OAuth verification checks that both are reachable
        without signing in. #}
     <p class="site-footer__legal">
-      <span class="site-footer__version">v0.7.1</span>
+      <span class="site-footer__version">v0.8.0</span>
       <span aria-hidden="true">·</span>
       <a href="{{ url_for('privacy') }}">Privacy Policy</a>
       <span aria-hidden="true">·</span>

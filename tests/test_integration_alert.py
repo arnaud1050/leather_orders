@@ -157,14 +157,14 @@ def test_a_second_user_sees_the_same_alert(app, company, account):
     """Unlike the lead badge, this one isn't personal — a mailbox is broken
     for everyone at the studio, not just whoever last looked."""
     fail(account)
-    second = User(company_id=company.id, username="colleague")
+    second = User(company_id=company.id, email="colleague@example.com", full_name="Colleague")
     second.set_password("changeme")
     db.session.add(second)
     db.session.commit()
 
     with app.test_client() as client:
         client.post(
-            "/login", data={"username": "colleague", "password": "changeme"},
+            "/login", data={"email": "colleague@example.com", "password": "changeme"},
             follow_redirects=True,
         )
         assert "nav-badge--alert" in client.get("/").get_data(as_text=True)

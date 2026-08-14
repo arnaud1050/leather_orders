@@ -554,7 +554,9 @@ are documented in that module's `CLAUDE.md`.
 
 ```
 templates/
-  base.html                 # shared <head>, view-switch nav (hidden when logged out), footer
+  base.html                 # shared <head>, platform announcement banner (shown even
+                            # signed out), view-switch nav (hidden when logged out),
+                            # impersonation banner, footer
   _settings_nav.html        # /settings sub-nav (+ integration alert badge), shared with the module
   _client_nav.html          # client page sub-nav, ditto
   _clients_nav.html         # Clients/Leads sub-nav + the waiting-leads badge

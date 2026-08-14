@@ -16,10 +16,23 @@ services:
       # set. Put the real value in a local .env file (already gitignored)
       # rather than committing it here.
       - SECRET_KEY=${SECRET_KEY:-dev-not-secure}
-      # Only used the first time this deployment's database is created
-      # (seed_if_empty() in models.py) — sets the "admin" user's password.
-      # Ignored on every subsequent start once ./data-demo/atelier.db exists.
+      # The STUDIO's own login — a tenant user, sees the app, can't reach
+      # /admin. Only used the first time this deployment's database is
+      # created (seed_if_empty() in models.py); ignored on every subsequent
+      # start once ./data-demo/atelier.db exists. Change it from /admin
+      # after that. The `.invalid` default is RFC 2606 reserved, so an
+      # unconfigured deployment can't hold a credential pointing at
+      # somebody's real mailbox.
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.invalid}
+      # The PLATFORM admin — belongs to no company, sees only /admin.
+      # A separate account on purpose: whoever administers the installation
+      # shouldn't also be a member of a customer's company. Created by
+      # ensure_platform_admin(), which fires whenever no platform staff
+      # exist yet — including on an already-populated database being
+      # upgraded, which seed_if_empty() skips.
+      - PLATFORM_ADMIN_PASSWORD=${PLATFORM_ADMIN_PASSWORD:-changeme}
+      - PLATFORM_ADMIN_EMAIL=${PLATFORM_ADMIN_EMAIL:-platform@example.invalid}
       # --- Communications module (see communications/) ---
       # Kept in sync by hand with docker-compose.yml, same as everything
       # else in these two files. Note the redirect URI differs: it has to

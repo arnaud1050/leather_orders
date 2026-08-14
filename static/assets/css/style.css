@@ -1621,6 +1621,53 @@ dialog.modal::backdrop {
   background: rgba(194, 59, 52, 0.07);
 }
 
+/* Impersonation banner — a platform admin working inside somebody else's
+   company. Full-bleed and directly under the nav, unlike .warning-note,
+   which sits inside a page's own column: this is a fact about the whole
+   session, not about the page being looked at, and it has to be equally
+   unmissable on all of them.
+
+   Amber for the same reason the low-stock badge is (see hard rule 7):
+   "needs attention soon" rather than "broken". Red would be wrong — this
+   is a state the admin chose and can leave in one click, not a fault. */
+.impersonation-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--status-ready);
+  background: rgba(201, 143, 0, 0.14);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.impersonation-banner form {
+  margin: 0;
+}
+
+/* Platform announcement — a fact about the installation, shown whether or
+   not anyone is signed in (see base.html). Purple (--status-pending)
+   rather than the impersonation banner's amber, and deliberately not the
+   same colour: amber here is already claimed for "needs attention soon"
+   (hard rule 7), and an announcement isn't that — it's the app's own
+   "something worth knowing" colour, the same one behind the new-client
+   and synced-event badges elsewhere. Structurally simpler than
+   .impersonation-banner (no button, no flex row) since there's nothing to
+   act on here, only something to read. pre-wrap so an admin's intentional
+   line break in the textarea survives into the rendered banner. */
+.announcement-banner {
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--status-pending);
+  background: rgba(186, 37, 186, 0.1);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
 /* Uniform gap between page sections (order/client/settings/invoice pages).
    Deliberately on the section wrapper, not on whatever happens to be its
    last child (a form, a list, a note) — those vary per section and were

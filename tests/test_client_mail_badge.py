@@ -401,13 +401,13 @@ def test_the_badge_survives_a_logged_out_page(app, account, client_record):
 
 def test_a_second_user_sees_the_same_count(app, company, account, client_record):
     client_thread(company, account, client_record)
-    second = User(company_id=company.id, username="colleague")
+    second = User(company_id=company.id, email="colleague@example.com", full_name="Colleague")
     second.set_password("changeme")
     db.session.add(second)
     db.session.commit()
 
     with app.test_client() as client:
-        client.post("/login", data={"username": "colleague", "password": "changeme"},
+        client.post("/login", data={"email": "colleague@example.com", "password": "changeme"},
                     follow_redirects=True)
         assert "nav-badge--mail" in client.get("/").get_data(as_text=True)
 
