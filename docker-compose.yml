@@ -44,3 +44,11 @@ services:
       # a host port directly, where those headers come from the client and
       # would let anyone forge the request's scheme and host.
       - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-0}
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://localhost:3100/loki/api/v1/push"
+        loki-retries: "5"
+        loki-batch-size: "400"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
