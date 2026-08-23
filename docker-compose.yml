@@ -4,7 +4,7 @@ services:
     container_name: atelier-orders
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5013:5013"
     volumes:
       # Persists /app/data (the SQLite file) across container rebuilds
       - ./data:/app/data

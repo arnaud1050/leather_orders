@@ -24,11 +24,11 @@ RUN adduser -D appuser \
     && chown -R appuser:appuser /app \
     && chmod +x /app/entrypoint.sh
 
-EXPOSE 5000
+EXPOSE 5013
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 # app.py defines `app = Flask(__name__)`, so gunicorn targets "app:app".
 # --preload loads the app once in the master process before forking workers,
 # so the startup db.create_all()/seed_if_empty() in app.py runs exactly
 # once instead of racing across workers (which caused duplicate-id inserts).
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--preload", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5013", "--workers", "2", "--preload", "app:app"]
