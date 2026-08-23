@@ -40,9 +40,11 @@ services:
       # Set to 1 once this is behind TLS, so the session cookie is Secure.
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
       # Set to 1 only if this sits behind a reverse proxy that sets
-      # X-Forwarded-Proto/-Host. Off here because this deployment publishes
-      # a host port directly, where those headers come from the client and
-      # would let anyone forge the request's scheme and host.
+      # X-Forwarded-Proto/-Host. Off here because this deployment still
+      # publishes a host port directly (5013:5013) in addition to sitting on
+      # website_network — anyone hitting the host port would bypass nginx
+      # and could forge those headers themselves. Revisit if the host port
+      # publish is ever dropped in favour of nginx-only access.
       - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-0}
     logging:
       driver: loki
@@ -52,3 +54,13 @@ services:
         loki-batch-size: "400"
         mode: "non-blocking"
         max-buffer-size: "4m"
+    networks:
+      - website_network
+
+networks:
+  # Pre-existing network shared with the nginx reverse proxy container (see
+  # server_config repo), so nginx can reach this container by name
+  # (atelier-orders:5013) for atelier.arnaudrouillot.com without relying on
+  # the host port below. Must already exist on the server.
+  website_network:
+    external: true

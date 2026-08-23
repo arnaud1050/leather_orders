@@ -4,12 +4,16 @@
 
 Runs in Docker via gunicorn (2 workers), not Flask's dev server. Two parallel
 deployments exist, sharing the same `entrypoint.sh` and app code but built/composed
-separately — **local/default** (`Dockerfile` + `docker-compose.yml`, port 5000) and
-**demo** (`Dockerfile.demo` + `docker-compose-demo.yml`, port 5555, container name
-`demo`, meant to sit behind nginx as `demo.arnaudrouillot.com` so a client can view
-work in progress). If you change one (base image version, gunicorn flags, etc.),
-check whether the other needs the same change — they're kept in sync by hand, not
-via a shared base file.
+separately — **prod** (`Dockerfile` + `docker-compose.yml`, port 5013, container
+name `atelier-orders`, sits behind nginx as `atelier.arnaudrouillot.com` — see
+below) and **demo** (`Dockerfile.demo` + `docker-compose-demo.yml`, port 5555,
+container name `demo`, sits behind nginx as `demo.arnaudrouillot.com` so a client
+can view work in progress). If you change one (base image version, gunicorn
+flags, etc.), check whether the other needs the same change — they're kept in
+sync by hand, not via a shared base file.
+
+Port 5013 rather than the Flask/gunicorn-typical 5000 because 5000 is already
+allocated to another container on the host.
 
 - **`entrypoint.sh`**: the image's `appuser` is non-root, but Docker creates a bind
   mount's host directory (`./data` or `./data-demo`) owned by `root` if it doesn't
@@ -26,13 +30,17 @@ via a shared base file.
   in the master process before forking workers, so seeding runs exactly once.
 - **`Dockerfile`** / **`Dockerfile.demo`**: alpine-based, install `requirements.txt` +
   gunicorn + `su-exec`, copy the repo to `/app`, `chmod +x /app/entrypoint.sh`. Only
-  real difference between the two: bound port (5000 vs 5555, in both `EXPOSE` and the
+  real difference between the two: bound port (5013 vs 5555, in both `EXPOSE` and the
   gunicorn `--bind` in `CMD`). If you rename the Flask instance variable in `app.py`
   (currently `app`), update the `CMD` line in both to match.
-- **`docker-compose.yml`**: service/container `atelier-orders`, port `5000:5000`,
-  bind-mounts `./data` → `/app/data`.
+- **`docker-compose.yml`**: service/container `atelier-orders`, port `5013:5013`,
+  bind-mounts `./data` → `/app/data`, and — like the demo compose file below —
+  attaches to the external `website_network` docker network so nginx can reach it
+  as `atelier-orders:5013`. Also still publishes the host port directly (unlike
+  demo), so it's reachable at `<host>:5013` bypassing nginx too; that's why
+  `TRUST_PROXY_HEADERS` defaults off here (see below).
 - **`docker-compose-demo.yml`**: service/container `demo`, port `5555:5555`,
-  bind-mounts `./data-demo` → `/app/data` (a separate SQLite file from the local
+  bind-mounts `./data-demo` → `/app/data` (a separate SQLite file from the prod
   deployment — the two are never meant to share data), and attaches to the external
   `website_network` docker network (must already exist on the server — created by
   whatever set up nginx and the other sites on it) so nginx can reach it as
@@ -104,13 +112,25 @@ via a shared base file.
   build context (shared by both Dockerfiles' build contexts). Update this if you add
   other local-only folders (e.g. `.vscode/`).
 
-No reverse proxy or TLS is configured for the local/default deployment — put it
-behind something like nginx/Caddy/Cloudflare Tunnel if it needs to be reachable
-outside the LAN. (The demo deployment already assumes nginx is handling that via
-`website_network`.)
+**nginx (`atelier.arnaudrouillot.com`)**: config lives in the separate
+`server_config` repo, not here — see its `nginx.conf` and `CLAUDE.md`. TLS is
+live (`listen 443 ssl`, proxying to `atelier-orders:5013` over
+`website_network`), same pattern as every other domain there. This also
+unlocks Google OAuth for this deployment — Google does not accept `http://`
+redirect URIs for a non-localhost domain, so until TLS was live the
+Gmail/Calendar integration (`communications/`) could not work here. To turn
+it on now: set
+`GOOGLE_REDIRECT_URI=https://atelier.arnaudrouillot.com/integrations/google/callback`
+in `.env`, register that exact URI on the OAuth client in the Google Cloud
+console, and set `SESSION_COOKIE_SECURE=1` (this deployment is reachable over
+HTTPS now, so the session cookie should be Secure). `TRUST_PROXY_HEADERS`
+should stay `0` as long as `docker-compose.yml` still also publishes the host
+port directly (see the env var's comment there) — that direct route bypasses
+nginx, so trusting `X-Forwarded-*` headers would let anyone hitting the host
+port forge them.
 
 To rebuild after changing `requirements.txt` or app code:
-`docker compose up --build` (local) or
+`docker compose up --build` (prod) or
 `docker compose -f docker-compose-demo.yml up --build -d` (demo). Compose caches the
 pip-install layer, so rebuilds are fast unless `requirements.txt` changed.
 
