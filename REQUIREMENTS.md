@@ -71,6 +71,17 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   platform staff on `/admin`. `?next=` is honoured for a tenant user only —
   a staff session following a bookmarked tenant URL would bounce straight
   off `CO6b`.
+- **CO4h.** A tenant user whose `users.must_change_password` is set is
+  redirected to Settings → Account from every route except the settings
+  page itself, `change_password`, `/logout`, the legal pages and static
+  files, until they change their password (CO4a clears the flag on
+  success). Set whenever a password is assigned *for* someone rather than
+  chosen *by* them — see `admin/REQUIREMENTS.md` PA13a and N2 — including a
+  freshly provisioned company's own admin user. Platform staff never carry
+  the flag: they have no self-service password page to redirect to.
+  Impersonation is not exempted — `current_user` during impersonation is the
+  tenant user being impersonated, so the same redirect applies (see
+  `admin/REQUIREMENTS.md` PA18).
 - **CO4b.** `/privacy` and `/terms` are publicly reachable, render no
   tenant data, and are linked from the footer of every page including the
   login screen. Google's OAuth verification requires a policy URL a
@@ -770,7 +781,10 @@ each.
   `/admin`, and hands the password over out of band (PA13). *Changing your
   own* password is CO4a. Neither path invalidates sessions signed in
   elsewhere — deactivating the account does (CO4f), and that's the tool for
-  a compromised login.
+  a compromised login. An operator-assigned password also sets
+  `must_change_password` (PA13a), so the recipient is routed to Settings →
+  Account on first use rather than keeping a password they never chose
+  (CO4h).
 - **N3.** No *self-serve* signup and no tenant switcher. A platform admin
   provisions companies from `/admin` (CO6); nobody signs themselves up, and
   a user belongs to exactly one company for the life of the account. To act
@@ -816,6 +830,7 @@ has no regression test.
 | CO4a | `test_change_password_replaces_the_hash`, `test_the_new_password_is_what_logs_in_afterwards`, `test_a_wrong_current_password_changes_nothing`, `test_a_mismatched_confirmation_changes_nothing`, `test_a_short_new_password_is_rejected`, `test_reusing_the_current_password_is_rejected`, `test_the_change_password_routes_require_login` (`tests/test_change_password.py`) |
 | CO4b | — gap — (single-user deployments mean there's no second user to assert isolation against; the route only ever reads `current_user.id`) |
 | CO4c | `test_the_status_message_shows_once` (`tests/test_change_password.py`) |
+| CO4h | `test_changing_the_password_clears_the_forced_flag`, `test_a_forced_change_redirects_everywhere_but_settings` (`tests/test_change_password.py`); `test_a_reset_password_must_be_changed`, `test_resetting_a_staff_password_does_not_require_a_change`, `test_a_user_is_added_to_the_named_company` (`tests/test_admin.py`) |
 | CO5 | `test_nav_hides_for_a_logged_out_visitor` |
 | CO5a | `test_nav_includes_the_mobile_hamburger_toggle` (markup presence/order only — the CSS collapse and the open/close click behavior itself are client-side and unassertable by a route test, same limitation as TL7–TL9) |
 | CO6 | — gap — (single-tenant-seed is a deployment fact, not asserted by a test) |

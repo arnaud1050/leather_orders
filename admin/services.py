@@ -218,6 +218,8 @@ def add_user(
     There's no invitation email because the app has no address of its own
     to send from — the Gmail accounts under Settings → Email/Calendar are
     the studio's client mail, not the platform's (see N2 in REQUIREMENTS.md).
+    `must_change_password` is set so they're routed to Settings → Account
+    on first sign-in rather than keeping a password they never chose.
     """
     email = normalise_email(email)
     error = _email_error(email) or _password_error(password)
@@ -228,6 +230,7 @@ def add_user(
         company_id=company.id,
         email=email,
         full_name=(full_name or "").strip() or None,
+        must_change_password=True,
     )
     user.set_password(password)
     db.session.add(user)
@@ -248,6 +251,10 @@ def reset_password(user: User, password: str) -> str | None:
     if error is not None:
         return error
     user.set_password(password)
+    # Tenant users only: staff have no self-service password page for a
+    # `must_change_password` redirect to send them to (see `User`).
+    if user.is_tenant_user:
+        user.must_change_password = True
     db.session.commit()
     return None
 

@@ -98,6 +98,12 @@ must hold true*.
   and cannot apply to an administrator acting on somebody else's account.
   This is the app's only password-recovery path; there is still no
   reset-by-email.
+- **PA13a.** `add_user()` always sets `must_change_password`; `reset_password()`
+  sets it only when the target `is_tenant_user`. Platform staff never carry
+  the flag — there's no self-service password page in `/admin` for a
+  `must_change_password` redirect to send them to, so setting it on a
+  staff account would just be a flag nothing ever checks. See
+  `REQUIREMENTS.md` CO4h for the redirect this flag drives.
 
 ## 4. Deactivation
 
@@ -230,7 +236,7 @@ pattern extended to a table with no `company_id` at all).
 | PA1, PA2, PA20 | `tests/test_admin.py` — access and the nav link |
 | PA0.3, PA3, PA3a–PA3d | `tests/test_admin.py` — staff see /admin and nothing else, sub-nav |
 | PA4–PA8 | `tests/test_admin.py` — provisioning |
-| PA9–PA13 | `tests/test_admin.py` — identity, passwords |
+| PA9–PA13, PA13a | `tests/test_admin.py` — identity, passwords |
 | PA14–PA17, PA17a–PA17c | `tests/test_admin.py` — deactivation and staff accounts |
 | PA18–PA23 | `tests/test_admin.py` — impersonation |
 | PA24, PA24a, PA25 | `tests/test_user_migration.py` |

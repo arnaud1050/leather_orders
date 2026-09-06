@@ -677,6 +677,36 @@ def _keep_staff_out_of_tenant_routes():
     return redirect(url_for("admin.companies"))
 
 
+# Where a tenant user with `must_change_password` set is still allowed to go
+# — the page that lets them clear it, plus the handful of routes that have
+# to stay reachable regardless (signing out, the legal pages, static files).
+_PASSWORD_CHANGE_EXEMPT_ENDPOINTS = {
+    "settings_account", "change_password", "logout", "static", "privacy", "terms",
+}
+
+
+@app.before_request
+def _force_password_change():
+    """Send a tenant user with an operator-assigned password to Settings →
+    Account before anything else, until they've replaced it.
+
+    Runs after `_keep_staff_out_of_tenant_routes`, but doesn't depend on
+    it: platform staff never have `must_change_password` set (see
+    `admin.services.reset_password`), so this is a no-op for them
+    regardless of ordering. No impersonation special-case either —
+    `current_user` during impersonation already *is* the tenant user, so
+    the same redirect applies, same as `_keep_staff_out_of_tenant_routes`
+    passing straight through.
+    """
+    if not (current_user.is_authenticated and current_user.is_tenant_user
+            and current_user.must_change_password):
+        return None
+    endpoint = request.endpoint
+    if endpoint is None or endpoint in _PASSWORD_CHANGE_EXEMPT_ENDPOINTS:
+        return None
+    return redirect(url_for("settings_account"))
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -2130,6 +2160,10 @@ def _flash_password_status(message: str, ok: bool) -> None:
 @app.route("/settings/account")
 @login_required
 def settings_account():
+    notice = (
+        "You need to set a new password before continuing."
+        if current_user.must_change_password else None
+    )
     return render_template(
         "settings.html",
         section="account",
@@ -2138,6 +2172,7 @@ def settings_account():
         signature_saved=session.pop("signature_saved", False),
         min_password_length=MIN_PASSWORD_LENGTH,
         active_view="settings",
+        notice=notice,
     )
 
 
@@ -2200,6 +2235,7 @@ def change_password():
         # own instance so the commit is unambiguous.
         user = db.session.get(User, current_user.id)
         user.set_password(new)
+        user.must_change_password = False
         db.session.commit()
         _flash_password_status("Password changed.", ok=True)
 

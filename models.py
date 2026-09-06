@@ -151,6 +151,12 @@ class User(db.Model, UserMixin):
     # it, which borrows that person's company_id and so goes through the
     # ordinary filtered code path rather than around it.
     is_platform_admin = db.Column(db.Boolean, nullable=False, default=False)
+    # Set whenever a password is assigned *for* this person rather than
+    # chosen *by* them — a new tenant user, a reset, a freshly provisioned
+    # company's admin. Tenant users only: staff have no self-service
+    # password page to redirect to, so `admin.services` never sets this on
+    # a company-less account (see `reset_password`).
+    must_change_password = db.Column(db.Boolean, nullable=False, default=False)
     # How this person signs off an email. Per user rather than per company
     # or per mailbox, because a signature is written by a person: two people
     # sharing one studio@ address each want their own, and a company-level
@@ -666,6 +672,7 @@ _ADDED_COLUMNS = [
     # this one belongs to the root, not to ai/, because User is a host model
     # (hard rule 12 sends module columns to the module's own file).
     ("users", "signature", "TEXT"),
+    ("users", "must_change_password", "BOOLEAN NOT NULL DEFAULT 0"),
     # Rush stopped being a status and became a flag that sits on top of one —
     # an order could never be both "rush" and "ready for pickup" while the two
     # shared an enum. _migrate_order_statuses() below moves the existing rows.
@@ -744,6 +751,7 @@ _USERS_TABLE_DDL = (
     " signature TEXT,"
     " is_active BOOLEAN NOT NULL DEFAULT 1,"
     " is_platform_admin BOOLEAN NOT NULL DEFAULT 0,"
+    " must_change_password BOOLEAN NOT NULL DEFAULT 0,"
     " PRIMARY KEY (id),"
     " FOREIGN KEY(company_id) REFERENCES companies (id))"
 )
@@ -804,9 +812,10 @@ def _migrate_users_company_nullable() -> None:
     db.session.execute(sa.text(_USERS_TABLE_DDL))
     db.session.execute(sa.text(
         "INSERT INTO users_new (id, company_id, email, full_name,"
-        " password_hash, signature, is_active, is_platform_admin)"
+        " password_hash, signature, is_active, is_platform_admin,"
+        " must_change_password)"
         " SELECT id, company_id, email, full_name, password_hash, signature,"
-        " is_active, is_platform_admin FROM users"
+        " is_active, is_platform_admin, must_change_password FROM users"
     ))
     _swap_in_rebuilt_users()
 
@@ -879,9 +888,10 @@ def _migrate_users_to_email() -> None:
     for values in migrated:
         db.session.execute(sa.text(
             "INSERT INTO users_new (id, company_id, email, full_name,"
-            " password_hash, signature, is_active, is_platform_admin)"
+            " password_hash, signature, is_active, is_platform_admin,"
+            " must_change_password)"
             " VALUES (:id, :company_id, :email, :full_name, :password_hash,"
-            " :signature, 1, 0)"
+            " :signature, 1, 0, 0)"
         ), values)
 
     _swap_in_rebuilt_users()
@@ -1078,6 +1088,7 @@ def create_company(
         company_id=company.id,
         email=normalise_email(admin_email),
         full_name=(admin_full_name or "").strip() or None,
+        must_change_password=True,
     )
     admin.set_password(admin_password)
     db.session.add(admin)

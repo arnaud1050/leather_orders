@@ -234,6 +234,7 @@ def test_a_user_is_added_to_the_named_company(admin_client, other_company):
     added = User.query.filter_by(email="hire@other.example").one()
     assert added.company_id == other_company.id
     assert added.is_platform_admin is False
+    assert added.must_change_password is True
 
 
 def test_a_reset_password_is_what_signs_in_afterwards(admin_client, app, user):
@@ -272,6 +273,28 @@ def test_the_admin_minimum_matches_the_apps(app):
     import app as app_module
 
     assert services.MIN_PASSWORD_LENGTH == app_module.MIN_PASSWORD_LENGTH
+
+
+# --- PA13a: an operator-assigned password must be replaced ----------------
+
+def test_a_reset_password_must_be_changed(admin_client, user):
+    admin_client.post(
+        f"/admin/users/{user.id}/password",
+        data={"password": "brand-new-password"}, follow_redirects=True)
+
+    assert user.must_change_password is True
+
+
+def test_resetting_a_staff_password_does_not_require_a_change(admin_client,
+                                                                platform_admin):
+    """Staff have no self-service password page in /admin for a
+    must_change_password redirect to send them to, so the flag would just
+    be a dead end for them — see PA13a."""
+    admin_client.post(
+        f"/admin/users/{platform_admin.id}/password",
+        data={"password": "brand-new-password"}, follow_redirects=True)
+
+    assert platform_admin.must_change_password is False
 
 
 # --- PA10-PA12: deactivation, and what it does and doesn't touch ----------
