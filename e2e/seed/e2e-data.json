@@ -1,0 +1,137 @@
+{
+  "company": {
+    "name": "E2E Test Studio"
+  },
+  "adminUser": {
+    "email": "e2e-admin@example.invalid",
+    "password": "E2E-test-pass-1!",
+    "fullName": "E2E Admin"
+  },
+  "freshUser": {
+    "email": "e2e-fresh@example.invalid",
+    "password": "E2E-temp-pass-1!",
+    "fullName": "E2E Fresh User",
+    "note": "Created via admin.services.add_user, so must_change_password stays true (CO4h) — used by the forced-password-change test."
+  },
+  "clients": [
+    {
+      "key": "ada",
+      "firstName": "Ada",
+      "lastName": "Lovelace",
+      "email": "ada.lovelace@example.invalid",
+      "phone": "555-0101",
+      "note": "Returning client (2 orders) — one in-progress, one delivered+settled.",
+      "orders": [
+        {
+          "key": "ada-tote",
+          "item": "Custom Tote",
+          "status": "confirmed",
+          "startOffsetDays": -3,
+          "dueOffsetDays": 10,
+          "isRush": false,
+          "price": 450.0,
+          "payments": []
+        },
+        {
+          "key": "ada-wallet-repair",
+          "item": "Wallet Repair",
+          "status": "delivered",
+          "startOffsetDays": -40,
+          "dueOffsetDays": -30,
+          "isRush": false,
+          "price": 80.0,
+          "payments": [{ "amount": 80.0, "paidOffsetDays": -28, "method": "cash" }]
+        }
+      ]
+    },
+    {
+      "key": "grace",
+      "firstName": "Grace",
+      "lastName": "Hopper",
+      "email": "grace.hopper@example.invalid",
+      "phone": "555-0102",
+      "note": "Single rush order — red timeline bar, 'rush first' sort target. Status is 'confirmed' (not 'tentative') deliberately: can_rush (OR1d) is only true for a confirmed order, so this is the one status combination the real app's own UI could actually produce.",
+      "orders": [
+        {
+          "key": "grace-rush-order",
+          "item": "Rush Duffel",
+          "status": "confirmed",
+          "startOffsetDays": 5,
+          "dueOffsetDays": 20,
+          "isRush": true,
+          "price": 600.0,
+          "payments": []
+        }
+      ]
+    },
+    {
+      "key": "margaret",
+      "firstName": "Margaret",
+      "lastName": "Hamilton",
+      "email": "margaret.hamilton@example.invalid",
+      "phone": "555-0103",
+      "note": "Ready-for-pickup order with a partial payment — balance-due arithmetic target. Keep dueOffsetDays >= 0: the timeline window's start is 'the Sunday on or before today' (TL2), so a due date of, say, -1 falls outside that window specifically when the suite happens to run on a Sunday — every other seeded order here stays clear of that edge by using offsets that are either always comfortably positive or far enough in the past to be unambiguously outside the window on any weekday (see Ada's delivered order below).",
+      "orders": [
+        {
+          "key": "margaret-ready-order",
+          "item": "Belt Set",
+          "status": "ready",
+          "startOffsetDays": -3,
+          "dueOffsetDays": 2,
+          "isRush": false,
+          "price": 300.0,
+          "payments": [{ "amount": 100.0, "paidOffsetDays": -8, "method": "etransfer" }]
+        }
+      ]
+    },
+    {
+      "key": "katherine",
+      "firstName": "Katherine",
+      "lastName": "Johnson",
+      "email": "katherine.johnson@example.invalid",
+      "phone": "555-0104",
+      "note": "Cancelled order — excluded from timeline and from lifetime_value (CL2a), but must still show muted on /orders.",
+      "orders": [
+        {
+          "key": "katherine-cancelled-order",
+          "item": "Cancelled Satchel",
+          "status": "cancelled",
+          "startOffsetDays": -5,
+          "dueOffsetDays": 5,
+          "isRush": false,
+          "price": 200.0,
+          "payments": []
+        }
+      ]
+    },
+    {
+      "key": "hedy",
+      "firstName": "Hedy",
+      "lastName": "Lamarr",
+      "email": "hedy.lamarr@example.invalid",
+      "phone": "555-0105",
+      "note": "No orders at all — the 'No orders' clients-list filter group and the new-order client picker.",
+      "orders": []
+    },
+    {
+      "key": "radia",
+      "firstName": "Radia",
+      "lastName": "Perlman",
+      "email": "radia.perlman@example.invalid",
+      "phone": "555-0106",
+      "note": "Left un-hidden by the seed script on purpose — the hide/unhide (CL17-CL21) test hides this one live and asserts on it.",
+      "orders": [
+        {
+          "key": "radia-order",
+          "item": "Laptop Sleeve",
+          "status": "confirmed",
+          "startOffsetDays": -1,
+          "dueOffsetDays": 15,
+          "isRush": false,
+          "price": 350.0,
+          "payments": []
+        }
+      ]
+    }
+  ]
+}
