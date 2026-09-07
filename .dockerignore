@@ -1,10 +1,26 @@
 venv/
+.venv/
 __pycache__/
 *.pyc
 .git
 .gitignore
 .idea/
+.claude/
 *.log
 data/
+instance/
 CLAUDE.md
+REQUIREMENTS.md
 docs/
+
+# Test suites and their tooling — never needed at runtime
+tests/
+pytest.ini
+.pytest_cache/
+requirements-dev.txt
+e2e/
+
+# Secrets / local env — compose reads these from the host, never bakes
+# them into the image
+.env
+.env.*

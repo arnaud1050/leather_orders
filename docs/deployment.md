@@ -48,6 +48,7 @@ allocated to another container on the host.
   an inconsistency with its own `TRUST_PROXY_HEADERS=1` default (below) worth
   closing the same way prod's was: drop the `ports:` mapping once confirmed
   nothing needs `<host>:5555` reachable outside nginx.
+  **Reads its secrets from `.env.demo`, not `.env`** — see below.
 - **`TRUST_PROXY_HEADERS`** wraps the app in Werkzeug's `ProxyFix`, rebuilding
   `request.scheme`/`request.host` from `X-Forwarded-Proto`/`-Host` rather than
   trusting what gunicorn saw directly. Behind nginx the request reaches gunicorn
@@ -62,11 +63,18 @@ allocated to another container on the host.
   The local (non-Docker) dev server has no proxy in front of it at all, so it
   never sets this. nginx must
   actually send them (`proxy_set_header X-Forwarded-Proto $scheme;` and `Host`).
-- Both compose files pass through **`SECRET_KEY`** from the host environment
-  (`${SECRET_KEY:-dev-not-secure}`) — **set a real value in a local `.env` file
-  before deploying anywhere reachable**; the fallback is dev-only and insecure.
-  `docker-compose-demo.yml` also passes through the two bootstrap logins, and
-  they are for **two different kinds of account** (see
+- **`docker-compose.yml` (prod) reads `.env`; `docker-compose-demo.yml` reads
+  `.env.demo`** — two separate files, both gitignored, both untracked and
+  created by hand from `.env.demo.example` (a `.env.example` for prod doesn't
+  exist yet; copy the variable list from `.env.demo.example` if you need one).
+  This used to be one shared `.env` read by both compose files, which is why
+  a few values below are still baked directly into each compose file instead
+  of living in an env file at all — see the nginx section further down for
+  why. **Set a real `SECRET_KEY` in the relevant file before deploying
+  anywhere reachable**; the fallback (`dev-not-secure`) is dev-only and
+  insecure.
+  `docker-compose-demo.yml`'s `.env.demo` also supplies the two bootstrap
+  logins, and they are for **two different kinds of account** (see
   [admin/CLAUDE.md](../admin/CLAUDE.md)):
   **`ADMIN_EMAIL`** / **`ADMIN_PASSWORD`** (default
   `admin@example.invalid` / `changeme`) is the *studio's* own user, created by
@@ -78,8 +86,13 @@ allocated to another container on the host.
   database being upgraded. Neither ever overwrites an account that's already
   there; changing a password afterwards is a job for `/admin`, not the
   environment. Deleting `data-demo/atelier.db` and restarting remains the blunt
-  instrument. `.env` is already gitignored.
-- **Two separate encryption keys**, both passed through by both compose files and
+  instrument.
+  **`.env.demo` must exist** (even empty) or `docker compose -f
+  docker-compose-demo.yml` refuses to run at all — `env_file:` entries are
+  required by default. Copy `.env.demo.example` to `.env.demo` on the server
+  once; nothing needs to be filled in beyond `SECRET_KEY` unless the
+  communications/AI integrations are wanted on the demo too.
+- **Two separate encryption keys**, both readable from either env file and
   both optional: **`COMMS_ENCRYPTION_KEY`** (OAuth tokens, `communications/`) and
   **`AI_ENCRYPTION_KEY`** (vendor API keys, `ai/`). Generate either with
   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
@@ -127,13 +140,17 @@ live (`listen 443 ssl`, proxying to `atelier-orders:5013` over
 unlocks Google OAuth for this deployment — Google does not accept `http://`
 redirect URIs for a non-localhost domain, so until TLS was live the
 Gmail/Calendar integration (`communications/`) could not work here.
-`docker-compose.yml`'s own defaults for `GOOGLE_REDIRECT_URI` and
+`docker-compose.yml`'s own values for `GOOGLE_REDIRECT_URI` and
 `SESSION_COOKIE_SECURE` now reflect that (`https://atelier.arnaudrouillot.com/integrations/google/callback`
-and `1`) — **deliberately baked into the compose file rather than `.env`**,
-since `docker-compose.yml` and `docker-compose-demo.yml` are run from the
-same checkout and read the same `.env`; a value set there for one would
-silently override the other's own default. Registering that redirect URI on
-the OAuth client in the Google Cloud console is still a manual step.
+and `1`) — **baked directly into the compose file rather than an env file**,
+same as `docker-compose-demo.yml`'s own equivalents. Even now that each
+deployment has its own env file (`.env` for prod, `.env.demo` for demo — see
+above), these three stay hardcoded: they describe the deployment itself
+(its public URL, that it sits behind TLS, that it trusts its own nginx),
+not a secret, so there's nothing to gain by making them overridable and a
+typo in an env file could otherwise silently break the OAuth callback.
+Registering that redirect URI on the OAuth client in the Google Cloud
+console is still a manual step.
 `docker-compose.yml` no longer publishes a host port, which is what let
 `TRUST_PROXY_HEADERS` default to `1` (see the env var's comment there) —
 without it, the OAuth callback saw the request as plain http (what gunicorn

@@ -11,55 +11,33 @@ services:
       # Separate from ./data (used by docker-compose.yml) so this demo
       # deployment doesn't share a SQLite file with a local/other environment.
       - ./data-demo:/app/data
+    # Its own env file — NOT the `.env` docker-compose.yml reads — so a
+    # secret or bootstrap credential set for one deployment can never leak
+    # into the other just because both compose files live in the same
+    # checkout. Compose would otherwise auto-load a shared `.env` for both.
+    # See .env.demo.example for the full list of variables this can set
+    # (SECRET_KEY, ADMIN_EMAIL/PASSWORD, PLATFORM_ADMIN_EMAIL/PASSWORD,
+    # COMMS_ENCRYPTION_KEY, GOOGLE_CLIENT_ID/SECRET, AI_ENCRYPTION_KEY,
+    # RUN_SCHEDULER) — every one of them is optional in app.py, which falls
+    # back to the same dev-only defaults documented there.
+    env_file:
+      - .env.demo
     environment:
-      # Required — app.py falls back to an insecure default if this isn't
-      # set. Put the real value in a local .env file (already gitignored)
-      # rather than committing it here.
-      - SECRET_KEY=${SECRET_KEY:-dev-not-secure}
-      # The STUDIO's own login — a tenant user, sees the app, can't reach
-      # /admin. Only used the first time this deployment's database is
-      # created (seed_if_empty() in models.py); ignored on every subsequent
-      # start once ./data-demo/atelier.db exists. Change it from /admin
-      # after that. The `.invalid` default is RFC 2606 reserved, so an
-      # unconfigured deployment can't hold a credential pointing at
-      # somebody's real mailbox.
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.invalid}
-      # The PLATFORM admin — belongs to no company, sees only /admin.
-      # A separate account on purpose: whoever administers the installation
-      # shouldn't also be a member of a customer's company. Created by
-      # ensure_platform_admin(), which fires whenever no platform staff
-      # exist yet — including on an already-populated database being
-      # upgraded, which seed_if_empty() skips.
-      - PLATFORM_ADMIN_PASSWORD=${PLATFORM_ADMIN_PASSWORD:-changeme}
-      - PLATFORM_ADMIN_EMAIL=${PLATFORM_ADMIN_EMAIL:-platform@example.invalid}
-      # --- Communications module (see communications/) ---
-      # Kept in sync by hand with docker-compose.yml, same as everything
-      # else in these two files. Note the redirect URI differs: it has to
-      # match the public URL this deployment is reached at, and be
-      # registered on the Google OAuth client.
-      - COMMS_ENCRYPTION_KEY=${COMMS_ENCRYPTION_KEY:-}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://demo.arnaudrouillot.com/integrations/google/callback}
-      # One process only — see docker-compose.yml.
-      - RUN_SCHEDULER=${RUN_SCHEDULER:-0}
-      # --- AI module (see ai/) ---
-      # Encrypts the vendor API keys saved under Settings → AI. See
-      # docker-compose.yml for what it costs to leave unset.
-      - AI_ENCRYPTION_KEY=${AI_ENCRYPTION_KEY:-}
-      # This deployment sits behind nginx with TLS, so the session cookie
-      # should be Secure by default here (unlike the local one).
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}
-      # ...and for the same reason, honour X-Forwarded-Proto/-Host from that
-      # nginx, so request.url reads https and the Google OAuth callback can
-      # be parsed at all. Only safe when this container is unreachable
-      # except through the proxy — which, as of the "5555:5555" above, it
-      # currently is NOT: that host port bypasses nginx entirely, and
-      # anyone hitting it directly could forge these headers themselves.
-      # Drop that port mapping (matching docker-compose.yml) to close this,
-      # same as prod's own TRUST_PROXY_HEADERS default had to wait on it.
-      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-1}
+      # Baked into this deployment on purpose, not read from .env.demo:
+      # these describe *this* deployment's fixed identity
+      # (demo.arnaudrouillot.com, TLS-terminated behind nginx), not a
+      # secret — see docs/deployment.md.
+      - GOOGLE_REDIRECT_URI=https://demo.arnaudrouillot.com/integrations/google/callback
+      - SESSION_COOKIE_SECURE=1
+      # Honour X-Forwarded-Proto/-Host from nginx, so request.url reads
+      # https and the Google OAuth callback can be parsed at all. Only safe
+      # when this container is unreachable except through the proxy —
+      # which, as of the "5555:5555" above, it currently is NOT: that host
+      # port bypasses nginx entirely, and anyone hitting it directly could
+      # forge these headers themselves. Drop that port mapping (matching
+      # docker-compose.yml) to close this, same as prod's own
+      # TRUST_PROXY_HEADERS default had to wait on it.
+      - TRUST_PROXY_HEADERS=1
     logging:
       driver: loki
       options:

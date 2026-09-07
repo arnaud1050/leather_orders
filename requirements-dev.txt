@@ -1,0 +1,5 @@
+# Test-only dependencies — never installed in the Docker image (see
+# .dockerignore and Dockerfile/Dockerfile.demo, which only ever
+# `pip install -r requirements.txt`). `python -m pytest`.
+-r requirements.txt
+pytest>=8.0

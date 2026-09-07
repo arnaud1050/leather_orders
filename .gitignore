@@ -1,5 +1,6 @@
 .idea/
 .env
+.env.demo
 CLAUDE.md
 
 # Byte-compiled / optimized / DLL files
