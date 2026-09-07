@@ -3,8 +3,6 @@ services:
     build: .
     container_name: atelier-orders
     restart: unless-stopped
-    ports:
-      - "5013:5013"
     volumes:
       # Persists /app/data (the SQLite file) across container rebuilds
       - ./data:/app/data
@@ -48,13 +46,16 @@ services:
       # reasoning as GOOGLE_REDIRECT_URI above for defaulting it in this
       # file rather than the .env shared with docker-compose-demo.yml.
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}
-      # Set to 1 only if this sits behind a reverse proxy that sets
-      # X-Forwarded-Proto/-Host. Off here because this deployment still
-      # publishes a host port directly (5013:5013) in addition to sitting on
-      # website_network — anyone hitting the host port would bypass nginx
-      # and could forge those headers themselves. Revisit if the host port
-      # publish is ever dropped in favour of nginx-only access.
-      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-0}
+      # nginx (server_config repo) sets X-Forwarded-Proto/-Host, and this
+      # container is reachable only through it now (no host port published
+      # below) — so, like docker-compose-demo.yml, it's safe to trust them
+      # by default. Without this, request.url inside the Google OAuth
+      # callback reads "http://" (what gunicorn actually received) instead
+      # of what the browser used, and oauthlib refuses to parse an http
+      # authorization response at all ("OAuth 2 MUST utilize https") — see
+      # the ProxyFix comment in app.py. Revisit to 0 only if a host port is
+      # ever published again.
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-1}
     logging:
       driver: loki
       options:
@@ -69,7 +70,8 @@ services:
 networks:
   # Pre-existing network shared with the nginx reverse proxy container (see
   # server_config repo), so nginx can reach this container by name
-  # (atelier-orders:5013) for atelier.arnaudrouillot.com without relying on
-  # the host port below. Must already exist on the server.
+  # (atelier-orders:5013) for atelier.arnaudrouillot.com. No host port is
+  # published — same arrangement as docker-compose-demo.yml — so nginx is
+  # the only way in. Must already exist on the server.
   website_network:
     external: true
