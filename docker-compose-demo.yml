@@ -53,8 +53,12 @@ services:
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}
       # ...and for the same reason, honour X-Forwarded-Proto/-Host from that
       # nginx, so request.url reads https and the Google OAuth callback can
-      # be parsed at all. Safe only because this container is unreachable
-      # except through the proxy (no host port on website_network).
+      # be parsed at all. Only safe when this container is unreachable
+      # except through the proxy — which, as of the "5555:5555" above, it
+      # currently is NOT: that host port bypasses nginx entirely, and
+      # anyone hitting it directly could forge these headers themselves.
+      # Drop that port mapping (matching docker-compose.yml) to close this,
+      # same as prod's own TRUST_PROXY_HEADERS default had to wait on it.
       - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-1}
     logging:
       driver: loki

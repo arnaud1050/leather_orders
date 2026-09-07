@@ -48,8 +48,8 @@ services:
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}
       # nginx (server_config repo) sets X-Forwarded-Proto/-Host, and this
       # container is reachable only through it now (no host port published
-      # below) — so, like docker-compose-demo.yml, it's safe to trust them
-      # by default. Without this, request.url inside the Google OAuth
+      # above) — so it's safe to trust them by default. Without this,
+      # request.url inside the Google OAuth
       # callback reads "http://" (what gunicorn actually received) instead
       # of what the browser used, and oauthlib refuses to parse an http
       # authorization response at all ("OAuth 2 MUST utilize https") — see
@@ -71,7 +71,8 @@ networks:
   # Pre-existing network shared with the nginx reverse proxy container (see
   # server_config repo), so nginx can reach this container by name
   # (atelier-orders:5013) for atelier.arnaudrouillot.com. No host port is
-  # published — same arrangement as docker-compose-demo.yml — so nginx is
-  # the only way in. Must already exist on the server.
+  # published, so nginx is the only way in — unlike docker-compose-demo.yml,
+  # which still also publishes 5555 directly (see docs/deployment.md).
+  # Must already exist on the server.
   website_network:
     external: true

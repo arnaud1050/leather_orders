@@ -33,26 +33,34 @@ allocated to another container on the host.
   real difference between the two: bound port (5013 vs 5555, in both `EXPOSE` and the
   gunicorn `--bind` in `CMD`). If you rename the Flask instance variable in `app.py`
   (currently `app`), update the `CMD` line in both to match.
-- **`docker-compose.yml`**: service/container `atelier-orders`, port `5013:5013`,
-  bind-mounts `./data` → `/app/data`, and — like the demo compose file below —
-  attaches to the external `website_network` docker network so nginx can reach it
-  as `atelier-orders:5013`. Also still publishes the host port directly (unlike
-  demo), so it's reachable at `<host>:5013` bypassing nginx too; that's why
-  `TRUST_PROXY_HEADERS` defaults off here (see below).
-- **`docker-compose-demo.yml`**: service/container `demo`, port `5555:5555`,
-  bind-mounts `./data-demo` → `/app/data` (a separate SQLite file from the prod
-  deployment — the two are never meant to share data), and attaches to the external
+- **`docker-compose.yml`**: service/container `atelier-orders`, internal port
+  `5013`, bind-mounts `./data` → `/app/data`, and attaches to the external
+  `website_network` docker network so nginx can reach it as
+  `atelier-orders:5013`. **No host port is published** — nginx is the only way
+  in — which is what lets `TRUST_PROXY_HEADERS` default to `1` (see below).
+- **`docker-compose-demo.yml`**: service/container `demo`, bind-mounts
+  `./data-demo` → `/app/data` (a separate SQLite file from the prod deployment —
+  the two are never meant to share data), and attaches to the external
   `website_network` docker network (must already exist on the server — created by
   whatever set up nginx and the other sites on it) so nginx can reach it as
-  `demo:5555` without a host port needing to be involved. Deploy with:
-  `docker compose -f docker-compose-demo.yml up --build -d`.
-- **`TRUST_PROXY_HEADERS=1`** (demo only) wraps the app in Werkzeug's `ProxyFix`.
-  Behind nginx the request reaches gunicorn as plain http, so `request.url` reads
-  `http://` — and oauthlib **refuses to parse an http authorization response at
-  all**, so the Google OAuth callback fails there and only there. It's opt-in
-  rather than always-on because `X-Forwarded-Proto`/`-Host` are only trustworthy
-  from a proxy we control; the local deployment publishes a host port directly,
-  where a client could set them itself, so it defaults to `0` there. nginx must
+  `demo:5555`. Deploy with: `docker compose -f docker-compose-demo.yml up --build -d`.
+  **Unlike prod, it still also publishes `5555:5555` directly to the host** —
+  an inconsistency with its own `TRUST_PROXY_HEADERS=1` default (below) worth
+  closing the same way prod's was: drop the `ports:` mapping once confirmed
+  nothing needs `<host>:5555` reachable outside nginx.
+- **`TRUST_PROXY_HEADERS`** wraps the app in Werkzeug's `ProxyFix`, rebuilding
+  `request.scheme`/`request.host` from `X-Forwarded-Proto`/`-Host` rather than
+  trusting what gunicorn saw directly. Behind nginx the request reaches gunicorn
+  as plain http, so without this `request.url` reads `http://` — and oauthlib
+  **refuses to parse an http authorization response at all** ("OAuth 2 MUST
+  utilize https"), so the Google OAuth callback fails there and only there. It's
+  opt-in rather than always-on because `X-Forwarded-Proto`/`-Host` are only
+  trustworthy from a proxy we control: **any deployment that also publishes a
+  host port must leave this at `0`**, since a client hitting that port directly
+  could set those headers itself and spoof a secure request past this check —
+  which is exactly the inconsistency flagged on `docker-compose-demo.yml` above.
+  The local (non-Docker) dev server has no proxy in front of it at all, so it
+  never sets this. nginx must
   actually send them (`proxy_set_header X-Forwarded-Proto $scheme;` and `Host`).
 - Both compose files pass through **`SECRET_KEY`** from the host environment
   (`${SECRET_KEY:-dev-not-secure}`) — **set a real value in a local `.env` file
@@ -118,16 +126,20 @@ live (`listen 443 ssl`, proxying to `atelier-orders:5013` over
 `website_network`), same pattern as every other domain there. This also
 unlocks Google OAuth for this deployment — Google does not accept `http://`
 redirect URIs for a non-localhost domain, so until TLS was live the
-Gmail/Calendar integration (`communications/`) could not work here. To turn
-it on now: set
-`GOOGLE_REDIRECT_URI=https://atelier.arnaudrouillot.com/integrations/google/callback`
-in `.env`, register that exact URI on the OAuth client in the Google Cloud
-console, and set `SESSION_COOKIE_SECURE=1` (this deployment is reachable over
-HTTPS now, so the session cookie should be Secure). `TRUST_PROXY_HEADERS`
-should stay `0` as long as `docker-compose.yml` still also publishes the host
-port directly (see the env var's comment there) — that direct route bypasses
-nginx, so trusting `X-Forwarded-*` headers would let anyone hitting the host
-port forge them.
+Gmail/Calendar integration (`communications/`) could not work here.
+`docker-compose.yml`'s own defaults for `GOOGLE_REDIRECT_URI` and
+`SESSION_COOKIE_SECURE` now reflect that (`https://atelier.arnaudrouillot.com/integrations/google/callback`
+and `1`) — **deliberately baked into the compose file rather than `.env`**,
+since `docker-compose.yml` and `docker-compose-demo.yml` are run from the
+same checkout and read the same `.env`; a value set there for one would
+silently override the other's own default. Registering that redirect URI on
+the OAuth client in the Google Cloud console is still a manual step.
+`docker-compose.yml` no longer publishes a host port, which is what let
+`TRUST_PROXY_HEADERS` default to `1` (see the env var's comment there) —
+without it, the OAuth callback saw the request as plain http (what gunicorn
+actually received from nginx) rather than https, and oauthlib refused to
+parse it ("OAuth 2 MUST utilize https"). Re-check this default if a host
+port is ever published again.
 
 To rebuild after changing `requirements.txt` or app code:
 `docker compose up --build` (prod) or
