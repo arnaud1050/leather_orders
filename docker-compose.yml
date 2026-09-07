@@ -23,10 +23,16 @@ services:
       #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - COMMS_ENCRYPTION_KEY=${COMMS_ENCRYPTION_KEY:-}
       # OAuth client from the Google Cloud console. The redirect URI must
-      # match one registered on that client exactly.
+      # match one registered on that client exactly. Defaulted here rather
+      # than left for .env: docker-compose.yml and docker-compose-demo.yml
+      # are run from the same checkout and so read the same .env file, and
+      # a GOOGLE_REDIRECT_URI set there would apply to both, overriding
+      # docker-compose-demo.yml's own default with this one. Baking each
+      # deployment's correct value into its own compose file (as that file
+      # already does) avoids the collision entirely.
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:5000/integrations/google/callback}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://atelier.arnaudrouillot.com/integrations/google/callback}
       # Background sync. Must be set on exactly ONE process — gunicorn runs
       # 2 workers here, and two schedulers would sync every mailbox twice.
       # Left off, "Sync now" on the integrations page still works.
@@ -37,8 +43,11 @@ services:
       # and generated the same way — a separate variable so either can be
       # rotated without invalidating the other's stored secrets.
       - AI_ENCRYPTION_KEY=${AI_ENCRYPTION_KEY:-}
-      # Set to 1 once this is behind TLS, so the session cookie is Secure.
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-0}
+      # TLS is live for atelier.arnaudrouillot.com (see docs/deployment.md),
+      # so the session cookie should be Secure by default here too — same
+      # reasoning as GOOGLE_REDIRECT_URI above for defaulting it in this
+      # file rather than the .env shared with docker-compose-demo.yml.
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-1}
       # Set to 1 only if this sits behind a reverse proxy that sets
       # X-Forwarded-Proto/-Host. Off here because this deployment still
       # publishes a host port directly (5013:5013) in addition to sitting on
