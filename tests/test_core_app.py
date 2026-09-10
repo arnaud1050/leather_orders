@@ -24,7 +24,10 @@ from billing_adapter import billable_for
 # Tenancy & auth (CO2-CO6)
 # ---------------------------------------------------------------------------
 
-CORE_GET_ROUTES = ["/", "/orders", "/clients", "/analytics", "/orders/new", "/clients/new"]
+CORE_GET_ROUTES = [
+    "/", "/orders", "/clients", "/analytics", "/orders/new", "/clients/new",
+    "/help/orders", "/help/clients",
+]
 
 
 @pytest.mark.parametrize("path", CORE_GET_ROUTES)
@@ -121,6 +124,28 @@ def test_nav_includes_the_mobile_hamburger_toggle(logged_in):
 
 
 # ---------------------------------------------------------------------------
+# Help pages (OR1i, CL22)
+# ---------------------------------------------------------------------------
+
+def test_order_lifecycle_help_renders_for_a_logged_in_user(logged_in):
+    response = logged_in.get("/help/orders")
+    assert response.status_code == 200
+    assert b"The life of an order" in response.data
+
+
+def test_client_lifecycle_help_renders_for_a_logged_in_user(logged_in):
+    response = logged_in.get("/help/clients")
+    assert response.status_code == 200
+    assert b"The life of a client" in response.data
+
+
+def test_footer_links_to_both_lifecycle_guides_for_a_tenant_user(logged_in):
+    response = logged_in.get("/")
+    assert b'href="/help/orders"' in response.data
+    assert b'href="/help/clients"' in response.data
+
+
+# ---------------------------------------------------------------------------
 # Client (CL1, CL2, CL11)
 # ---------------------------------------------------------------------------
 
@@ -137,6 +162,49 @@ def test_client_is_returning_only_with_two_or_more_orders(client_record):
         ))
     db.session.commit()
     assert client_record.is_returning is True
+
+
+def test_prior_order_count_counts_toward_is_returning(client_record):
+    """CL2b — a longtime client shouldn't need a second order logged here to
+    show as returning."""
+    assert client_record.is_returning is False
+    client_record.prior_order_count = 1
+    db.session.commit()
+    assert client_record.is_returning is False
+
+    db.session.add(Order(
+        client_id=client_record.id, item="Item",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
+    ))
+    db.session.commit()
+    assert client_record.is_returning is True
+
+
+def test_prior_order_count_is_not_cleared_by_adding_and_removing_an_order(client_record):
+    """CL2b — the manual count lives in its own column, so it can't be
+    undone by unrelated changes to the orders table: adding then deleting a
+    second real order leaves it, and is_returning, exactly where they were."""
+    client_record.prior_order_count = 1
+    kept = Order(
+        client_id=client_record.id, item="Kept",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="confirmed",
+    )
+    db.session.add(kept)
+    db.session.commit()
+    assert client_record.is_returning is True  # 1 prior + 1 real
+
+    added = Order(
+        client_id=client_record.id, item="Added",
+        start=date(2026, 1, 1), due=date(2026, 1, 10), status="tentative",
+    )
+    db.session.add(added)
+    db.session.commit()
+    assert client_record.is_returning is True  # 1 prior + 2 real
+
+    db.session.delete(added)
+    db.session.commit()
+    assert client_record.prior_order_count == 1
+    assert client_record.is_returning is True  # back to 1 prior + 1 real, still returning
 
 
 def test_client_lifetime_value_sums_order_totals(client_record):
@@ -237,6 +305,30 @@ def test_edit_client_with_an_invalid_province_clears_it(logged_in, client_record
     )
 
     assert db.session.get(Client, client_record.id).province is None
+
+
+def test_edit_client_without_prior_order_count_field_leaves_it_untouched(logged_in, client_record):
+    client_record.prior_order_count = 3
+    db.session.commit()
+
+    logged_in.post(
+        f"/clients/{client_record.id}/edit",
+        data={"first_name": "Marie", "last_name": "Alarie", "email": "", "phone": ""},
+    )
+
+    assert db.session.get(Client, client_record.id).prior_order_count == 3
+
+
+def test_edit_client_rejects_a_non_numeric_prior_order_count(logged_in, client_record):
+    logged_in.post(
+        f"/clients/{client_record.id}/edit",
+        data={
+            "first_name": "Marie", "last_name": "Alarie", "email": "", "phone": "",
+            "prior_order_count": "-1",
+        },
+    )
+
+    assert db.session.get(Client, client_record.id).prior_order_count == 0
 
 
 def test_edit_client_without_notes_field_leaves_notes_untouched(logged_in, client_record):

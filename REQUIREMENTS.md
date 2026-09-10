@@ -218,11 +218,15 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 
 - **CL1.** `Client.name` is derived (`f"{first_name} {last_name}"`), never a
   stored column — every template reads it, nothing writes it directly.
-- **CL2.** `Client.is_returning` = `len(self.orders) >= 2`, computed on every
-  read. `Client.lifetime_value` = `sum(o.total for o in self.orders if
-  o.status != "cancelled")` (`Order.total` is the tax-inclusive figure — see
-  OR-rules below), also computed on every read. Neither is a stored column,
-  so neither can drift out of sync with the orders behind it.
+- **CL2.** `Client.is_returning` = `len(self.orders) + self.prior_order_count
+  >= 2`, computed on every read. `Client.lifetime_value` = `sum(o.total for o
+  in self.orders if o.status != "cancelled")` (`Order.total` is the
+  tax-inclusive figure — see OR-rules below), also computed on every read.
+  Neither is a stored column on its own, so neither can drift out of sync
+  with the orders behind it — `prior_order_count` is the one number staff
+  enter by hand, and it's a plain fact ("this many real orders aren't in the
+  system"), not a second, independent "is this client returning?" judgement
+  that could disagree with the first.
 - **CL2a.** **Cancelled orders don't count toward `lifetime_value`** — work
   that was called off was never business done, and this figure ranks the
   Analytics "Top 5 paying clients" (AN3) and the timeline's
@@ -230,6 +234,14 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   value of orders *placed and kept*, tax-inclusive, not money received.
   `is_returning` deliberately still counts them — that a client came back
   and asked twice is true whether or not the second one went ahead.
+  `prior_order_count` doesn't feed `lifetime_value` at all — there's no
+  dollar figure behind it, only a count.
+- **CL2b.** `prior_order_count` (default `0`) is a per-client integer, edited
+  on the full client page only (not the timeline's quick-edit modal), for
+  real orders that were never logged in the app — historical ones from
+  before the studio started using it, or ones nobody got around to entering.
+  It's never negative — `edit_client` coerces anything that isn't a bare
+  digit string to `0` rather than rejecting the save.
 - **CL3.** `inquiry_type` and `first_message` are free-form fields meant to
   be populated by an inbound source (webhook or the communications module's
   `create_client_from_thread()`) — nothing in the core app's own new/edit
@@ -327,14 +339,15 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   same person twice. There is deliberately **no** `R-6` exemption to
   mirror — no sender rule can hide a *client*, so hiding one is always a
   person's judgement, which is exactly the case `L-15` says to undo.
-- **CL22.** [`docs/client-lifecycle.html`](docs/client-lifecycle.html)
-  states CL17–CL21 in plain language for the studio, alongside CL1/CL2/CL13
-  and the `communications/` rules that decide where inbound mail lands
-  (`L-1`…`L-20`, `R-1`…`R-20`, `F-1`…`F-18`, `SY-6`…`SY-9`,
-  `N-10`/`N-10a`/`N-21`), and is **part of this rule set** on the same
-  terms `OR1i` sets for the order page: a change to any of those that
-  leaves it untouched has finished half the job. Like that page it has
-  neither a test nor an importer to catch it drifting.
+- **CL22.** [`templates/help/client_lifecycle.html`](templates/help/client_lifecycle.html),
+  served in-app at `/help/clients`, states CL17–CL21 in plain language for
+  the studio, alongside CL1/CL2/CL13 and the `communications/` rules that
+  decide where inbound mail lands (`L-1`…`L-20`, `R-1`…`R-20`, `F-1`…`F-18`,
+  `SY-6`…`SY-9`, `N-10`/`N-10a`/`N-21`), and is **part of this rule set** on
+  the same terms `OR1i` sets for the order page: a change to any of those
+  that leaves it untouched has finished half the job. Like that page, no
+  test catches its content drifting — a route render only proves the HTML
+  is well-formed.
 
 ## 4. OrderType
 
@@ -448,12 +461,14 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **OR1h.** A new order may only be created at `tentative` or `confirmed`
   (`INITIAL_STATUSES`); `new_order()` falls back to `tentative` for
   anything else.
-- **OR1i.** [`docs/order-lifecycle.html`](docs/order-lifecycle.html) states
-  all of the above in plain language for the studio, and is **part of this
-  rule set** — a change to `OR1`…`OR1h` that leaves it untouched has
-  finished half the job. It is the only doc in the repo with neither a test
-  nor an importer to catch it drifting, and it has already gone stale twice
-  (rush's scope, and whether delivered orders leave the timeline).
+- **OR1i.** [`templates/help/order_lifecycle.html`](templates/help/order_lifecycle.html),
+  served in-app at `/help/orders`, states all of the above in plain language
+  for the studio, and is **part of this rule set** — a change to `OR1`…`OR1h`
+  that leaves it untouched has finished half the job. It is the only doc in
+  the repo with no test that catches its *content* drifting — being served
+  by a route only proves the HTML renders, not that it still matches the
+  app's behaviour — and it has already gone stale twice (rush's scope, and
+  whether delivered orders leave the timeline).
 - **OR2.** `start` / `due` are real `Date` columns edited via native
   `<input type="date">` in both the order modal and the full order page.
 - **OR3.** `pickup_date` is a separate, optional `Date` column — never
@@ -844,6 +859,7 @@ has no regression test.
 | CO9e | `test_no_sample_payment_or_invoice_is_dated_in_the_future`, `test_no_sample_order_is_ready_or_delivered_before_it_starts`, `test_sample_invoice_numbers_follow_the_seed_year` (`tests/test_seeding.py`) |
 | CL1 | `test_client_name_is_first_plus_last` |
 | CL2 | `test_client_is_returning_only_with_two_or_more_orders`, `test_client_lifetime_value_sums_order_totals` |
+| CL2b | `test_prior_order_count_counts_toward_is_returning`, `test_prior_order_count_is_not_cleared_by_adding_and_removing_an_order`, `test_edit_client_without_prior_order_count_field_leaves_it_untouched`, `test_edit_client_rejects_a_non_numeric_prior_order_count` |
 | CL3 | — gap — |
 | CL4–CL8 | `test_add_source_option_rejects_a_case_insensitive_duplicate`, `test_add_source_option_rejects_a_duplicate_of_a_hidden_option`, `test_reorder_source_options_sets_sort_order_from_position`, `test_reorder_source_options_ignores_ids_from_another_tenant`, `test_reorder_source_options_reflects_on_the_settings_page`, `test_reorder_source_options_requires_login` (`tests/test_settings_options.py`) |
 | CL9–CL10 | `test_set_other_marks_the_option`, `test_set_other_toggles_off_on_a_second_click`, `test_only_one_option_can_be_other_at_a_time`, `test_set_other_is_tenant_scoped`, `test_saving_the_other_detail`, `test_the_detail_is_cleared_when_other_is_unchecked` (`tests/test_other_source.py`) |
@@ -856,7 +872,7 @@ has no regression test.
 | CL19 | `test_the_roster_leaves_out_hidden_clients`, `test_the_hidden_view_shows_only_hidden_clients`, `test_the_roster_links_to_the_hidden_view_only_when_there_is_one` (`tests/test_client_hiding.py`) |
 | CL20 | `test_a_hidden_client_is_not_offered_on_a_new_order` (`tests/test_client_hiding.py`) |
 | CL21 | `test_new_mail_puts_a_hidden_client_back_on_the_list`, `test_coming_back_shows_in_the_sync_summary`, `test_mailing_a_hidden_client_does_not_bring_them_back`, `test_resyncing_the_same_window_does_not_bring_them_back_twice`, `test_mail_from_a_visible_client_counts_nothing` (`tests/test_client_hiding.py`) |
-| CL22 | — gap, permanently — the doc has no importer and no test, which is the whole reason the rule is written down |
+| CL22 | `test_client_lifecycle_help_renders_for_a_logged_in_user`, `test_footer_links_to_both_lifecycle_guides_for_a_tenant_user` cover the page being reachable — content drift is still a permanent gap, which is the whole reason the rule is written down |
 | OT1–OT3 | `test_add_order_type_rejects_a_case_insensitive_duplicate`, `test_add_order_type_rejects_a_duplicate_of_a_hidden_type`, `test_add_order_type_allows_the_same_label_in_another_company` (`tests/test_settings_options.py`) |
 | OT4 | `test_new_order_form_omits_type_dropdown_without_any_order_type`, `test_new_order_form_shows_type_dropdown_once_a_type_exists` |
 | OT5 | `test_new_order_only_offers_active_types`, `test_order_page_offers_a_hidden_type_the_order_already_has` |

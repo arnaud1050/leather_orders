@@ -72,6 +72,11 @@
       </label>
       {% endif %}
     </fieldset>
+    <label>Orders not in the system<input type="number" name="prior_order_count" value="{{ client.prior_order_count }}" min="0" step="1"></label>
+    <p class="detail-note detail-form__note">
+      Real orders for this client that were never logged here — counts
+      toward "Returning" without needing to log each one.
+    </p>
     <label>Notes<textarea name="notes" rows="14">{{ client.notes or '' }}</textarea></label>
     <div>
       <button type="submit" class="btn-primary">Save changes</button>

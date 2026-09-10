@@ -779,6 +779,27 @@ def terms():
 
 
 # ---------------------------------------------------------------------------
+# In-app help — the two lifecycle docs (OR1i, CL22), self-contained pages
+# with their own inline styling rather than app chrome, same as privacy/terms.
+# Behind login, unlike privacy/terms: these explain internal app concepts to
+# a signed-in user, not legal terms an anonymous OAuth reviewer needs to
+# reach. Linked only from base.html's footer, deliberately — not scattered
+# across every page that touches an order or a client.
+# ---------------------------------------------------------------------------
+
+@app.route("/help/orders")
+@login_required
+def order_lifecycle_help():
+    return render_template("help/order_lifecycle.html")
+
+
+@app.route("/help/clients")
+@login_required
+def client_lifecycle_help():
+    return render_template("help/client_lifecycle.html")
+
+
+# ---------------------------------------------------------------------------
 # Calendar view — month grid via Python's stdlib calendar module
 # (calendar.Calendar), no external dependency. Orders shown as chips on
 # their due date.
@@ -1335,6 +1356,9 @@ def edit_client(client_id: int):
     # what tax this client is charged (see taxes_for in models.py).
     if "notes" in request.form:
         client.notes = request.form.get("notes", "").strip()
+    if "prior_order_count" in request.form:
+        raw = request.form.get("prior_order_count", "").strip()
+        client.prior_order_count = int(raw) if raw.isdigit() else 0
     if "street" in request.form:
         client.street = request.form.get("street", "").strip() or None
         client.city = request.form.get("city", "").strip() or None

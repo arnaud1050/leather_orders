@@ -5,18 +5,22 @@
   handed to the studio or published as a help page, so it says "your stock"
   and "the bench", never "status enum" or "transition".
 
-  Standalone on purpose — the CSS is inline and the diagram is hand-authored
-  SVG with no script, so the single file survives being emailed. Nothing in
-  the app loads it. To serve it as a real page instead, lift the <body>
-  content into a template and drop the <style> block in favour of
-  style.css: the palette below is copied from there, so the colours already
-  agree.
+  Standalone styling on purpose — the CSS stays inline and the diagram is
+  hand-authored SVG with no script, so it renders correctly regardless of
+  where it's opened from. Served in-app at /help/orders (see
+  order_lifecycle_help() in app.py); the only templated bit is the back
+  link's href, so a copy saved from the rendered page is still a single
+  file that survives being emailed — the raw source file needs Flask to
+  resolve that one link first. The palette below is copied from style.css,
+  so the colours already agree with the rest of the app.
 
-  ** It goes stale silently. ** No test covers it and no import reaches it,
-  so a lifecycle change breaks nothing visible here — it just quietly turns
-  this page into a lie. It has already drifted twice. Treat it exactly like
-  REQUIREMENTS.md: update it in the same commit as the behaviour. The
-  authoritative rules are REQUIREMENTS.md OR1 … OR1h.
+  ** It goes stale silently. ** Being reachable in-app doesn't change that: a
+  route render proves the HTML is well-formed, not that the content still
+  matches the app's behaviour. No test covers *that*, so a lifecycle change
+  breaks nothing visible here — it just quietly turns this page into a lie.
+  It has already drifted twice. Treat it exactly like REQUIREMENTS.md: update
+  it in the same commit as the behaviour. The authoritative rules are
+  REQUIREMENTS.md OR1 … OR1h.
 -->
 <html lang="en">
 <head>
@@ -65,14 +69,6 @@
 
   .masthead { border-bottom: 1px solid var(--hairline); padding-bottom: 24px; margin-bottom: 40px; }
 
-  .masthead__eyebrow {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-soft);
-    margin: 0 0 12px;
-  }
-
   .masthead h1 {
     font-size: 32px;
     font-weight: 600;
@@ -83,7 +79,6 @@
 
   .masthead p {
     margin: 0;
-    max-width: 62ch;
     font-size: 15px;
     line-height: 1.6;
     color: var(--ink-soft);
@@ -207,9 +202,19 @@
     color: var(--ink-soft);
   }
 
+  .back-link {
+    display: inline-block;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+  .back-link:hover { color: var(--ink); }
+
   @media print {
     body { background: #fff; }
     .sheet { padding: 0; max-width: none; }
+    .back-link { display: none; }
     .section, .note, .stage, .diagram { break-inside: avoid; }
     .diagram svg { min-width: 0; }
   }
@@ -218,8 +223,9 @@
 <body>
 <div class="sheet">
 
+  <a class="back-link" href="{{ url_for('orders_list') }}">&larr; Back</a>
+
   <header class="masthead">
-    <p class="masthead__eyebrow">Atelier Order Book</p>
     <h1>The life of an order</h1>
     <p>Every order moves through a handful of stages, from first conversation to finished piece in the client's hands. This page shows the whole path — what each stage means, and what can happen next from each one.</p>
   </header>
@@ -412,7 +418,7 @@
     </table>
   </section>
 
-  <p class="colophon">Atelier Order Book — order lifecycle reference. Colours on this page match the ones used throughout the app, so a grey bar on the schedule means the same thing as a grey bar here.</p>
+  <p class="colophon">Order lifecycle reference. Colours on this page match the ones used throughout the app, so a grey bar on the schedule means the same thing as a grey bar here.</p>
 
 </div>
 </body>

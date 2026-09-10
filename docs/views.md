@@ -175,8 +175,9 @@ in the app where `return_to` has a query string of its own, which is why
 reusing the order page's cancel/delete shape, behind a confirm dialog that
 spells out what it won't touch. There is no Delete beside it and never will
 be — see REQUIREMENTS `CL17`–`CL21`, and
-[docs/client-lifecycle.html](client-lifecycle.html) for the studio-facing
-version of the same thing.
+[templates/help/client_lifecycle.html](../templates/help/client_lifecycle.html)
+(served in-app at `/help/clients`) for the studio-facing version of the same
+thing.
 
 **Orders list columns are reorderable and hideable**, per company, from
 Settings > Orders > "Orders list columns" (`settings.html`, `section ==

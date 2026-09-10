@@ -333,6 +333,13 @@ class Client(db.Model):
     # same argument behind cancelled orders staying in the lists and hidden
     # SourceOptions still counting in the analytics breakdown.
     is_hidden = db.Column(db.Boolean, nullable=False, default=False)
+    # Real orders for this client that were never logged here — historical,
+    # or just never entered. Not a re-entry of that history, just a count, so
+    # a client doesn't have to wait for a second order in the app to show as
+    # returning. Feeds is_returning below rather than sitting beside it as a
+    # separate flag, so there is still exactly one rule for "returning" and
+    # it can't disagree with itself once real orders catch up to it.
+    prior_order_count = db.Column(db.Integer, nullable=False, default=0)
 
     company = db.relationship("Company", back_populates="clients")
     orders = db.relationship("Order", back_populates="client")
@@ -348,8 +355,9 @@ class Client(db.Model):
 
     @property
     def is_returning(self):
-        """A second order marks a client as a repeat customer."""
-        return len(self.orders) >= 2
+        """A second order — logged here or counted as not in the system —
+        marks a client as a repeat customer."""
+        return len(self.orders) + self.prior_order_count >= 2
 
     @property
     def lifetime_value(self):
@@ -685,6 +693,9 @@ _ADDED_COLUMNS = [
     # same change aren't here — they need the table rebuilt, not extended;
     # see _migrate_users_to_email() below.
     ("companies", "is_active", "BOOLEAN NOT NULL DEFAULT 1"),
+    # Every client already on file has no history to count before this
+    # column existed, so the default is 0 — same reasoning as is_hidden above.
+    ("clients", "prior_order_count", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.

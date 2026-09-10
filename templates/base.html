@@ -139,6 +139,12 @@
       <a href="{{ url_for('privacy') }}">Privacy Policy</a>
       <span aria-hidden="true">·</span>
       <a href="{{ url_for('terms') }}">Terms of Service</a>
+      {% if current_user.is_authenticated and current_user.company_id %}
+      <span aria-hidden="true">·</span>
+      <a href="{{ url_for('order_lifecycle_help') }}">Order guide</a>
+      <span aria-hidden="true">·</span>
+      <a href="{{ url_for('client_lifecycle_help') }}">Client guide</a>
+      {% endif %}
     </p>
   </footer>
 </body>

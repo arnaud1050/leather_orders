@@ -1,21 +1,25 @@
 <!doctype html>
 <!--
   The client lifecycle explained for the person *using* the app, not for
-  whoever maintains it — the companion to order-lifecycle.html, written to
+  whoever maintains it — the companion to order_lifecycle.html, written to
   the same brief and the same audience. It says "the client list" and "your
   inbox", never "EmailThread" or "is_hidden".
 
-  Standalone on purpose — the CSS is inline and the diagram is hand-authored
-  SVG with no script, so the single file survives being emailed. Nothing in
-  the app loads it. The palette below is copied from style.css, so the
-  colours already agree; the greys and the purple carry the same meaning
-  here as they do in the app's badges.
+  Standalone styling on purpose — the CSS is inline and the diagram is
+  hand-authored SVG with no script, so it renders correctly regardless of
+  where it's opened from. Served in-app at /help/clients (see
+  client_lifecycle_help() in app.py), same as order_lifecycle.html's
+  companion note explains; the one line of Jinja is the back link at the
+  top. The palette below is copied from style.css, so the colours already
+  agree; the greys and the purple carry the same meaning here as they do in
+  the app's badges.
 
   ** It goes stale silently. ** Same warning as the order page, and the same
-  reason: no test covers it and no import reaches it, so a change to how
-  leads or clients behave breaks nothing visible here — it just quietly
-  turns this page into a lie. Treat it exactly like REQUIREMENTS.md: update
-  it in the same commit as the behaviour.
+  reason: being reachable in-app doesn't mean anything checks the content —
+  no test covers it, so a change to how leads or clients behave breaks
+  nothing visible here — it just quietly turns this page into a lie. Treat
+  it exactly like REQUIREMENTS.md: update it in the same commit as the
+  behaviour.
 
   The authoritative rules are, in the core REQUIREMENTS.md, CL1 … CL21
   (`CL17` … `CL21` are hiding) and CL13; and in
@@ -69,14 +73,6 @@
 
   .masthead { border-bottom: 1px solid var(--hairline); padding-bottom: 24px; margin-bottom: 40px; }
 
-  .masthead__eyebrow {
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-soft);
-    margin: 0 0 12px;
-  }
-
   .masthead h1 {
     font-size: 32px;
     font-weight: 600;
@@ -87,7 +83,6 @@
 
   .masthead p {
     margin: 0;
-    max-width: 62ch;
     font-size: 15px;
     line-height: 1.6;
     color: var(--ink-soft);
@@ -246,9 +241,19 @@
     color: var(--ink-soft);
   }
 
+  .back-link {
+    display: inline-block;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+  .back-link:hover { color: var(--ink); }
+
   @media print {
     body { background: #fff; }
     .sheet { padding: 0; max-width: none; }
+    .back-link { display: none; }
     .section, .note, .stage, .scenario, .diagram { break-inside: avoid; }
     .diagram svg { min-width: 0; }
   }
@@ -257,8 +262,9 @@
 <body>
 <div class="sheet">
 
+  <a class="back-link" href="{{ url_for('clients_list') }}">&larr; Back</a>
+
   <header class="masthead">
-    <p class="masthead__eyebrow">Atelier Order Book</p>
     <h1>The life of a client</h1>
     <p>Somebody writes in. Months later they're a name you know, with three orders behind them. This page shows what happens in between — where an enquiry sits before it's anybody, what makes it a client, and what the app does by itself when mail arrives.</p>
   </header>
@@ -382,7 +388,7 @@
         <p class="stage__name">Has ordered</p>
         <span class="stage__tag">Doing business</span>
         <p class="stage__body">The same record, now with work attached. Their lifetime value starts counting, they appear in the takings, and their orders run their own course — see <em>The life of an order</em> for that half.</p>
-        <p class="stage__next"><strong>Next:</strong> a second order marks them <strong>Returning</strong>, shown as a star beside their name.</p>
+        <p class="stage__next"><strong>Next:</strong> a second order marks them <strong>Returning</strong>, shown as a star beside their name — or you can credit orders that were never logged here, from their client page, so they don't have to wait for a second order logged in the app.</p>
       </div>
 
       <div class="stage stage--hidden">
@@ -505,7 +511,7 @@
         <h3>An enquiry is not a client</h3>
         <p>This is the distinction the whole page rests on. Mail from a stranger sits in the lead inbox as a <em>conversation</em>. Nothing is on your client list until somebody — you, or a rule you wrote — says it should be.</p>
         <p>That's on purpose. An inbox is newsletters, suppliers and spam; a client record per sender would make the list useless within a month. The one exception is a sender you've explicitly named, which is you making the decision once instead of every time.</p>
-        <p><em>Going the other way is a matter of fact, not of judgement</em> — a client counts as having ordered because an order exists, and as returning because a second one does. There's no button for either.</p>
+        <p><em>Going the other way is a matter of fact, not of judgement</em> — a client counts as having ordered because an order exists. There's no button for that. "Returning" is almost the same: a second order does it by itself. The one exception is orders not in the system — real orders that were never logged here, historical or otherwise — which you can credit as a plain count on the client page, so a longtime client doesn't sit un-starred until they place a second order <em>here</em>. It's still a count of real orders, not a flag you flip; add a second logged order later and nothing changes, because the client was already returning.</p>
       </div>
 
     </div>
@@ -554,7 +560,7 @@
     </table>
   </section>
 
-  <p class="colophon">Atelier Order Book — client lifecycle reference. Its companion, <em>The life of an order</em>, covers what happens once a client places one. Colours and badges on this page match the ones used throughout the app.</p>
+  <p class="colophon">Client lifecycle reference. Its companion, <em>The life of an order</em>, covers what happens once a client places one. Colours and badges on this page match the ones used throughout the app.</p>
 
 </div>
 </body>

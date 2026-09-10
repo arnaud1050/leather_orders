@@ -102,14 +102,24 @@ client page) always show separate **First name** / **Last name** fields and writ
 to `first_name`/`last_name`.
 
 **Returning clients & lifetime value:** `Client.is_returning` (a plain `@property`,
-`len(self.orders) >= 2`) and `Client.lifetime_value` (`sum(o.total for o in
-self.orders if o.status != "cancelled")`) are computed on the fly from the `orders`
-relationship — no stored columns, so they're always correct without needing to
-update a flag whenever orders change. **`lifetime_value` skips cancelled orders**
+`len(self.orders) + self.prior_order_count >= 2`) and `Client.lifetime_value`
+(`sum(o.total for o in self.orders if o.status != "cancelled")`) are computed on
+the fly from the `orders` relationship — no stored column holds the *answer*, so
+it's always correct without needing to update a flag whenever orders change.
+`prior_order_count` (CL2b), labelled "Orders not in the system" on the client
+page, is the one number staff enter by hand: a plain integer count of real
+orders that were never logged in the app — historical ones from before the
+studio started using it, or ones nobody got around to entering — for a client
+who shouldn't have to wait for a second *logged* order to show as returning.
+It isn't a second "is this client returning?" judgement sitting beside the
+derived one — it's an input to the same formula, so the two can't disagree.
+**`lifetime_value` skips cancelled orders**
 (CL2a) — an order that was called off was never business done, and this figure
 ranks Analytics' top clients and the timeline's highest-paying-client sort.
 `is_returning` still counts them: that a client came back and asked a second time
-is true whether or not that second order went ahead. `is_returning` drives a small star icon next to the client's name
+is true whether or not that second order went ahead. `prior_order_count` doesn't
+touch `lifetime_value` at all — there's no dollar figure behind a bare count.
+`is_returning` drives a small star icon next to the client's name
 (`.timeline__star`) — on the timeline, and next to the client column on `/orders`
 and `/clients` — plus a "Returning" pill on the full client page
 (`.pill--returning`). Each of those three tables carries a small
