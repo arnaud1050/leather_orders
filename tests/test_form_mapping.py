@@ -334,9 +334,10 @@ def test_the_enquiry_is_announced_exactly_once(app, company, account, mapped_rul
 # --- the address block ----------------------------------------------------
 #
 # Four more targets, three of them free text. `province` is the one with
-# consequences: it is two characters wide and selects the tax rate, so it is
-# normalised through the host's `normalize_province` and **dropped** when it
-# doesn't resolve, rather than stored as typed.
+# consequences: the stored value selects the tax rate, and the only values
+# that select one are the two-letter codes. So it is normalised through the
+# host's `normalize_province` and **dropped** when it doesn't resolve, rather
+# than stored as typed.
 
 ADDRESS_MAPPING = [
     ("Name", FIELD_NAME),
@@ -397,8 +398,8 @@ def test_a_province_is_normalised_however_it_was_written(
 def test_an_unrecognised_province_is_dropped_not_stored(
     app, company, account, address_rule,
 ):
-    """"Out of country" truncated to "Ou" would match no tax rule and bill
-    them GST-only, with nothing on screen looking wrong."""
+    """"Out of country" stored raw would match no row in PROVINCE_TAXES, so
+    they'd be charged nothing with nothing on screen looking wrong."""
     deliver(account, body=address_body(province="Out of country"))
     client = only_client(company)
     assert client.province is None

@@ -657,12 +657,12 @@ def _apply_details(client: Client, overrides: dict) -> None:
     client page's own form already does with them:
 
     - **`province` is normalised to a two-letter code, or dropped.** It picks
-      the tax rate, and the column is two characters wide — so a raw "Quebec"
-      truncates to "Qu", matches no rule, and bills the client GST-only
-      without anything looking wrong. "Out of country" and anything else
-      unrecognised leaves the field blank for a person to answer, which is the
-      same call the free-text address migration made (`_ADDRESS_TAIL` in the
-      host's models.py): guessing a province changes the money.
+      the tax rate, so a raw "Quebec" matches no rule and charges the client
+      nothing, without anything on screen looking wrong. "Out of country" and
+      anything else unrecognised leaves the field blank for a person to
+      answer, which is the same call the free-text address migration made
+      (`_ADDRESS_TAIL` in the host's models.py): guessing a province changes
+      the money.
     - **`postal_code` is uppercased**, as `/clients/<id>/edit` does.
 
     `source` is matched against the company's existing `SourceOption`s and,

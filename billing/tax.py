@@ -135,12 +135,15 @@ def normalize_province(value: str | None) -> str | None:
     `taxes_for` can use — "Quebec", "québec", "QC" and "P.E.I." all resolve.
 
     **Anything unrecognised returns None rather than a best guess**, and that
-    is the whole point of the function. `Client.province` is two characters
-    wide and picks the tax rate, so storing a raw "Quebec" truncates to "Qu",
-    matches no rule, and silently bills the client GST-only — permanently,
-    once an invoice is issued and frozen. "Out of country", a postal code, a
-    full sentence and an empty string all land here and all return None,
-    leaving the field blank for a person to answer.
+    is the whole point of the function. A province column picks the tax rate,
+    so storing a raw "Quebec" matches no key in `PROVINCE_TAXES` and charges
+    the client nothing — permanently, once an invoice is issued and frozen.
+    (The column is declared two characters wide, which SQLite does not
+    enforce; on the Postgres or MySQL this app is meant to move to, the same
+    value truncates or is rejected outright. Wrong either way, differently.)
+    "Out of country", a postal code, a full sentence and an empty string all
+    land here and all return None, leaving the field blank for a person to
+    answer.
 
     Matching is exact against the folded table on purpose: no prefix or
     fuzzy matching, which is what would let "Nova Scotia office" or

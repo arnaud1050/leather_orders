@@ -446,8 +446,12 @@ names for the dropdown, and `update_company_details()` rejects anything not in i
 `normalize_province()`** (`billing/tax.py`, re-exported by `models.py`), which
 resolves "QC" / "quebec" / "Québec" / "P.E.I." and **returns `None` for
 anything else rather than guessing** — a form's "Out of country" stored raw
-truncates to "Ou" in a two-character column, matches no tax rule, and bills the
-client GST-only with nothing on screen looking wrong. Its callers today are the
+matches no row in `PROVINCE_TAXES`, so the client is charged nothing with
+nothing on screen looking wrong, and F1 freezes that onto any invoice issued
+before somebody notices. (The column is declared `VARCHAR(2)`, but **SQLite
+does not enforce declared lengths** — the full string is stored. On the
+Postgres/MySQL this app is built to move to, it would truncate or be rejected
+instead. Both are wrong; only the symptom differs.) Its callers today are the
 client edit form and the contact-form field mapping in `communications/`; the
 free-text address migration made the same call independently, filing an
 unparseable address entirely into `street` rather than inventing a province.

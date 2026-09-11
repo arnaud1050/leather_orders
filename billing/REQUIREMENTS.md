@@ -95,11 +95,14 @@ accounting period closes.
   `PROVINCES` resolve; the lookup is **built from `PROVINCES`**, so a code and
   its name can't drift apart from the rate table.
 - **R11 — Unrecognised input is dropped, never guessed**, and matching is
-  **exact** against the folded table — no prefix, no fuzzy matching. A
-  province column is two characters wide, so storing raw text truncates
-  "Quebec" to "Qu", which matches no rule and bills GST-only with nothing on
-  screen looking wrong — and F1 freezes that onto an issued invoice. Returning
-  `None` routes to the same honest "no province" path as a blank field.
+  **exact** against the folded table — no prefix, no fuzzy matching. Storing
+  raw text puts something in the province column that matches no row in
+  `PROVINCE_TAXES`, so nothing is charged and nothing on screen looks wrong —
+  and F1 freezes that onto an issued invoice. (The column is declared
+  `VARCHAR(2)`; SQLite ignores declared lengths and keeps the whole string,
+  while Postgres/MySQL would truncate or reject. Wrong either way, so the
+  rule does not depend on which.) Returning `None` routes to the same honest
+  "no province" path as a blank field.
   Fuzzy matching is what would let "Nova Scotia office" or "not in canada"
   land somewhere real. Callers: the client edit form, and
   `communications/`'s contact-form field mapping (`F-20`, `F-21`), which

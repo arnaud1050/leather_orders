@@ -305,10 +305,12 @@ def test_a_taxless_order_still_totals_its_subtotal(company, client_record):
 
 # --- reading a province out of whatever somebody wrote --------------------
 #
-# `normalize_province` exists because `Client.province` is two characters wide
-# and picks the tax rate. A raw "Quebec" truncates to "Qu", matches no rule,
-# and bills GST-only with nothing on screen looking wrong — and once an
-# invoice is issued that is frozen. So the rule is: resolve it exactly, or
+# `normalize_province` exists because a province column picks the tax rate. A
+# raw "Quebec" matches no row in PROVINCE_TAXES, so the client is charged
+# nothing with nothing on screen looking wrong — and once an invoice is issued
+# that is frozen. (The column is declared VARCHAR(2), which SQLite does not
+# enforce; Postgres would truncate or reject instead. Wrong either way, which
+# is why the rule doesn't depend on the backend.) So: resolve it exactly, or
 # return None and leave a person to answer.
 
 @pytest.mark.parametrize("written", [
