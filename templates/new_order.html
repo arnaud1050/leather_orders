@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_field_error.html" import field_error, invalid %}
 {% block title %}New order — Atelier Order Book{% endblock %}
 {% block content %}
 <div class="ledger">
@@ -10,35 +11,39 @@
     <p class="detail-subtitle">Create an order</p>
   </header>
 
+  {# `form` is what was submitted and `errors` the messages about it, when a
+     save came back refused (OR13) — both empty on a first visit. Every field
+     reads its value back out of `form`, so fixing one mistake never means
+     retyping everything else. #}
   <form method="post" class="detail-form">
     <input type="hidden" name="return_to" value="{{ return_to }}">
     <label>Client
       <select name="client_id" id="client-select" required>
-        <option value="" disabled selected>Select a client</option>
-        <option value="new">+ Add new client</option>
+        <option value="" disabled {% if not form.get('client_id') %}selected{% endif %}>Select a client</option>
+        <option value="new" {% if form.get('client_id') == 'new' %}selected{% endif %}>+ Add new client</option>
         {% for client in clients %}
-        <option value="{{ client.id }}">{{ client.name }}</option>
+        <option value="{{ client.id }}" {% if form.get('client_id') == client.id|string %}selected{% endif %}>{{ client.name }}</option>
         {% endfor %}
       </select>
     </label>
     <fieldset id="new-client-fields" hidden>
       <legend>New client</legend>
-      <label>First name<input type="text" name="new_first_name"></label>
-      <label>Last name<input type="text" name="new_last_name"></label>
-      <label>Email<input type="email" name="new_email"></label>
-      <label>Phone<input type="tel" name="new_phone"></label>
+      <label>First name<input type="text" name="new_first_name" value="{{ form.get('new_first_name', '') }}"{{ invalid(errors, 'new_first_name') }}>{{ field_error(errors, 'new_first_name') }}</label>
+      <label>Last name<input type="text" name="new_last_name" value="{{ form.get('new_last_name', '') }}"{{ invalid(errors, 'new_last_name') }}>{{ field_error(errors, 'new_last_name') }}</label>
+      <label>Email<input type="email" name="new_email" value="{{ form.get('new_email', '') }}"></label>
+      <label>Phone<input type="tel" name="new_phone" value="{{ form.get('new_phone', '') }}"></label>
     </fieldset>
-    <label>Item<input type="text" name="item" required></label>
-    <label>Start date<input type="date" name="start" value="{{ today.isoformat() }}" required></label>
-    <label>Due date<input type="date" name="due" required></label>
-    <label>Price<input type="number" name="price" step="0.01" min="0" value="0.00" required></label>
+    <label>Item<input type="text" name="item" value="{{ form.get('item', '') }}" required{{ invalid(errors, 'item') }}>{{ field_error(errors, 'item') }}</label>
+    <label>Start date<input type="date" name="start" value="{{ form.get('start', today.isoformat()) }}" required{{ invalid(errors, 'start') }}>{{ field_error(errors, 'start') }}</label>
+    <label>Due date<input type="date" name="due" value="{{ form.get('due', '') }}" required{{ invalid(errors, 'due') }}>{{ field_error(errors, 'due') }}</label>
+    <label>Price<input type="number" name="price" step="0.01" min="0" value="{{ form.get('price', '0.00') }}" required></label>
     <p class="detail-note detail-form__note">Becomes the order's first line item. Break it into several (materials, surcharges) from the order page.</p>
     {% if order_types %}
     <label>Order type
       <select name="order_type_id">
         <option value="">—</option>
         {% for order_type in order_types %}
-        <option value="{{ order_type.id }}">{{ order_type.label }}</option>
+        <option value="{{ order_type.id }}" {% if form.get('order_type_id') == order_type.id|string %}selected{% endif %}>{{ order_type.label }}</option>
         {% endfor %}
       </select>
     </label>
@@ -46,14 +51,15 @@
     {# Only the two stages an order can *begin* at — you don't create an
        order that's already been delivered. Tentative is the default: a new
        order is usually still a conversation. #}
+    {% set chosen_status = form.get('status', 'tentative') %}
     <label>Status
       <select name="status">
         {% for key in initial_statuses %}
-        <option value="{{ key }}" {% if key == 'tentative' %}selected{% endif %}>{{ status_labels[key] }}</option>
+        <option value="{{ key }}" {% if key == chosen_status %}selected{% endif %}>{{ status_labels[key] }}</option>
         {% endfor %}
       </select>
     </label>
-    <label>Notes<textarea name="notes" rows="3"></textarea></label>
+    <label>Notes<textarea name="notes" rows="3">{{ form.get('notes', '') }}</textarea></label>
     <div>
       <button type="submit" class="btn-primary">Create order</button>
     </div>
@@ -67,6 +73,8 @@
   const newFirstName = newClientFields.querySelector('[name="new_first_name"]');
   const newLastName = newClientFields.querySelector('[name="new_last_name"]');
 
+  // Also runs on load, which is what brings the new-client fields back into
+  // view when a refused save re-renders with "+ Add new client" selected.
   function syncNewClientFields() {
     const isNew = clientSelect.value === 'new';
     newClientFields.hidden = !isNew;

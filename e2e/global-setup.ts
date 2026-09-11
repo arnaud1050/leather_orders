@@ -88,9 +88,14 @@ export default async function globalSetup(): Promise<void> {
   }
 
   // Fresh file every run, so a leftover DB from a previous (possibly
-  // interrupted) run can never leak stale data into this one.
+  // interrupted) run can never leak stale data into this one. Same retrying
+  // delete as global-teardown.ts, and for the same Windows reason: the last
+  // run's teardown may have given up on this file while something (the
+  // previous server, or antivirus scanning a freshly written file) still
+  // held it — and unlike teardown, setup can't just shrug that off, since
+  // seeding on top of an old database is exactly what this step prevents.
   if (fs.existsSync(cfg.dbPath)) {
-    fs.rmSync(cfg.dbPath);
+    fs.rmSync(cfg.dbPath, { maxRetries: 20, retryDelay: 150 });
   }
 
   const sharedEnv = {

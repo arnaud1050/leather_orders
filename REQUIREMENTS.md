@@ -241,7 +241,11 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   real orders that were never logged in the app — historical ones from
   before the studio started using it, or ones nobody got around to entering.
   It's never negative — `edit_client` coerces anything that isn't a bare
-  digit string to `0` rather than rejecting the save.
+  digit string to `0` rather than rejecting the save. **Nor is it
+  unbounded**: `isdigit()` vouches for the shape and not the magnitude, and
+  a value past `MAX_PRIOR_ORDER_COUNT` (1,000,000) overflows SQLite's
+  8-byte INTEGER on the way in — a 500, from a number field. Out of range
+  is coerced to `0` on the same reasoning as any other unreadable value.
 - **CL3.** `inquiry_type` and `first_message` are free-form fields meant to
   be populated by an inbound source (webhook or the communications module's
   `create_client_from_thread()`) — nothing in the core app's own new/edit
@@ -471,6 +475,31 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   whether delivered orders leave the timeline).
 - **OR2.** `start` / `due` are real `Date` columns edited via native
   `<input type="date">` in both the order modal and the full order page.
+- **OR2a.** **`due` may never precede `start`.** Every surface that saves
+  an order's dates refuses it with a message under the Due field naming
+  both dates (OR13) — `new_order()`, the order page's own save, and the
+  timeline modal's `edit_order()`. The check is on the *resulting* pair,
+  not just the two fields submitted: moving only the start date past an
+  existing due date is the same broken order. It's skipped when no date is
+  submitted at all, so an order already holding a backwards pair from
+  before this rule existed can still be edited — including by the edit
+  that fixes it. This isn't tidiness: the timeline computes a bar's width as
+  `due - start` (TL4), so a backwards pair produced a negative CSS `span`,
+  which doesn't render as a short bar but as an invalid grid placement. The
+  date pickers allow the mistake, so the server is the only thing that
+  catches it. `timeline_window()` additionally floors the computed span at
+  one day, because rows entered before this rule existed are still on file
+  and must render as *something*.
+- **OR2b.** Every date arriving from a form goes through `_parse_date()`,
+  which answers `None` rather than raising. `date.fromisoformat` throws on
+  anything it doesn't recognise — and this app registers no error handler,
+  so an unparseable date reached the user as a raw 500 traceback. On the
+  order forms a missing or unreadable Start/Due date is a field message
+  like any other (OR13), and a Pickup date is the same except that blank
+  is allowed and means "none". A field the form didn't send at all is
+  left alone (hard rule 9). `add_payment()` is different on purpose: it
+  ignores a submission with an unreadable date, the same way it already
+  ignored a blank amount.
 - **OR3.** `pickup_date` is a separate, optional `Date` column — never
   derived from `due` or `status`. It is editable only on the full order
   page's Details tab (not in the timeline's quick-edit modal), and
@@ -489,6 +518,16 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **OR6.** The new-order form takes a single **Price** field and turns it
   into the order's first `OrderLine` on creation; splitting an order into
   multiple lines happens afterward on the full order page's Billing tab.
+- **OR6a.** **Money is finite or it isn't money.** `_parse_amount()`
+  answers `None` for `inf`/`nan` as well as for blanks and non-numbers,
+  even though `float()` builds both happily and neither raises. An
+  infinite `unit_price` propagates silently — `Order.total`, then
+  `Client.lifetime_value`, then the Analytics top-5 and every revenue
+  figure — and a NaN amount is stored by SQLite as NULL, failing the
+  column's `NOT NULL` constraint with a 500 instead of anything readable.
+  Callers treat `None` as they already did: `add_payment()` and
+  `add_order_line()` ignore the submission, `new_order()` falls back to
+  `0.0`.
 - **OR7.** Editing line items is add/remove only — no in-place edit of an
   existing line's description/quantity/price (a known limitation, not an
   oversight; see "Explicit non-requirements").
@@ -664,6 +703,48 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   reveals inline first/last name + email + phone fields and makes them
   `required`; server-side, `client_id == "new"` creates the `Client` first
   (flushed for its id) before creating the `Order`.
+- **OR12.** **An order has to be called something.** An `item` that is
+  blank once stripped is refused with a message under the field (OR13), on
+  every surface that saves one. `required` on the input stops an empty
+  submission but accepts `"   "`, which strips to nothing — and the result
+  was an order with no name: a blank bar on the timeline, and in every list
+  that links to an order *by its name* (`/orders`, a client's Orders tab) a
+  zero-width link nobody can click, so the order was as good as unreachable
+  from there. On an edit, *absent* and *blank* are kept apart per hard rule
+  9: a form that doesn't send `item` leaves the name alone, but one that
+  sends it emptied is refused. It used to quietly keep the old name
+  instead, which made a save look like it had worked when the change had
+  been thrown away. Every free-text field on the order and client forms is
+  stripped of surrounding spaces before it's saved; passwords and the email
+  signature are the deliberate exceptions.
+- **OR13.** **A refused save explains itself, under the field at fault,
+  and gives back everything that was typed.** One sentence per bad field,
+  rendered inside that field's `<label>` by `templates/_field_error.html`,
+  with `aria-invalid` on the input (the styling is in `docs/design.md`). It
+  names the problem and what to do about it — "The due date (Aug 1, 2026)
+  is before the start date (Aug 20, 2026)…" — never a bare "Invalid", and
+  never a 400 page that throws the form away. Nothing is written:
+  `_check_order_form()` validates before `_apply_order_form()` touches the
+  order, and `new_order()` builds no client until every field has passed.
+  How the form comes back depends on where it lives:
+  - **`new_order()` and the order page** (`order_page()`, which accepts
+    POST at the page's own URL for exactly this) re-render in place with a
+    400 and the submitted values filled back into every field, notes
+    included.
+  - **The timeline's quick-edit modal** can't: the timeline builds every
+    modal's `return_to` and every link from `request.path`, which from
+    `edit_order()`'s URL would be `/orders/<id>/edit`. So `edit_order()`
+    redirects back to the window it came from with a one-shot
+    `order_edit_error` in the session, and that window reopens the order's
+    dialog (`data-open-on-load`) with the messages over what was typed. The
+    stash holds only the modal's own fields — the session is a signed
+    cookie with a ~4KB ceiling — and the next timeline render pops it
+    whether or not it matches that window, so it can't reopen a stale
+    dialog on some later visit.
+
+  What stays a bare 400 is what a person using the forms can't produce: an
+  illegal status move (OR1a — both dropdowns offer only legal ones) and a
+  `client_id` that doesn't resolve to one of this company's clients.
 - **CL13.** `/clients` has its own standalone "+ Add client" button/route
   (`new_client()`) — first/last name, email, phone only. This exists
   specifically for a client with no order yet (an inquiry), so creating one
@@ -837,6 +918,13 @@ specifically to close this table's gaps) unless another file is named.
 **"— gap —"** means the rule is real and currently believed true but still
 has no regression test.
 
+A row naming a file under **`e2e/`** is covered by the Playwright suite
+rather than by pytest — that's the level the rule lives at. Anything
+driven by `localStorage`, a `<dialog>`, a drag handler or a `return_to`
+carried between two requests is invisible to a route test by
+construction, so "no pytest test" is not the same as "untested" for those
+rows. See [e2e/README.md](e2e/README.md).
+
 | Rule | Test(s) |
 | --- | --- |
 | CO1–CO2 | — gap — (structural; exercised indirectly by every CO3-tagged test below, not asserted on its own) |
@@ -859,9 +947,9 @@ has no regression test.
 | CO9e | `test_no_sample_payment_or_invoice_is_dated_in_the_future`, `test_no_sample_order_is_ready_or_delivered_before_it_starts`, `test_sample_invoice_numbers_follow_the_seed_year` (`tests/test_seeding.py`) |
 | CL1 | `test_client_name_is_first_plus_last` |
 | CL2 | `test_client_is_returning_only_with_two_or_more_orders`, `test_client_lifetime_value_sums_order_totals` |
-| CL2b | `test_prior_order_count_counts_toward_is_returning`, `test_prior_order_count_is_not_cleared_by_adding_and_removing_an_order`, `test_edit_client_without_prior_order_count_field_leaves_it_untouched`, `test_edit_client_rejects_a_non_numeric_prior_order_count` |
+| CL2b | `test_prior_order_count_counts_toward_is_returning`, `test_prior_order_count_is_not_cleared_by_adding_and_removing_an_order`, `test_edit_client_without_prior_order_count_field_leaves_it_untouched`, `test_edit_client_rejects_a_non_numeric_prior_order_count`, `test_prior_order_count_never_reaches_lifetime_value` (CL2a's half), `test_a_prior_only_client_is_returning_while_still_having_no_orders` (the LST5 interaction), `test_timeline_star_counts_prior_orders_too` (the TL6 one), `test_an_out_of_range_prior_order_count_is_stored_as_zero` (the overflow ceiling) |
 | CL3 | — gap — |
-| CL4–CL8 | `test_add_source_option_rejects_a_case_insensitive_duplicate`, `test_add_source_option_rejects_a_duplicate_of_a_hidden_option`, `test_reorder_source_options_sets_sort_order_from_position`, `test_reorder_source_options_ignores_ids_from_another_tenant`, `test_reorder_source_options_reflects_on_the_settings_page`, `test_reorder_source_options_requires_login` (`tests/test_settings_options.py`) |
+| CL4–CL8 | `test_add_source_option_rejects_a_case_insensitive_duplicate`, `test_add_source_option_rejects_a_duplicate_of_a_hidden_option`, `test_reorder_source_options_sets_sort_order_from_position`, `test_reorder_source_options_ignores_ids_from_another_tenant`, `test_reorder_source_options_reflects_on_the_settings_page`, `test_reorder_source_options_requires_login` (`tests/test_settings_options.py`); the drag that calls that route is `e2e/tests/settings-drag-and-drop.spec.ts` |
 | CL9–CL10 | `test_set_other_marks_the_option`, `test_set_other_toggles_off_on_a_second_click`, `test_only_one_option_can_be_other_at_a_time`, `test_set_other_is_tenant_scoped`, `test_saving_the_other_detail`, `test_the_detail_is_cleared_when_other_is_unchecked` (`tests/test_other_source.py`) |
 | CL11 | `test_edit_client_without_address_field_leaves_address_untouched`, `test_edit_client_with_address_field_updates_it`, `test_edit_client_with_an_invalid_province_clears_it` |
 | CL12 | covered indirectly by `tests/test_tax.py`'s client-province gating tests (billing side); `test_order_total_with_no_tax_is_the_sum_of_its_lines` covers the core-app trigger (no province ⇒ no tax) from `Order`'s side |
@@ -869,7 +957,7 @@ has no regression test.
 | CL16 | `test_client_page_renders_blank_notes_not_the_word_none` |
 | CL17 | `test_a_new_client_is_not_hidden`, `test_hiding_and_showing_are_the_same_route`, `test_hiding_redirects_to_return_to`, `test_hiding_is_scoped_to_the_tenant`, `test_hiding_requires_login` (`tests/test_client_hiding.py`); the *absence* of a delete route is structural — there is nothing to assert against |
 | CL18 | `test_hiding_leaves_the_orders_list_alone`, `test_hiding_leaves_the_timeline_alone`, `test_hiding_leaves_lifetime_value_alone`, `test_hiding_does_not_change_a_single_analytics_figure`, `test_a_hidden_clients_own_page_still_works` (`tests/test_client_hiding.py`) |
-| CL19 | `test_the_roster_leaves_out_hidden_clients`, `test_the_hidden_view_shows_only_hidden_clients`, `test_the_roster_links_to_the_hidden_view_only_when_there_is_one` (`tests/test_client_hiding.py`) |
+| CL19 | `test_the_roster_leaves_out_hidden_clients`, `test_the_hidden_view_shows_only_hidden_clients`, `test_the_roster_links_to_the_hidden_view_only_when_there_is_one` (`tests/test_client_hiding.py`); `e2e/tests/clients-list.spec.ts` walks the whole thing through the browser — the confirm dialog, the archive link appearing, the archive omitting "+ Add client", and the order still on `/orders` under the hidden client's name |
 | CL20 | `test_a_hidden_client_is_not_offered_on_a_new_order` (`tests/test_client_hiding.py`) |
 | CL21 | `test_new_mail_puts_a_hidden_client_back_on_the_list`, `test_coming_back_shows_in_the_sync_summary`, `test_mailing_a_hidden_client_does_not_bring_them_back`, `test_resyncing_the_same_window_does_not_bring_them_back_twice`, `test_mail_from_a_visible_client_counts_nothing` (`tests/test_client_hiding.py`) |
 | CL22 | `test_client_lifecycle_help_renders_for_a_logged_in_user`, `test_footer_links_to_both_lifecycle_guides_for_a_tenant_user` cover the page being reachable — content drift is still a permanent gap, which is the whole reason the rule is written down |
@@ -880,10 +968,13 @@ has no regression test.
 | OT7 | `test_orders_list_hides_type_column_with_no_order_types`, `test_type_column_shows_once_a_type_exists_and_is_used`, `test_hiding_type_column_still_hides_it_even_when_order_types_exist` (`tests/test_order_columns.py`), plus `test_orders_list_type_column_only_shows_with_at_least_one_order_type` |
 | OR1 | `test_edit_order_rejects_an_unknown_status` |
 | OR2 | — gap — (native `<input type="date">` rendering isn't asserted; the underlying `edit_order`/`new_order` date handling is covered by other OR tests) |
+| OR2a | `test_new_order_rejects_a_due_date_before_the_start`, `test_new_order_allows_a_single_day_order` (the `<` / `<=` boundary), `test_edit_order_refuses_moving_the_start_past_the_existing_due_date` (the resulting pair, not just the submitted one), `test_edit_order_still_saves_an_order_that_was_already_backwards`, `test_a_backwards_order_still_renders_a_positive_span_on_the_timeline` |
+| OR2b | `test_new_order_rejects_a_date_it_cannot_read` (parametrized, including a date missing entirely), `test_edit_order_refuses_an_unreadable_date_but_ignores_an_absent_one`, `test_add_payment_ignores_a_date_it_cannot_read` |
 | OR3 | `test_edit_order_pickup_date_untouched_when_field_absent`, `test_edit_order_pickup_date_cleared_when_field_blank`, `test_edit_order_pickup_date_can_be_set` |
 | OR4 | — gap — |
 | OR5 | `test_order_total_with_no_tax_is_the_sum_of_its_lines` (tax-inclusive delegation itself is `tests/test_invoicing.py`'s territory) |
 | OR6 | `test_new_order_creates_a_single_line_from_price` |
+| OR6a | `test_a_payment_amount_that_is_not_a_finite_number_is_ignored`, `test_a_line_price_that_is_not_a_finite_number_is_ignored` (both parametrized over the `inf`/`nan` spellings `float()` accepts) |
 | OR7 | *(non-requirement — see N1)* |
 | OR8 | `test_is_settled_tolerates_a_cent_of_rounding` |
 | PM1 | `test_add_payment_creates_a_row_and_updates_balance` |
@@ -897,20 +988,22 @@ has no regression test.
 | TL3 | `test_timeline_next_and_prev_step_by_half_the_window` |
 | TL4 | `test_timeline_clips_a_bar_that_starts_before_the_window` (the open-start/open-end class only; `col_start`/`span` grid math itself isn't independently asserted) |
 | TL5 | `test_timeline_order_bar_label_and_tooltip_include_the_order_type`, `test_timeline_order_bar_tooltip_omits_type_when_order_has_none` |
-| TL6 | `test_timeline_returning_client_star_shown_only_once_returning` |
-| TL7–TL9 | — gap — (client-side `localStorage` filter/sort; manually verified in browser only) |
+| TL6 | `test_timeline_returning_client_star_shown_only_once_returning`, `test_timeline_star_counts_prior_orders_too` |
+| TL7–TL9 | `e2e/tests/timeline.spec.ts` — the filter/sort are client-side `localStorage`, so a real browser is the only thing that can see them; covers hiding a status (including TL8a's shared Confirmed/In-progress button), the count updating, the choice surviving prev/next navigation, and rush-first sorting |
 | TL10 | `test_timeline_dedupes_client_dialogs_across_multiple_orders` |
-| TL11 | — gap — (asserted visually only — the modal's Total field being read-only is markup, not behavior a route test can check) |
+| TL11 | `e2e/tests/timeline.spec.ts::the order modal shows a read-only total and only offers legal forward transitions` |
 | TL12 | — gap — (button presence/`return_to` isn't separately asserted from the timeline page; see OR9–OR11 for the route itself) |
 | LST1 | — gap — (both lists showing every row, as opposed to a windowed subset, is implicit in every other LST test) |
 | LST2–LST3 | `test_orders_list_default_sort_is_due_ascending`, `test_orders_list_sort_by_total_desc`, `test_clients_list_default_sort_is_by_name`, `test_clients_list_sort_by_lifetime_value` |
-| LST4–LST5 | — gap — (client-side status filter; manually verified in browser only) |
-| LST6–LST12 | `tests/test_order_columns.py` (all tests in that file) |
+| LST4–LST5 | `e2e/tests/orders-list.spec.ts` (status filter recomputing the count and balance cards), `e2e/tests/clients-list.spec.ts` (the With/No orders filter reaching all three states) — client-side, so browser-only |
+| LST6–LST12 | `tests/test_order_columns.py` (all tests in that file) for the routes; `e2e/tests/settings-drag-and-drop.spec.ts` for the drag itself — the `dragend` handler that reads the DOM and builds the reorder payload sits between the editor and those routes, and nothing else exercises it |
 | OR9 | `test_new_order_carries_return_to_through_to_the_redirect` |
 | OR10 | `test_new_order_button_present_when_orders_list_is_empty` |
 | OR11 | `test_new_order_inline_client_creation_creates_both_rows`, `test_new_order_inline_client_creation_requires_first_and_last_name` |
+| OR12 | `test_new_order_rejects_a_whitespace_only_item`, `test_new_order_explains_a_name_that_is_only_spaces`, `test_order_page_save_explains_a_blank_item_and_keeps_the_stored_name`, `test_a_quick_edit_with_a_blank_item_is_refused_not_silently_kept`; the stripping half is `test_new_order_strips_surrounding_spaces_before_saving`, `test_order_page_save_strips_and_returns_to_where_it_came_from` |
+| OR13 | new order: `test_new_order_explains_a_backwards_due_date_and_keeps_the_form`, `test_new_order_with_blank_new_client_names_explains_both_and_creates_nobody`; order page: `test_order_page_save_redisplays_a_date_error_in_place_and_keeps_the_notes`, `test_order_page_save_still_refuses_an_illegal_status_move_with_a_400`, `test_order_page_save_requires_login`, `test_order_page_renders_empty_notes_not_the_word_none`; timeline modal: `test_a_refused_quick_edit_reopens_its_dialog_with_the_message_and_what_was_typed`, `test_a_refused_quick_edit_is_not_replayed_on_a_later_visit`. What only a browser can show — the message where a person is looking, the new-client fields coming back revealed, the dialog reopening by itself — is `e2e/tests/order-form-errors.spec.ts` |
 | CL13 | `test_new_client_route_creates_a_client_with_minimal_fields`, `test_new_client_route_requires_first_and_last_name` |
-| MOD1–MOD4 | — gap — (dialog/tab markup and layout; not asserted by a route test) |
+| MOD1–MOD4 | `e2e/tests/timeline.spec.ts` (MOD1/MOD2 — opening a pre-rendered `<dialog>` from the timeline and saving it), `e2e/tests/modals-and-tabs.spec.ts` (MOD3/MOD4 — both detail pages' tabs, and `return_to` surviving each switch, which is what a route test can't see because each tab is its own request) |
 | CL14 | `test_orders_tab_shows_the_labeled_status_pill`, `test_orders_tab_status_dot_only_appears_in_the_legend` (`tests/test_client_orders_tab.py`) |
 | CL15 | `test_orders_tab_is_a_table_with_the_expected_columns`, `test_orders_tab_shows_dash_for_an_uninvoiced_order`, `test_orders_tab_sorts_by_the_requested_column` (`tests/test_client_orders_tab.py`); the status filter itself is — gap — same as LST4's client-side limitation |
 | MOD5 | `test_edit_client_redirects_to_return_to`, `test_edit_order_redirects_to_return_to` |
@@ -920,15 +1013,23 @@ has no regression test.
 | SET4 | see OT1–OT3 |
 | SET5 | see CL4–CL8 |
 | AN1 | `test_analytics_avg_value_excludes_clients_with_no_orders` |
-| AN2 | `test_analytics_avg_value_excludes_clients_with_no_orders` |
+| AN2 | `test_analytics_avg_value_excludes_clients_with_no_orders`, `test_analytics_avg_value_ignores_a_client_with_only_prior_orders` (CL2b pulls the other way on the same row) |
 | AN3 | `test_analytics_top_clients_ranks_by_lifetime_value` |
 | AN4 | `test_analytics_source_breakdown_includes_hidden_options_and_excludes_zero_percent` |
 | AN5–AN6 | `test_analytics_revenue_counts_recorded_payments_not_order_total`, `test_analytics_revenue_ytd_filters_to_the_current_year` |
 | AN7 | `test_analytics_method_breakdown_sorted_by_amount_descending` |
-| AN8 | — gap — (outstanding-on-issued-invoices is exercised from the billing side by `tests/test_invoicing.py`, not asserted from `/analytics` itself) |
+| AN8 | `test_analytics_outstanding_counts_invoiced_work_only`, `test_analytics_outstanding_drops_an_invoice_once_it_is_paid`, `test_analytics_outstanding_excludes_a_void_invoice` — one per clause of the predicate (issued, unsettled, not void), each reading the Outstanding card's own value rather than searching the page for a figure another card also renders |
 | AN9 | `test_analytics_tax_billed_ytd_shows_frozen_tax_for_the_current_year`, `test_analytics_tax_billed_ytd_excludes_invoices_issued_in_prior_years`; the underlying window is `tests/test_invoicing.py::test_tax_collected_windows_on_the_issued_date` |
 
-Everything still marked "— gap —" is either client-side JS/markup behavior
-(no route test can see it — same limitation `inventory/REQUIREMENTS.md`
-notes for its own UI rules) or a rule this pass didn't reach; closing those
-is the obvious next step if this file gets revisited.
+The client-side rows that used to read "— gap —" for this reason (TL7–TL9,
+TL11, LST4–LST5, MOD1–MOD4) are now covered by the Playwright suite
+instead; `inventory/REQUIREMENTS.md` still notes the same limitation for
+its own UI rules (`U2`, `U4`, `U8`), and those are the obvious next thing
+to point a browser at.
+
+What's still marked "— gap —" here is a rule this pass didn't reach, not
+one that can't be reached. Two are worth naming: **CO1–CO2** and **CO6–CO7**
+are structural claims about *every* query rather than about one route, so
+they'd need a different shape of test than a request and an assertion —
+walking `app.py`'s source the way `test_billing_boundary.py` walks
+`billing/` would be the honest way to pin them.

@@ -1,0 +1,19 @@
+{#
+  Inline validation for a form field a save refused (REQUIREMENTS OR13).
+
+  `field_error` is the message: one sentence, rendered inside the field's own
+  <label> so it sits directly under the input and is read out with it.
+  `invalid` is the matching attribute for the input itself, which turns its
+  border red. Both take the errors dict a route handed back (or nothing) and
+  a field name, and render nothing at all when that field is fine — so a
+  form can call them on every field it has, unconditionally.
+#}
+{% macro field_error(errors, name) -%}
+{%- if errors and errors.get(name) -%}
+<span class="field-error">{{ errors[name] }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro invalid(errors, name) -%}
+{%- if errors and errors.get(name) %} aria-invalid="true"{% endif -%}
+{%- endmacro %}

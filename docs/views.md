@@ -488,8 +488,17 @@ bottom of `timeline.html`. Each modal has a link out to a full page:
 - **Order modal → `/orders/<id>`**: also a `<form>`, POSTs to `/orders/<id>/edit`
   (item, start date, due date, status — dates via native `<input type="date">`
   calendar pickers). The order **total is read-only here** (`.modal__readout`), since
-  it's the sum of line items and there's no room for a line editor in a dialog. Both
-  editing paths share the `edit_order` route in `app.py`.
+  it's the sum of line items and there's no room for a line editor in a dialog. The
+  full order page's Details form POSTs to **its own URL** instead (`order_page()`,
+  GET and POST), and both write through the same `_check_order_form()` /
+  `_apply_order_form()` pair in `app.py`, so every rule about what a save may change
+  holds for both. They differ only in what a *refused* save looks like (REQUIREMENTS
+  OR13): the order page re-renders in place with a message under each bad field and
+  everything typed still there, notes included. The modal can't be re-rendered from
+  its POST URL — every modal and link on the timeline is built from `request.path`,
+  which would then be `/orders/<id>/edit` — so it redirects back to the same window
+  with a one-shot `order_edit_error` in the session, and the window reopens that
+  order's dialog (`data-open-on-load`) with the messages over what was typed.
   **The full order page has three tabs**, same `.settings-nav` sub-nav pattern as the
   client page, ordered **Details → Materials → Billing**: "Details" (`order_page()`,
   the bare `/orders/<id>` URL, kept there for the same "don't churn existing links"

@@ -10,6 +10,7 @@ what made that second tenant additive rather than an audit of query logic.
 """
 
 import json
+import math
 import os
 import re
 
@@ -258,6 +259,13 @@ ALLOWED_TRANSITIONS = {
 # What a brand-new order may start at. An order that's already finished
 # isn't something you create, it's something you arrive at.
 INITIAL_STATUSES = ("tentative", "confirmed")
+
+# Ceiling on `Client.prior_order_count` (CL2b). Not a business rule — a
+# studio with more than a million unlogged orders for one client has a
+# bigger problem than this field — but a bound the column can actually
+# hold: anything past SQLite's 8-byte INTEGER raises OverflowError on the
+# way in, and `isdigit()` alone doesn't catch it.
+MAX_PRIOR_ORDER_COUNT = 1_000_000
 
 
 def settable_statuses(status: str) -> list[str]:
@@ -553,13 +561,204 @@ def _parse_amount(raw: str | None) -> float | None:
 
     Returning None rather than raising lets callers decide between "leave
     the existing value alone" and "reject the request".
+
+    **Infinity and NaN are not numbers here**, even though `float()` is
+    happy to build them from "inf"/"nan". They don't raise, so without this
+    they land in the database as a real price and spread: `Order.total`
+    goes infinite, and with it `Client.lifetime_value`, the analytics
+    top-5 and every revenue figure. NaN is worse — SQLite stores it as
+    NULL, so a NaN payment amount fails the column's NOT NULL constraint
+    with a 500 rather than anything a person could read. There is no
+    sensible price either one could mean, so they read as "not a number".
     """
     if not raw:
         return None
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError:
         return None
+    return value if math.isfinite(value) else None
+
+
+def _parse_date(raw: str | None) -> date | None:
+    """A date from a form field, or None if it's blank/not a date.
+
+    The `_parse_amount` shape, for the same reason: `date.fromisoformat`
+    raises on anything it doesn't recognise (and `TypeError`, not
+    `ValueError`, when the field is missing entirely), and this app has no
+    error handler — so an unparseable date reached the user as a raw 500.
+    Every caller here knows what it wants to do about a missing date;
+    none of them wanted a traceback.
+    """
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _long_date(value: date) -> str:
+    """"Aug 1, 2026" — for a sentence a person reads. Built by hand because
+    strftime's "%-d" (no leading zero) works on Linux and raises on Windows."""
+    return f"{value:%b} {value.day}, {value.year}"
+
+
+def _check_order_form(form, order: Order | None = None) -> tuple[dict[str, str], dict]:
+    """Validate the name and dates an order form sent, before anything is
+    written (OR2a, OR12, OR13).
+
+    Returns `(errors, values)`. `errors` maps a field name to one sentence
+    for the person looking at the form, and is empty when the submission is
+    fine. `values` holds the stripped item and parsed dates that passed,
+    ready for `_apply_order_form` (or for `new_order` to build a row from).
+
+    A new order (`order` is None) must send all three. An edit is held to
+    hard rule 9: a field the form didn't send at all is left alone — but one
+    it sent *blank* is an error rather than a silent "keep the old value",
+    because every form that renders these fields marks them required, so a
+    blank one means a person emptied it and expects to hear about it.
+
+    Validates and nothing else. It never touches `order`, so a refused
+    submission leaves nothing dirty in the session for a later commit to
+    pick up.
+    """
+    errors: dict[str, str] = {}
+    values: dict = {}
+
+    if order is None or "item" in form:
+        item = form.get("item", "").strip()
+        if item:
+            values["item"] = item
+        else:
+            errors["item"] = "Give the order a name — it can't be blank or only spaces."
+
+    for field in ("start", "due"):
+        if order is None or field in form:
+            parsed = _parse_date(form.get(field))
+            if parsed is None:
+                errors[field] = f"Enter a {field} date."
+            else:
+                values[field] = parsed
+
+    # Against whatever the order keeps as well as against each other: a form
+    # that moves only the start date can still push it past the due date.
+    # Skipped when no date was sent, so an order already holding a backwards
+    # pair from before OR2a existed can still be edited — including by the
+    # very edit that fixes it — and skipped when either date already failed,
+    # since there's no pair to compare.
+    if ("start" in values or "due" in values) and "start" not in errors and "due" not in errors:
+        start = values.get("start") or order.start
+        due = values.get("due") or order.due
+        if due < start:
+            errors["due"] = (
+                f"The due date ({_long_date(due)}) is before the start date "
+                f"({_long_date(start)}). An order can't be due before it starts."
+            )
+
+    if "pickup_date" in form:
+        raw = form.get("pickup_date", "")
+        pickup = _parse_date(raw)
+        if raw and pickup is None:
+            errors["pickup_date"] = "Enter a valid pickup date, or leave it empty."
+        else:
+            values["pickup_date"] = pickup
+
+    return errors, values
+
+
+def _apply_order_form(order: Order, form, values: dict) -> None:
+    """Write an order edit that `_check_order_form` passed.
+
+    The one place both editing surfaces write through — the order page's
+    Details form (`order_page()`) and the timeline's quick-edit modal
+    (`edit_order()`) — so a rule enforced here holds for both, and neither
+    can drift into saving something the other refuses.
+    """
+    # Not "is this a real status" but "is this a legal move from here" —
+    # otherwise the dropdown's own markup is the only thing stopping a
+    # delivered order going back to tentative. A 400 rather than a field
+    # message, unlike everything in _check_order_form: both dropdowns only
+    # ever offer legal moves, so an illegal one didn't come from a person
+    # using the form. Checked before any write, so it leaves nothing dirty.
+    status = form.get("status")
+    if status and status != order.status and status not in settable_statuses(order.status):
+        abort(400)
+
+    if "item" in values:
+        order.item = values["item"]
+    if "start" in values:
+        order.start = values["start"]
+    if "due" in values:
+        order.due = values["due"]
+    if "pickup_date" in values:
+        order.pickup_date = values["pickup_date"]
+
+    if status and status != order.status:
+        order.status = status
+
+    # Rush travels with the modal's Save rather than as its own button: a
+    # button in there would reload the page and lose whatever else was
+    # being edited. Unchecked checkboxes post nothing, hence the marker
+    # field — without it "unchecked" and "form didn't render this" look
+    # identical, and hard rule 9 says those must not.
+    #
+    # Read after the status write on purpose: moving to `ready` clears the
+    # flag even if the box came back ticked, and the `elif` catches the
+    # same move arriving from a form that has no rush field at all.
+    if "rush_field" in form:
+        order.is_rush = order.can_rush and "is_rush" in form
+    elif not order.can_rush:
+        order.is_rush = False
+
+    if "order_type_id" in form:
+        order_type_id = form.get("order_type_id", "")
+        order.order_type = (
+            OrderType.query.filter_by(
+                id=order_type_id, company_id=current_user.company_id
+            ).first()
+            if order_type_id.isdigit() else None
+        )
+
+    # Guarded, not unconditional: the timeline's quick-edit modal posts
+    # without a notes field (OR4 keeps notes on the full order page), and an
+    # unguarded write blanked them. Hard rule 9.
+    if "notes" in form:
+        order.notes = form.get("notes", "").strip()
+
+
+def _stash_order_edit_error(order: Order, return_to: str, form, errors: dict[str, str]) -> None:
+    """Hand a refused quick edit back to the timeline window it came from.
+
+    Only the fields the modal renders are kept, and only those the form
+    actually sent: the session is a signed cookie with a ~4KB ceiling, and a
+    stash that carried an order's notes could blow through it — at which
+    point the browser silently drops the cookie, and with it both the
+    message and everything typed. The modal has no notes field (OR4), so
+    there's nothing of value lost by leaving them out.
+    """
+    values = {key: form.get(key, "") for key in ("item", "start", "due", "status") if key in form}
+    if "rush_field" in form:
+        values["is_rush"] = "is_rush" in form
+    session["order_edit_error"] = {
+        "order_id": order.id,
+        "path": return_to,
+        "errors": errors,
+        "values": values,
+    }
+
+
+def _take_order_edit_error() -> dict | None:
+    """The stashed quick-edit failure, if it belongs to this timeline window.
+
+    Popped whether or not it matches, so a stash from a request that never
+    came back here — `return_to` pointing somewhere else — can't lie in wait
+    and reopen an old dialog on some later, unrelated visit.
+    """
+    stashed = session.pop("order_edit_error", None)
+    if stashed and stashed.get("path") == request.path:
+        return stashed
+    return None
 
 
 def format_phone(raw: str | None) -> str:
@@ -944,7 +1143,12 @@ def timeline_window(year: int, month: int, day: int):
         clipped_start = max(order.start, window_start)
         clipped_end = min(order.due, window_end)
         col_start = (clipped_start - window_start).days + 1  # 1-indexed CSS grid column
-        span = (clipped_end - clipped_start).days + 1
+        # Floored at one day. `new_order`/`edit_order` now refuse a due date
+        # before the start (OR2a), but rows predating that check can still
+        # be on file, and `span: -7` is invalid CSS — the bar vanishes or
+        # draws over its neighbours rather than showing something wrong.
+        # One day wide and visibly odd beats silently mangling the grid.
+        span = max((clipped_end - clipped_start).days + 1, 1)
 
         rows.append({
             "id": order.id,
@@ -989,6 +1193,9 @@ def timeline_window(year: int, month: int, day: int):
         next_start=next_start,
         status_labels=STATUS_LABELS,
         active_view="timeline",
+        # A refused quick edit handed back to this window (OR13) — see
+        # edit_order(). Popped on every render, matching or not.
+        order_edit_error=_take_order_edit_error(),
     )
 
 
@@ -1358,7 +1565,13 @@ def edit_client(client_id: int):
         client.notes = request.form.get("notes", "").strip()
     if "prior_order_count" in request.form:
         raw = request.form.get("prior_order_count", "").strip()
-        client.prior_order_count = int(raw) if raw.isdigit() else 0
+        # `isdigit()` vouches for the *shape*, not the magnitude — a 25-digit
+        # string is all digits and overflows SQLite's 8-byte INTEGER on the
+        # way in, which surfaced as a 500. Out of range is coerced to 0 like
+        # any other unreadable value (CL2b), rather than rejecting the whole
+        # save over a field nobody meant to fill in that way.
+        value = int(raw) if raw.isdigit() else 0
+        client.prior_order_count = value if value <= MAX_PRIOR_ORDER_COUNT else 0
     if "street" in request.form:
         client.street = request.form.get("street", "").strip() or None
         client.city = request.form.get("city", "").strip() or None
@@ -1430,33 +1643,75 @@ def new_order():
     )
     return_to = request.values.get("return_to") or url_for("timeline_view")
 
+    def render_form(form=None, errors=None, status=200):
+        # `form`/`errors` are what a refused save hands back (OR13); both
+        # empty on a first visit. The template reads every field's value back
+        # out of `form`, so fixing one mistake never means retyping the rest.
+        return render_template(
+            "new_order.html",
+            clients=clients,
+            order_types=order_types,
+            status_labels=STATUS_LABELS,
+            initial_statuses=INITIAL_STATUSES,
+            return_to=return_to,
+            back_label=back_label(return_to),
+            today=date.today(),
+            active_view=None,
+            form=form or {},
+            errors=errors or {},
+        ), status
+
     if request.method == "POST":
-        client_id = request.form.get("client_id", "")
+        form = request.form
+        # Everything is checked before anything is added to the session —
+        # the inline new client included — so a refused submission leaves no
+        # half-made row behind for some later commit to pick up.
+        errors, values = _check_order_form(form)
+
+        client_id = form.get("client_id", "")
+        client = None
+        first_name = last_name = ""
         if client_id == "new":
-            first_name = request.form.get("new_first_name", "").strip()
-            last_name = request.form.get("new_last_name", "").strip()
-            if not first_name or not last_name:
-                abort(400)
-            client = Client(
-                company_id=current_user.company_id,
-                first_name=first_name,
-                last_name=last_name,
-                email=request.form.get("new_email", "").strip(),
-                phone=format_phone(request.form.get("new_phone", "")),
-            )
-            db.session.add(client)
-            db.session.flush()  # assigns client.id
+            first_name = form.get("new_first_name", "").strip()
+            last_name = form.get("new_last_name", "").strip()
+            # The page's script marks these `required` once "+ Add new
+            # client" is chosen — and, like the item, spaces alone satisfy it.
+            if not first_name:
+                errors["new_first_name"] = (
+                    "Enter the new client's first name — it can't be blank or only spaces."
+                )
+            if not last_name:
+                errors["new_last_name"] = (
+                    "Enter the new client's last name — it can't be blank or only spaces."
+                )
         else:
             client = Client.query.filter_by(
                 id=client_id if client_id.isdigit() else None,
                 company_id=current_user.company_id,
             ).first()
+            # The picker lists only this company's clients and requires a
+            # choice, so an id that doesn't resolve didn't come from a person
+            # using it — a 400 rather than a message, same as an illegal
+            # status move (OR1a).
             if client is None:
                 abort(400)
 
-        status = request.form.get("status")
-        item = request.form.get("item", "").strip()
-        order_type_id = request.form.get("order_type_id", "")
+        if errors:
+            return render_form(form, errors, status=400)
+
+        if client is None:  # "+ Add new client", with both names now known good
+            client = Client(
+                company_id=current_user.company_id,
+                first_name=first_name,
+                last_name=last_name,
+                email=form.get("new_email", "").strip(),
+                phone=format_phone(form.get("new_phone", "")),
+            )
+            db.session.add(client)
+            db.session.flush()  # assigns client.id
+
+        status = form.get("status")
+        order_type_id = form.get("order_type_id", "")
         order_type = (
             OrderType.query.filter_by(
                 id=order_type_id, company_id=current_user.company_id, is_active=True
@@ -1465,12 +1720,12 @@ def new_order():
         )
         order = Order(
             client_id=client.id,
-            item=item,
-            start=date.fromisoformat(request.form.get("start")),
-            due=date.fromisoformat(request.form.get("due")),
+            item=values["item"],
+            start=values["start"],
+            due=values["due"],
             status=status if status in INITIAL_STATUSES else "tentative",
             order_type_id=order_type.id if order_type else None,
-            notes=request.form.get("notes", "").strip(),
+            notes=form.get("notes", "").strip(),
         )
         db.session.add(order)
         db.session.flush()  # assigns order.id
@@ -1480,35 +1735,52 @@ def new_order():
         # here, detail over there" split as payments.
         db.session.add(OrderLine(
             order_id=order.id,
-            description=item,
+            description=values["item"],
             quantity=1,
-            unit_price=_parse_amount(request.form.get("price")) or 0.0,
+            unit_price=_parse_amount(form.get("price")) or 0.0,
             sort_order=0,
         ))
         db.session.commit()
         return redirect(return_to)
 
-    return render_template(
-        "new_order.html",
-        clients=clients,
-        order_types=order_types,
-        status_labels=STATUS_LABELS,
-        initial_statuses=INITIAL_STATUSES,
-        return_to=return_to,
-        back_label=back_label(return_to),
-        today=date.today(),
-        active_view=None,
-    )
+    return render_form()
 
 
-@app.route("/orders/<int:order_id>")
+@app.route("/orders/<int:order_id>", methods=["GET", "POST"])
 @login_required
 def order_page(order_id: int):
     """The order page's "Details" tab — see order_billing() for the other
     tab. Kept at the bare /orders/<id> URL (rather than e.g. /orders/<id>/details)
-    since every other page's links to an order already point here."""
+    since every other page's links to an order already point here.
+
+    POST is this tab's own form (OR13). It saves here, at the page's own
+    URL, rather than through edit_order(), so that a save which is refused
+    can re-render the form in place: a message under each bad field, and
+    everything typed still in it — notes included. Both alternatives fail.
+    Rendering this template from /orders/<id>/edit would break every form
+    on the page built from `request.path` (the documents explorer's upload
+    and delete, for a start); redirecting back instead would mean carrying a
+    possibly long note through the session cookie. Both routes write through
+    the same _check_order_form()/_apply_order_form() pair, so neither can
+    save anything the other would refuse.
+    """
     order = get_order_or_404(order_id)
-    return_to = request.args.get("return_to") or url_for("timeline_view")
+    return_to = request.values.get("return_to") or url_for("timeline_view")
+
+    if request.method == "POST":
+        errors, values = _check_order_form(request.form, order)
+        if not errors:
+            _apply_order_form(order, request.form, values)
+            db.session.commit()
+            return redirect(return_to)
+        return _render_order_details(order, return_to, form=request.form, errors=errors), 400
+
+    return _render_order_details(order, return_to)
+
+
+def _render_order_details(order: Order, return_to: str, form=None, errors=None):
+    """The Details tab. `form` and `errors` are a refused save's submission
+    and its messages (OR13) — both None on an ordinary visit."""
     # Same "active options ∪ whatever's already selected" pattern as the
     # client page's source checkboxes: a now-hidden type this order already
     # has stays selectable here (so saving the rest of the form doesn't
@@ -1544,6 +1816,9 @@ def order_page(order_id: int):
         storage_percent=min(100, round(storage_used_bytes / documents_config.MAX_TOTAL_BYTES * 100, 1)),
         inline_previewable_content_types=documents_config.INLINE_PREVIEWABLE_CONTENT_TYPES,
         allowed_extensions=documents_config.ALLOWED_EXTENSIONS,
+        # A refused save's submission and messages (OR13); None on a visit.
+        form_values=form,
+        form_errors=errors,
     )
 
 
@@ -1593,60 +1868,29 @@ def order_materials(order_id: int):
 @app.route("/orders/<int:order_id>/edit", methods=["POST"])
 @login_required
 def edit_order(order_id: int):
+    """Save from the timeline's quick-edit order modal (MOD1, MOD2).
+
+    The full order page saves through order_page() instead — see there for
+    why — and both write through the same _check_order_form() /
+    _apply_order_form() pair.
+
+    A refused save can't re-render here the way order_page() does. The
+    timeline builds every modal's `return_to` and every link from
+    `request.path`, which from this URL would be /orders/<id>/edit, so the
+    page it produced would send its next save somewhere that only accepts
+    POST. Instead it goes back to the window it came from with the messages
+    and what was typed stashed, and that window reopens the dialog (OR13).
+    """
     order = get_order_or_404(order_id)
-    order.item = request.form.get("item", "").strip() or order.item
-
-    start_str = request.form.get("start")
-    due_str = request.form.get("due")
-    if start_str:
-        order.start = date.fromisoformat(start_str)
-    if due_str:
-        order.due = date.fromisoformat(due_str)
-
-    if "pickup_date" in request.form:
-        pickup_str = request.form.get("pickup_date", "")
-        order.pickup_date = date.fromisoformat(pickup_str) if pickup_str else None
-
-    # Not "is this a real status" but "is this a legal move from here" —
-    # otherwise the dropdown's own markup is the only thing stopping a
-    # delivered order going back to tentative.
-    status = request.form.get("status")
-    if status and status != order.status:
-        if status not in settable_statuses(order.status):
-            abort(400)
-        order.status = status
-
-    # Rush travels with the modal's Save rather than as its own button: a
-    # button in there would reload the page and lose whatever else was
-    # being edited. Unchecked checkboxes post nothing, hence the marker
-    # field — without it "unchecked" and "form didn't render this" look
-    # identical, and hard rule 9 says those must not.
-    #
-    # Read after the status write on purpose: moving to `ready` clears the
-    # flag even if the box came back ticked, and the `elif` catches the
-    # same move arriving from a form that has no rush field at all.
-    if "rush_field" in request.form:
-        order.is_rush = order.can_rush and "is_rush" in request.form
-    elif not order.can_rush:
-        order.is_rush = False
-
-    if "order_type_id" in request.form:
-        order_type_id = request.form.get("order_type_id", "")
-        order.order_type = (
-            OrderType.query.filter_by(
-                id=order_type_id, company_id=current_user.company_id
-            ).first()
-            if order_type_id.isdigit() else None
-        )
-
-    # Guarded, not unconditional: the timeline's quick-edit modal posts here
-    # without a notes field (OR4 keeps notes on the full order page), and an
-    # unguarded write blanked them. Hard rule 9.
-    if "notes" in request.form:
-        order.notes = request.form.get("notes", "").strip()
-
-    db.session.commit()
     return_to = request.form.get("return_to") or url_for("timeline_view")
+
+    errors, values = _check_order_form(request.form, order)
+    if errors:
+        _stash_order_edit_error(order, return_to, request.form, errors)
+        return redirect(return_to)
+
+    _apply_order_form(order, request.form, values)
+    db.session.commit()
     return redirect(return_to)
 
 
@@ -1769,13 +2013,16 @@ def delete_order_line(order_id: int, line_id: int):
 def add_payment(order_id: int):
     order = get_order_or_404(order_id)
     amount = _parse_amount(request.form.get("amount"))
-    paid_date_str = request.form.get("paid_date")
-    if amount is not None and paid_date_str:
+    # Same "ignore what we can't read" shape the amount above already had:
+    # an unparseable date is no more a payment than a blank amount is, and
+    # it used to raise instead of being ignored.
+    paid_date = _parse_date(request.form.get("paid_date"))
+    if amount is not None and paid_date is not None:
         method = request.form.get("method")
         db.session.add(Payment(
             order_id=order.id,
             amount=amount,
-            paid_date=date.fromisoformat(paid_date_str),
+            paid_date=paid_date,
             method=method if method in PAYMENT_METHOD_LABELS else "cash",
             reference=request.form.get("reference", "").strip() or None,
         ))

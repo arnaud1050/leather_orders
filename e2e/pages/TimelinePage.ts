@@ -93,6 +93,23 @@ export class TimelinePage extends BasePage {
     });
   }
 
+  /** An order's dialog, found without clicking anything — for one the page
+   * reopened by itself after a refused quick edit (OR13). */
+  async orderDialogByItem(item: string): Promise<Locator> {
+    return await step(`Find the order dialog for '${item}'`, async () => {
+      const bar = this.page.locator(`.timeline__bar[title^="${item}"]`).first();
+      const orderId = await bar.getAttribute("data-open-order");
+      return this.page.locator(`#order-modal-${orderId}`);
+    });
+  }
+
+  /** The inline message under a field inside a dialog — count 0 when it's fine. */
+  dialogFieldError(dialog: Locator, name: string): Locator {
+    return dialog
+      .locator("label", { has: this.page.locator(`[name="${name}"]`) })
+      .locator(".field-error");
+  }
+
   async closeModal(dialog: Locator): Promise<void> {
     await step("Close the modal", async () => {
       await dialog.locator("[data-close-modal]").click();

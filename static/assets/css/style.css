@@ -1258,6 +1258,30 @@ dialog.modal::backdrop {
   color: var(--status-rush);
 }
 
+/* A field a save refused (OR13, templates/_field_error.html). Same red and
+   the same plain, unboxed treatment as .password-status--error — "that
+   submission didn't go through" — not the amber .warning-note panel, which
+   means a standing condition of the page. It sits inside the field's
+   <label>, so it resets the label's small uppercase caption styling back to
+   a readable sentence. */
+.field-error {
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 1.4;
+  color: var(--day-today);
+}
+
+/* After the :focus rules above on purpose: at equal specificity the later
+   rule wins, so the border stays red while the person is fixing the field
+   rather than snapping back to ink the moment they click into it. */
+.detail-form input[aria-invalid="true"],
+.detail-form select[aria-invalid="true"],
+.modal__field input[aria-invalid="true"] {
+  border-color: var(--day-today);
+}
+
 .detail-orders h2,
 .detail-documents h2,
 .detail-payments h2,

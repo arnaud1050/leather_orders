@@ -196,17 +196,39 @@ on or before today" (TL2) — an offset that's small and negative (roughly
 week the suite happens to run. See the comment on `margaret-ready-order` in
 `e2e-data.json` for a worked example of the edge case.
 
-### What's already implemented vs. stubbed
+### What's covered
 
-- **`auth.spec.ts`, `timeline.spec.ts`, `orders-list.spec.ts`,
-  `clients-list.spec.ts`, `mobile-nav.spec.ts`** — real selectors, pulled
-  from the actual templates, should run as-is.
-- **`settings-drag-and-drop.spec.ts`, `modals-and-tabs.spec.ts`** — marked
-  `test.fixme(...)` (shows up as "fixme", not a false pass, in both
-  reporters) with TODO comments on what markup still needs reading and what
-  each test should assert. These are exactly the areas the QA plan flagged
-  as highest priority (real drag-and-drop, zero pytest coverage anywhere)
-  — filling them in is the natural next step, not an afterthought.
+Every spec runs against real selectors pulled from the actual templates;
+nothing is stubbed. Each one exists because it covers something a pytest
+route test structurally can't see:
+
+- **`timeline.spec.ts`, `orders-list.spec.ts`, `clients-list.spec.ts`** —
+  the `localStorage` filters and sorts (TL7–TL9, LST4–LST5), the timeline's
+  `<dialog>` modals, and hiding a client end to end (CL17–CL19).
+- **`modals-and-tabs.spec.ts`** — both detail pages' tabs carrying
+  `return_to` through each switch (MOD3/MOD4), and hard rule 9 across two
+  real forms posting to the same order.
+- **`settings-drag-and-drop.spec.ts`** — the drag itself (CL8, LST10): the
+  `dragend` handler that reads the DOM and builds the reorder payload,
+  which nothing else exercises. Uses dispatched HTML5 drag events, since
+  Playwright's `dragTo()` doesn't reliably produce the sequence these lists
+  listen for.
+- **`order-form-errors.spec.ts`** — a refused save explaining itself where a
+  person is looking (OR13): messages under the fields, everything typed
+  kept, the new-client fields coming back revealed, and a timeline quick
+  edit's dialog reopening by itself.
+- **`auth.spec.ts`, `mobile-nav.spec.ts`** — sign-in, the forced password
+  change, and the hamburger nav below 680px (CO5a).
+
+Tests that change saved state (hiding a client, reordering a list, a
+column's visibility) put it back in a `finally`, because every spec shares
+one server and one database with every other, in parallel. The
+`order-form-errors` tests don't need to: a refused submission writes
+nothing.
+
+Still not covered, and the obvious next targets: the inventory list's
+client-side filters and the Materials tab's live cost estimate
+(`inventory/REQUIREMENTS.md` U2, U4, U8).
 
 ### One gotcha worth knowing before you add more
 

@@ -181,6 +181,19 @@ Current tokens (top of `style.css`):
   pattern**; don't raise `.detail-form`'s cap, which would stretch every
   single-line field in the app.
 
+- **A field a save refused gets one sentence of red text under it, inside
+  its own `<label>`** (`.field-error`), and a red border
+  (`[aria-invalid="true"]`) — `templates/_field_error.html` renders both, so
+  a form calls it on every field and it draws nothing for the fine ones.
+  Same red and the same plain, unboxed treatment as `.password-status--error`,
+  for the same reason: it says *that submission didn't go through*, which is
+  not what the amber-bordered `.warning-note` means (a standing condition of
+  the page). The sentence names the problem and what to do about it —
+  "The due date (Aug 1, 2026) is before the start date (Aug 20, 2026)…" —
+  never a bare "Invalid". And the form comes back with everything that was
+  typed still in it; a message that costs someone their notes is worse than
+  no message.
+
 **When extending the UI:** match the current restrained, high-contrast, no-flourish
 look. Don't add serif/display fonts, decorative stitching, or brownish/muted accent
 colors without checking first — all three have been explicitly removed once already.

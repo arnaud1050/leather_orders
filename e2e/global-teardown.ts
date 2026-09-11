@@ -44,7 +44,18 @@ export default async function globalTeardown(): Promise<void> {
   }
 
   if (fs.existsSync(cfg.dbPath)) {
-    fs.rmSync(cfg.dbPath);
-    console.log(`[e2e] Removed ${cfg.dbPath}.`);
+    try {
+      // On Windows, `taskkill /F` returns once the kill is issued, not once
+      // the OS has released the process's handle on the SQLite file — so an
+      // immediate delete intermittently hits EBUSY/EPERM. rmSync's own
+      // retry-with-backoff exists for exactly those codes.
+      fs.rmSync(cfg.dbPath, { maxRetries: 10, retryDelay: 100 });
+      console.log(`[e2e] Removed ${cfg.dbPath}.`);
+    } catch (error) {
+      // Not worth failing a green run over: global-setup deletes any
+      // leftover database before it seeds, so the next run starts clean
+      // either way.
+      console.warn(`[e2e] Could not remove ${cfg.dbPath} (${String(error)}); the next run will replace it.`);
+    }
   }
 }

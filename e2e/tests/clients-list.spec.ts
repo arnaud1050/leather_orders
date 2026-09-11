@@ -1,7 +1,9 @@
 import { test, expect } from "../fixtures/auth.fixture";
 import { feature, description } from "allure-js-commons";
 import { ClientsListPage } from "../pages/ClientsListPage";
+import { ClientPage } from "../pages/ClientPage";
 import { clientFullName, clientByKey, clientLifetimeValue, formatMoney } from "../fixtures/testData";
+import { gotoPath } from "../lib/nav";
 
 test.describe("Clients list — orders filter reaches all three states (LST5, LST5a)", () => {
   test("both groups show by default", async ({ adminPage }) => {
@@ -93,30 +95,65 @@ test.describe("Client hide/unhide (CL17-CL19)", () => {
   // in a `.detail-lifecycle` block on the full client page behind a
   // confirm dialog (see docs/views.md), and this scaffold hasn't inspected
   // that page's real markup yet — filling this in needs real selectors,
-  // not guesses. Steps once it's implemented:
-  //   1. open Radia Perlman's full client page, click the hide action,
-  //      confirm the dialog
-  //   2. assert redirect back to /clients with Radia absent from the roster
-  //   3. assert she appears on /clients?hidden=1
-  //   4. assert her order (Laptop Sleeve) is unchanged on /orders and on
-  //      her own Orders tab (CL18 — hiding must not touch a single order,
-  //      payment, invoice or analytics figure)
-  //   5. un-hide her again at the end, so this fixture client is back to
-  //      its seeded state for any test that runs after this one
-  test.fixme(
-    "hiding Radia Perlman removes her from the roster and lists her in the archive, untouched otherwise",
-    async ({ adminPage }) => {
-      await feature("Clients");
-      await description(
-        "CL17-CL19: hiding a client is roster-scope only — it removes them from /clients and the new-order " +
-          "picker, and nothing else. Their orders, payments, invoices and every analytics figure must stay " +
-          "bit-identical."
-      );
-      const clients = new ClientsListPage(adminPage);
+  // This test hides a seeded client and puts them back at the end. Radia
+  // Perlman exists in the fixture for exactly this and nothing else — don't
+  // assert on her from another test, or the two will race under parallel
+  // workers (they share one server and one database).
+  test("hiding a client moves them to the archive and leaves their order alone", async ({
+    adminPage,
+  }) => {
+    await feature("Clients");
+    await description(
+      "CL17-CL19: hiding is roster-scope only. The client comes off /clients and appears in the " +
+        "?hidden=1 archive, but their order keeps rendering on /orders under their name — CL18 is " +
+        "explicit that hiding must not touch a single order, payment, invoice or analytics figure. " +
+        "There is deliberately no Delete beside it (CL17): Order, Invoice and EmailThread all " +
+        "reference a client, so a deleted row would leave every one of them pointing at nobody."
+    );
+    const clients = new ClientsListPage(adminPage);
+    const clientPage = new ClientPage(adminPage);
+    const radia = clientByKey("radia");
+    const radiaName = clientFullName(radia);
+    const radiaOrder = radia.orders[0].item;
+
+    await clients.goto();
+    await clients.rowByName(radiaName).getByRole("link", { name: radiaName, exact: true }).click();
+    await expect(adminPage).toHaveURL(/\/clients\/\d+/);
+
+    // CL17 — one boolean, both directions, and no Delete anywhere near it.
+    await expect(adminPage.locator(".detail-lifecycle")).not.toContainText("Delete");
+
+    try {
+      await clientPage.hide();
+
+      // Off the roster...
       await clients.goto();
-      const radiaName = clientFullName(clientByKey("radia"));
-      await clients.rowByName(radiaName).getByRole("link", { name: radiaName }).click();
-      await expect(adminPage).toHaveURL(/\/clients\/\d+/);
+      await expect(clients.rowByName(radiaName)).toHaveCount(0);
+      // ...and the archive link appears now that there's something in it (CL19).
+      await expect(clients.archiveLink()).toBeVisible();
+
+      await clients.goto(true);
+      await expect(clients.rowByName(radiaName)).toBeVisible();
+      // CL19 — the archive is only hidden clients, never a mixed list.
+      await expect(clients.rowByName("Ada Lovelace")).toHaveCount(0);
+      // ...and it omits "+ Add client": nobody means to add someone straight
+      // to the hidden list.
+      await expect(clients.addClientButton).toHaveCount(0);
+
+      // CL18 — the order is untouched and still carries her name.
+      await gotoPath(adminPage, "/orders");
+      const orderRow = adminPage.locator("#orders-table tbody tr").filter({ hasText: radiaOrder });
+      await expect(orderRow).toBeVisible();
+      await expect(orderRow).toContainText(radiaName);
+    } finally {
+      // Put her back however the assertions above went, so a failure here
+      // doesn't leave the fixture altered for whatever runs next.
+      await clients.goto(true);
+      await clients.rowByName(radiaName).getByRole("link", { name: radiaName, exact: true }).click();
+      await clientPage.unhide();
     }
-  );
+
+    await clients.goto();
+    await expect(clients.rowByName(radiaName)).toBeVisible();
+  });
 });

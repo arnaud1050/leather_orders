@@ -1,76 +1,147 @@
 import { test, expect } from "../fixtures/auth.fixture";
+import { feature, description } from "allure-js-commons";
+import { SettingsPage } from "../pages/SettingsPage";
+import { OrdersListPage } from "../pages/OrdersListPage";
 
 /**
- * SKELETON — not yet backed by real selectors.
+ * The drag-reorderable lists (CL8, LST10) are the one interaction in this
+ * app with no coverage at any level: pytest covers the reorder *endpoints*
+ * thoroughly, but nothing covers the drag that calls them — and between the
+ * two sits a `dragend` handler that reads the DOM and builds the payload. A
+ * wrong selector or a reversed sort there saves an order nobody asked for,
+ * with no Save button and no confirmation to notice it by.
  *
- * Every drag-reorderable list in the app (source options, order types,
- * inventory units, the Orders-list column editor, the Analytics layout)
- * shares one native HTML5 drag-and-drop pattern — draggable="true" list
- * items, a grip handle, a JSON fetch() fired on `dragend` — but each lives
- * on a different settings page whose markup this scaffold hasn't read yet.
- * This is real, first-priority test surface (see the QA plan: it's the
- * only interaction in the whole app with zero pytest coverage anywhere),
- * so it's stubbed out here rather than skipped silently.
- *
- * To fill these in:
- *   1. Read the relevant template (templates/settings.html for source
- *      options/order types, inventory/templates/_settings_units.html and
- *      _settings_columns.html, analytics.html) to get real selectors for
- *      the draggable items and their grip handles.
- *   2. Playwright has no built-in "drag this HTML5 draggable item" action
- *      — `locator.dragTo()` works for simple cases, but native
- *      draggable="true" drag-and-drop usually needs manual dispatch of
- *      dragstart/dragover/drop DOM events (see Playwright's own docs on
- *      "Drag and Drop" for the dataTransfer polyfill pattern) since a raw
- *      mouse-move sequence doesn't fire the HTML5 drag events these pages
- *      listen for.
- *   3. Assert the persisted order survives a reload (these save instantly
- *      on `dragend`, no Save button) by re-reading the list from the page,
- *      not from a mocked network response — the fetch's response body
- *      confirms the request happened, not that the row order it produced
- *      is actually correct.
+ * These tests mutate per-company settings and put them back afterwards.
+ * They share one server and one database with every other spec, so keep
+ * this file's subject matter to itself: nothing else asserts on
+ * source-option order or the Orders-list column layout.
  */
+
+/** ORDER_COLUMNS in app.py — key to the header label it renders. */
+const COLUMN_LABELS: Record<string, string> = {
+  item: "Item",
+  client: "Client",
+  type: "Type",
+  status: "Status",
+  start: "Start",
+  due: "Due",
+  total: "Total",
+  paid: "Paid",
+  balance: "Balance",
+};
+
 test.describe("Settings > Clients — source option reorder (CL8)", () => {
-  test.fixme("dragging a source option to a new position persists after reload", async ({ adminPage }) => {
-    await adminPage.goto("/settings/clients");
-    // TODO: locate draggable items, e.g. page.locator('.settings-source-list__item')
-    // TODO: perform the drag (see class-level note above on HTML5 DnD)
-    // TODO: reload and assert the new order
-  });
+  test("dragging an option to the top persists after a reload", async ({ adminPage }) => {
+    await feature("Settings");
+    await description(
+      "CL8: source options are reordered by drag-and-drop, saved by a JSON fetch fired on dragend with " +
+        "no Save button. The reorder is only real if it survives a reload — that's what proves the " +
+        "payload the browser built actually reached /settings/sources/reorder and was stored, rather " +
+        "than the row merely having moved in the DOM."
+    );
+    const settings = new SettingsPage(adminPage);
+    await settings.gotoClients();
 
-  test.fixme("dragging an id belonging to another company is silently ignored, not an error", async () => {
-    // TODO: this one may be better suited to an API-level test (POST
-    // /settings/sources/reorder directly with a foreign id) than a UI
-    // drag — the UI never renders another company's row to drag in the
-    // first place, so the interesting case is what the endpoint does with
-    // a tampered payload, not what a mouse can do.
+    const before = await settings.sourceOptionLabels();
+    expect(before.length).toBeGreaterThan(2);
+
+    // Drag the last option above the first.
+    const items = settings.sourceOptionItems();
+    await settings.dragItemOnto(items.last(), items.first(), "above");
+
+    try {
+      const afterDrag = await settings.sourceOptionLabels();
+      expect(afterDrag[0]).toBe(before[before.length - 1]);
+
+      await settings.reload();
+
+      expect(await settings.sourceOptionLabels()).toEqual(afterDrag);
+    } finally {
+      // Put the original order back even on failure, so nothing else in the
+      // suite inherits a reshuffled list.
+      const restored = settings.sourceOptionItems();
+      await settings.dragItemOnto(restored.first(), restored.last(), "below");
+    }
+
+    await settings.reload();
+    expect(await settings.sourceOptionLabels()).toEqual(before);
   });
 });
 
-test.describe("Orders list — column reorder and hide/show (LST6-LST12)", () => {
-  test.fixme("dragging a column row changes /orders' rendered column order", async ({ adminPage }) => {
-    await adminPage.goto("/settings/orders");
-    // TODO
+test.describe("Settings > Orders — Orders-list column layout (LST9, LST10)", () => {
+  test("dragging a column changes the order /orders renders its headers in", async ({ adminPage }) => {
+    await feature("Settings");
+    await description(
+      "LST10: the column editor saves the instant a row is dropped. The assertion that matters isn't " +
+        "the settings page redrawing itself — it's /orders actually rendering its headers in the new " +
+        "order afterwards, which is the whole point of the preference."
+    );
+    const settings = new SettingsPage(adminPage);
+    const orders = new OrdersListPage(adminPage);
+    await settings.gotoOrders();
+
+    const before = await settings.orderColumnKeys();
+    expect(before.length).toBeGreaterThan(2);
+    const movedKey = before[before.length - 1];
+
+    const items = settings.orderColumnItems();
+    await settings.dragItemOnto(items.last(), items.first(), "above");
+
+    try {
+      await settings.reload();
+
+      expect(await settings.orderColumnKeys()).toEqual([
+        movedKey,
+        ...before.slice(0, before.length - 1),
+      ]);
+
+      // The preference is only worth anything if the list itself obeys it.
+      await orders.goto();
+      const headers = await orders.table.locator("thead a.sort-link").allInnerTexts();
+      // Compared case-insensitively: the header is uppercased by CSS, so
+      // innerText reads "BALANCE" while the label really is "Balance".
+      // The casing is presentation, not part of the column's identity.
+      expect(headers[0].trim().toLowerCase()).toBe(COLUMN_LABELS[movedKey].toLowerCase());
+    } finally {
+      // Restore even if an assertion above failed — this is company-wide
+      // saved state, and leaving it reshuffled would hand the next test a
+      // layout it never asked for.
+      await settings.gotoOrders();
+      const restored = settings.orderColumnItems();
+      await settings.dragItemOnto(restored.first(), restored.last(), "below");
+    }
+
+    await settings.reload();
+    expect(await settings.orderColumnKeys()).toEqual(before);
   });
 
-  test.fixme("hiding the Type column hides it on /orders even though order types exist", async ({ adminPage }) => {
-    await adminPage.goto("/settings/orders");
-    // TODO: click the Type row's Hide button (not a drag — LST10's
-    // reorder and toggle are two different actions)
-  });
-});
+  test("hiding a column removes it from /orders, and showing it puts it back", async ({ adminPage }) => {
+    await feature("Settings");
+    await description(
+      "LST10/LST9: visibility is a plain POST-and-redirect, not part of the drag. Hiding the Total " +
+        "column must drop that header from /orders entirely while leaving the rows intact — the data " +
+        "is kept, it just stops rendering."
+    );
+    const settings = new SettingsPage(adminPage);
+    const orders = new OrdersListPage(adminPage);
 
-test.describe("Analytics — section/card layout reorder (AN10, AN11)", () => {
-  test.fixme("dragging a card within its own section persists after reload", async ({ adminPage }) => {
-    await adminPage.goto("/analytics");
-    // TODO
-  });
+    await orders.goto();
+    await expect(orders.table.locator("thead")).toContainText("Total");
 
-  test.fixme("a card cannot be dragged into a different section", async ({ adminPage }) => {
-    await adminPage.goto("/analytics");
-    // TODO: this is the one negative case worth its own test — AN11 says
-    // the server re-validates this even if a tampered client payload tried
-    // to move a card across sections, so consider an API-level check here
-    // too, not only a UI drag that the frontend already prevents.
+    await settings.gotoOrders();
+    await settings.toggleColumn("total");
+
+    try {
+      await orders.goto();
+      await expect(orders.table.locator("thead")).not.toContainText("Total");
+      // The rows are still there — this hid a column, not the orders.
+      await expect(orders.rowByItem("Custom Tote")).toBeVisible();
+    } finally {
+      await settings.gotoOrders();
+      await settings.toggleColumn("total");
+    }
+
+    await orders.goto();
+    await expect(orders.table.locator("thead")).toContainText("Total");
   });
 });

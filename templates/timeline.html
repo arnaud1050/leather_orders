@@ -138,15 +138,24 @@
   </dialog>
   {% endfor %}
 
+  {# A quick edit that was refused (OR13) comes back to this window with
+     `order_edit_error`: the dialog it came from reopens on load
+     (`data-open-on-load`), with the messages under its fields and what was
+     typed still in them. It can't simply re-render instead — see
+     edit_order(). `typed`/`errors` are empty for every other dialog. #}
+  {% from "_field_error.html" import field_error, invalid %}
   {% for row in rows %}
-  <dialog id="order-modal-{{ row.id }}" class="modal">
+  {% set edit_error = order_edit_error if order_edit_error and order_edit_error['order_id'] == row.id else none %}
+  {% set typed = edit_error['values'] if edit_error else {} %}
+  {% set errors = edit_error['errors'] if edit_error else {} %}
+  <dialog id="order-modal-{{ row.id }}" class="modal"{% if edit_error %} data-open-on-load{% endif %}>
     <form method="post" action="{{ url_for('edit_order', order_id=row.id) }}" class="modal__form">
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <h2 class="modal__title">{{ row.item }}</h2>
       <p class="modal__subtitle">{{ row.client.name }}</p>
-      <label class="modal__field">Item<input type="text" name="item" value="{{ row.item }}" required></label>
-      <label class="modal__field">Start<input type="date" name="start" value="{{ row.start.isoformat() }}" required></label>
-      <label class="modal__field">Due<input type="date" name="due" value="{{ row.due.isoformat() }}" required></label>
+      <label class="modal__field">Item<input type="text" name="item" value="{{ typed.get('item', row.item) }}" required{{ invalid(errors, 'item') }}>{{ field_error(errors, 'item') }}</label>
+      <label class="modal__field">Start<input type="date" name="start" value="{{ typed.get('start', row.start.isoformat()) }}" required{{ invalid(errors, 'start') }}>{{ field_error(errors, 'start') }}</label>
+      <label class="modal__field">Due<input type="date" name="due" value="{{ typed.get('due', row.due.isoformat()) }}" required{{ invalid(errors, 'due') }}>{{ field_error(errors, 'due') }}</label>
       {# Read-only: the total is the sum of the order's line items, which are
          edited on the full order page (there's no room for a line editor here). #}
       <div class="modal__field">Total<span class="modal__readout">${{ '%.2f'|format(row.total) }}</span></div>
@@ -154,10 +163,11 @@
          and deleting aren't offered here: both need a confirmation (and cancel
          needs a reason, which is a note, which OR4 keeps off this modal), so
          both live on the full order page. #}
+      {% set chosen_status = typed.get('status') or row.status %}
       <label class="modal__field">Status
         <select name="status">
           {% for key in settable_statuses(row.status) %}
-          <option value="{{ key }}" {% if key == row.status %}selected{% endif %}>{{ status_labels[key] }}</option>
+          <option value="{{ key }}" {% if key == chosen_status %}selected{% endif %}>{{ status_labels[key] }}</option>
           {% endfor %}
         </select>
       </label>
@@ -166,9 +176,10 @@
          in progress. The hidden marker is what lets edit_order() tell
          "unchecked" from "this form has no rush field" (hard rule 9). #}
       {% if row.can_rush %}
+      {% set rush_checked = typed['is_rush'] if 'is_rush' in typed else row.is_rush %}
       <label class="modal__field modal__field--check">
         <input type="hidden" name="rush_field" value="1">
-        <input type="checkbox" name="is_rush" {% if row.is_rush %}checked{% endif %}>
+        <input type="checkbox" name="is_rush" {% if rush_checked %}checked{% endif %}>
         Mark as rush
       </label>
       {% endif %}
@@ -211,6 +222,14 @@
     dialog.addEventListener('click', function (event) {
       if (event.target === dialog) dialog.close();
     });
+  });
+
+  // A quick edit that came back refused (OR13) reopens its own dialog, so
+  // the message lands over what was typed instead of on a page that looks
+  // as though the save simply didn't happen. After the listeners above, so
+  // Cancel and the backdrop still close it like any other dialog.
+  document.querySelectorAll('dialog[data-open-on-load]').forEach(function (dialog) {
+    dialog.showModal();
   });
 
   // Status filter (click a legend item to hide/show that status) and sort

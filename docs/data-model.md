@@ -232,7 +232,8 @@ adds one just doesn't get order-type UI, no "Uncategorized" placeholder needed. 
 full order page uses the same active-options-∪-current-selection pattern as the
 client page's source checkboxes (so a hidden type an order already has stays
 selectable there); `new_order()` only offers active types, since a brand-new order
-can't already be tagged with a hidden one. `edit_order()` guards on `"order_type_id"
+can't already be tagged with a hidden one. `_apply_order_form()` — behind both the
+timeline modal's `edit_order()` and the order page's own save — guards on `"order_type_id"
 in request.form` before touching it — same "a form that doesn't render a field means
 leave it alone, not clear it" rule as the client address fields — since the
 timeline's quick-edit order modal deliberately does **not** include order type
@@ -263,7 +264,7 @@ mean picked up on the day it was marked that way. Editable only on the full orde
 page's Details tab, directly below Due date (`order_page.html`) — not exposed in
 the timeline's quick-edit order modal, same "quick edit → modal, more room needed →
 page" split as the rest of order editing (see [docs/views.md](views.md)).
-`edit_order()` in `app.py` guards on `"pickup_date" in request.form` before touching
+`_check_order_form()` in `app.py` — which both editing surfaces go through — guards on `"pickup_date" in request.form` before touching
 it, same convention as `order_type_id`. **Order documents are real files**, owned
 by the self-contained `documents/` module (`Document` / `DocumentType`, tables
 `order_documents` / `document_types`) — not the old placeholder rows, which the
