@@ -482,6 +482,24 @@ def test_every_target_the_picker_offers_is_one_the_mapping_can_apply(
     assert set(parsed) == writable
 
 
+def test_the_order_mappings_are_added_in_does_not_matter(app, company, account):
+    """Rows are listed in the order they were added, and that order is
+    cosmetic: `parse_fields` walks the *body*, and orders labels by length
+    internally so a longer one wins over a prefix of it (F-3). Nobody should
+    have to re-enter their mapping to match the form's layout.
+    """
+    forward = sender_rules.add_rule(company.id, "a@one.example", RULE_CONVERT)
+    backward = sender_rules.add_rule(company.id, "b@two.example", RULE_CONVERT)
+    for label, target in ADDRESS_MAPPING:
+        sender_rules.add_field(company.id, forward.id, label, target)
+    for label, target in reversed(ADDRESS_MAPPING):
+        sender_rules.add_field(company.id, backward.id, label, target)
+
+    body = address_body()
+    assert sender_rules.client_fields_from(forward, body) == \
+        sender_rules.client_fields_from(backward, body)
+
+
 def test_the_picker_groups_cover_every_target_exactly_once():
     """The grouped dropdown is built from FIELD_TARGET_GROUPS, so a target
     added to the labels and forgotten here would vanish from the UI."""
