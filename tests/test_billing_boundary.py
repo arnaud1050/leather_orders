@@ -72,10 +72,16 @@ def test_billing_never_imports_the_host_adapter(path):
 
 
 def test_the_tax_engine_imports_nothing_but_the_standard_library():
-    """The most reusable piece of all — plain data and one pure function.
-    A Flask or SQLAlchemy import here would make it unliftable."""
+    """The most reusable piece of all — plain data and pure functions.
+    A Flask or SQLAlchemy import here would make it unliftable.
+
+    An allowlist rather than a "is it stdlib?" check, so adding to it is a
+    deliberate act: `unicodedata` is here for `normalize_province`, which folds
+    accents so "Québec" and "Quebec" are one answer.
+    """
+    allowed = {"collections", "dataclasses", "unicodedata", ""}
     for module, _ in imports_in(BILLING / "tax.py"):
-        assert module.split(".")[0] in {"collections", "dataclasses", ""}, module
+        assert module.split(".")[0] in allowed, module
 
 
 def test_the_document_dataclasses_touch_no_database():

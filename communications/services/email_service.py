@@ -631,14 +631,39 @@ def create_client_from_thread(
     return client
 
 
+#: Straight text fields: whatever the form said, trimmed, into the blank of
+#: the same name. Address lines live here too — a street or a city is free
+#: text and there is nothing sensible to validate it against. `province` is
+#: deliberately absent; it gets normalised below.
+_PLAIN_DETAIL_FIELDS = (
+    "phone", "street", "city", "inquiry_type", "first_message",
+)
+
+
 def _apply_details(client: Client, overrides: dict) -> None:
-    """Fill in phone / what-it's-about / message / source from a form.
+    """Fill in phone / address / what-it's-about / message / source from a form.
 
     **Only fills blanks.** These arrive from a sender rule's field mapping,
     which runs unattended — so it may complete a record nobody has touched,
     and must never overwrite something a person typed. A second enquiry from
     an existing client is the common case, and their phone number on file
-    beats whatever they retyped into a web form.
+    beats whatever they retyped into a web form. That applies to the address
+    too, and is more consequential there: a returning client who has moved
+    keeps the address on file until somebody changes it by hand. An
+    unattended rule rewriting a billing address is not a thing this should be
+    able to do.
+
+    Two fields are cleaned rather than stored as typed, both matching what the
+    client page's own form already does with them:
+
+    - **`province` is normalised to a two-letter code, or dropped.** It picks
+      the tax rate, and the column is two characters wide — so a raw "Quebec"
+      truncates to "Qu", matches no rule, and bills the client GST-only
+      without anything looking wrong. "Out of country" and anything else
+      unrecognised leaves the field blank for a person to answer, which is the
+      same call the free-text address migration made (`_ADDRESS_TAIL` in the
+      host's models.py): guessing a province changes the money.
+    - **`postal_code` is uppercased**, as `/clients/<id>/edit` does.
 
     `source` is matched against the company's existing `SourceOption`s and,
     failing that, falls back to whichever option the company has marked
@@ -649,12 +674,21 @@ def _apply_details(client: Client, overrides: dict) -> None:
     able to invent options that then show up in everyone's client page and
     the analytics breakdown.
     """
-    from models import SourceOption  # host model; see the note in CLAUDE.md
+    # Host imports; see the note in CLAUDE.md. `normalize_province` is
+    # re-exported by models.py precisely so this module doesn't reach into
+    # billing.tax, where the province table lives.
+    from models import SourceOption, normalize_province
 
-    for field in ("phone", "inquiry_type", "first_message"):
-        value = (overrides.get(field) or "").strip()
+    def fill(field: str, value: str | None) -> None:
+        """Write `value` only if there's something to write and nothing there."""
         if value and not (getattr(client, field) or "").strip():
             setattr(client, field, value)
+
+    for field in _PLAIN_DETAIL_FIELDS:
+        fill(field, (overrides.get(field) or "").strip())
+
+    fill("province", normalize_province(overrides.get("province")))
+    fill("postal_code", (overrides.get("postal_code") or "").strip().upper())
 
     label = (overrides.get("source") or "").strip()
     if not label:

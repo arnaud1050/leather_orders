@@ -30,6 +30,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # back out of this file. Anything deeper in billing (services, models) is
 # imported lazily inside methods below, for exactly that reason.
 from billing.documents import format_address
+# Re-exported deliberately: `communications/` needs it to sanitise a province
+# read out of a contact form, and `models` is a file that module already
+# imports. Reaching into `billing.tax` from there would be a module importing
+# a module, which is the boundary the layout exists to keep one-way.
+from billing.tax import normalize_province  # noqa: F401
 
 db = SQLAlchemy()
 

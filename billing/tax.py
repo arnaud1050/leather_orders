@@ -16,11 +16,13 @@ if these ever look stale. Not tax advice; re-confirm before a period
 closes.
 """
 
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 __all__ = [
-    "PROVINCE_TAXES", "PROVINCES", "TaxLine", "TaxRule", "status_for", "taxes_for",
+    "PROVINCE_TAXES", "PROVINCES", "TaxLine", "TaxRule", "normalize_province",
+    "status_for", "taxes_for",
 ]
 
 
@@ -83,6 +85,71 @@ PROVINCES: dict[str, str] = {
     "SK": "Saskatchewan",
     "YT": "Yukon",
 }
+
+
+# Everything that may be read as a province, normalised (see `_fold`). Built
+# from PROVINCES so the codes and names can't drift from it, plus the spellings
+# people actually type. Accents are folded, so "Québec" needs no entry of its
+# own; these are the forms folding alone doesn't reach.
+_PROVINCE_ALIASES = {
+    "newfoundland": "NL",
+    "labrador": "NL",
+    "nfld": "NL",
+    "pei": "PE",
+    "p e i": "PE",
+    "prince edward island": "PE",
+    "quebec province": "QC",
+    "british columbia": "BC",
+    "b c": "BC",
+    "northwest territories": "NT",
+    "nwt": "NT",
+    "n w t": "NT",
+    "yukon territory": "YT",
+    "ontario canada": "ON",
+}
+
+
+def _fold(value: str) -> str:
+    """Lowercased, accent-stripped, single-spaced, punctuation dropped.
+
+    So "Québec", "QUEBEC" and "quebec" are one key, and "P.E.I." reaches the
+    "p e i" alias above.
+    """
+    decomposed = unicodedata.normalize("NFKD", value)
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in stripped)
+    return " ".join(cleaned.split()).lower()
+
+
+_PROVINCE_LOOKUP: dict[str, str] = {
+    **{_fold(code): code for code in PROVINCES},
+    **{_fold(name): code for code, name in PROVINCES.items()},
+    **{_fold(alias): code for alias, code in _PROVINCE_ALIASES.items()},
+}
+
+
+def normalize_province(value: str | None) -> str | None:
+    """A two-letter province code, or None if this isn't one.
+
+    For turning whatever a human (or a web form) wrote into something
+    `taxes_for` can use — "Quebec", "québec", "QC" and "P.E.I." all resolve.
+
+    **Anything unrecognised returns None rather than a best guess**, and that
+    is the whole point of the function. `Client.province` is two characters
+    wide and picks the tax rate, so storing a raw "Quebec" truncates to "Qu",
+    matches no rule, and silently bills the client GST-only — permanently,
+    once an invoice is issued and frozen. "Out of country", a postal code, a
+    full sentence and an empty string all land here and all return None,
+    leaving the field blank for a person to answer.
+
+    Matching is exact against the folded table on purpose: no prefix or
+    fuzzy matching, which is what would let "Nova Scotia office" or
+    "not in Canada" resolve to somewhere real.
+    """
+    folded = _fold(value or "")
+    if not folded:
+        return None
+    return _PROVINCE_LOOKUP.get(folded)
 
 
 @dataclass(frozen=True)

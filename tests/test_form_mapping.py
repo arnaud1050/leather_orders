@@ -12,15 +12,19 @@ cut the message below in half at "Delivery: end of March", and nothing in
 the text distinguishes that from a real field.
 """
 
+from datetime import date
+
 import pytest
 
 from models import Client, SourceOption, db
 
 from communications.models import (
     AUDIT_CLIENT_AUTO_CREATED, AUDIT_CLIENT_MAIL_LINKED,
-    FIELD_EMAIL, FIELD_IGNORE, FIELD_INQUIRY, FIELD_MESSAGE, FIELD_NAME,
-    FIELD_PHONE, FIELD_SOURCE, RULE_CONVERT, RULE_HIDE, AuditLog,
-    AutoCreatedClient, EmailMessage, EmailThread, SenderRuleField, utcnow,
+    FIELD_CITY, FIELD_EMAIL, FIELD_IGNORE, FIELD_INQUIRY, FIELD_MESSAGE,
+    FIELD_NAME, FIELD_PHONE, FIELD_POSTAL_CODE, FIELD_PROVINCE, FIELD_SOURCE,
+    FIELD_STREET, FIELD_TARGET_GROUPS, FIELD_TARGET_LABELS, RULE_CONVERT,
+    RULE_HIDE, AuditLog, AutoCreatedClient, EmailMessage, EmailThread,
+    SenderRuleField, utcnow,
 )
 from communications.services import email_service, sender_rules
 from communications.sync import email_sync
@@ -325,6 +329,171 @@ def test_the_enquiry_is_announced_exactly_once(app, company, account, mapped_rul
 
     assert email_service.unread_client_mail_count(company.id) == 1
     assert sender_rules.unseen_client_count(company.id) == 0
+
+
+# --- the address block ----------------------------------------------------
+#
+# Four more targets, three of them free text. `province` is the one with
+# consequences: it is two characters wide and selects the tax rate, so it is
+# normalised through the host's `normalize_province` and **dropped** when it
+# doesn't resolve, rather than stored as typed.
+
+ADDRESS_MAPPING = [
+    ("Name", FIELD_NAME),
+    ("Email", FIELD_EMAIL),
+    ("Street", FIELD_STREET),
+    ("City", FIELD_CITY),
+    ("Province", FIELD_PROVINCE),
+    ("Postal code", FIELD_POSTAL_CODE),
+]
+
+
+@pytest.fixture
+def address_rule(app, company):
+    rule = sender_rules.add_rule(company.id, FORM, RULE_CONVERT)
+    for label, target in ADDRESS_MAPPING:
+        sender_rules.add_field(company.id, rule.id, label, target)
+    return rule
+
+
+def address_body(province="Quebec", **overrides):
+    fields = {
+        "Name": "Haejung Kim",
+        "Email": "haejung@example.com",
+        "Street": "1240 rue Saint-Denis",
+        "City": "Montréal",
+        "Province": province,
+        "Postal code": "h2x 3j5",
+    }
+    fields.update(overrides)
+    return "\n\n".join(f"{label}: {value}" for label, value in fields.items()) + "\n"
+
+
+def only_client(company):
+    return Client.query.filter_by(company_id=company.id).one()
+
+
+def test_the_address_lands_on_the_client(app, company, account, address_rule):
+    deliver(account, body=address_body())
+    client = only_client(company)
+    assert client.street == "1240 rue Saint-Denis"
+    assert client.city == "Montréal"
+
+
+def test_the_postal_code_is_uppercased(app, company, account, address_rule):
+    """Matching what /clients/<id>/edit already does with the same field."""
+    deliver(account, body=address_body())
+    assert only_client(company).postal_code == "H2X 3J5"
+
+
+@pytest.mark.parametrize("written", ["QC", "quebec", "Québec", "QUEBEC"])
+def test_a_province_is_normalised_however_it_was_written(
+    app, company, account, address_rule, written,
+):
+    deliver(account, body=address_body(province=written))
+    assert only_client(company).province == "QC"
+
+
+def test_an_unrecognised_province_is_dropped_not_stored(
+    app, company, account, address_rule,
+):
+    """"Out of country" truncated to "Ou" would match no tax rule and bill
+    them GST-only, with nothing on screen looking wrong."""
+    deliver(account, body=address_body(province="Out of country"))
+    client = only_client(company)
+    assert client.province is None
+    # The rest of the address still lands — one bad line doesn't lose the lot.
+    assert client.city == "Montréal"
+
+
+def test_a_dropped_province_leaves_the_tax_honest(
+    app, company, account, address_rule,
+):
+    """The point of dropping it: the order charges nothing and says why.
+
+    And it says the *right* why — `no_buyer_province` ("nobody has told us"),
+    not `unknown_province` ("there's something on file we can't read"). Storing
+    the raw text would produce the second, which reads as bad data rather than
+    as a question still to be answered.
+    """
+    from models import Order, OrderLine
+
+    deliver(account, body=address_body(province="Out of country"))
+    order = Order(client_id=only_client(company).id, item="Wallet",
+                  start=date(2026, 8, 1), due=date(2026, 8, 20), status="confirmed")
+    db.session.add(order)
+    db.session.flush()
+    db.session.add(OrderLine(
+        order_id=order.id, description="Repair", quantity=1, unit_price=100.0,
+    ))
+    db.session.flush()
+
+    assert order.tax_lines == []
+    assert order.tax_status == "no_buyer_province"
+
+
+def test_the_address_fills_blanks_only(app, company, account, address_rule):
+    """More consequential here than for phone: a returning client who moved
+    keeps the address on file until somebody changes it by hand. An
+    unattended rule must not rewrite a billing address."""
+    existing = Client(
+        company_id=company.id, first_name="Haejung", last_name="Kim",
+        email="haejung@example.com",
+        street="99 Old Street", city="Toronto", province="ON",
+        postal_code="M6J 1G6",
+    )
+    db.session.add(existing)
+    db.session.flush()
+
+    deliver(account, body=address_body())
+
+    assert existing.street == "99 Old Street"
+    assert existing.city == "Toronto"
+    assert existing.province == "ON"
+    assert existing.postal_code == "M6J 1G6"
+
+
+def test_a_missing_address_line_is_filled_in_later(
+    app, company, account, address_rule,
+):
+    """The other half of fill-blanks-only: it still completes a record
+    nobody has finished."""
+    deliver(account, body=address_body(province="Out of country"))
+    client = only_client(company)
+    assert client.province is None
+
+    deliver(account, body=address_body(province="QC"), thread_id="t-form-2")
+    assert client.province == "QC"
+
+
+def test_every_target_the_picker_offers_is_one_the_mapping_can_apply(
+    app, company, account,
+):
+    """A label in the dropdown that nothing writes is a mapping that silently
+    does nothing — which looks identical to a form that didn't parse."""
+    rule = sender_rules.add_rule(company.id, FORM, RULE_CONVERT)
+    writable = set(FIELD_TARGET_LABELS) - {FIELD_IGNORE, FIELD_NAME}
+    for target in sorted(writable):
+        sender_rules.add_field(company.id, rule.id, f"Label {target}", target)
+
+    body = "\n\n".join(f"Label {target}: x" for target in sorted(writable)) + "\n"
+    parsed = sender_rules.client_fields_from(rule, body)
+    assert set(parsed) == writable
+
+
+def test_the_picker_groups_cover_every_target_exactly_once():
+    """The grouped dropdown is built from FIELD_TARGET_GROUPS, so a target
+    added to the labels and forgotten here would vanish from the UI."""
+    grouped = [target for _, targets in FIELD_TARGET_GROUPS for target in targets]
+    assert sorted(grouped) == sorted(FIELD_TARGET_LABELS)
+    assert len(grouped) == len(set(grouped))
+
+
+def test_the_settings_page_offers_the_address_fields(logged_in, company, address_rule):
+    body = logged_in.get("/settings/integrations").get_data(as_text=True)
+    assert '<optgroup label="Address">' in body
+    for target in (FIELD_STREET, FIELD_CITY, FIELD_PROVINCE, FIELD_POSTAL_CODE):
+        assert f'value="{target}"' in body
 
 
 # --- a returning customer -------------------------------------------------

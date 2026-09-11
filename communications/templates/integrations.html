@@ -313,9 +313,16 @@
           <input type="text" name="label" placeholder="e.g. Name" required>
         </label>
         <label>Fills
+          {# Grouped rather than one flat list — see FIELD_TARGET_GROUPS. The
+             last group is deliberately unnamed (Ignore isn't a destination),
+             so it renders as plain options after the named ones. #}
           <select name="target">
-            {% for value, label in field_targets.items() %}
-            <option value="{{ value }}">{{ label }}</option>
+            {% for group, targets in field_target_groups %}
+            {% if group %}<optgroup label="{{ group }}">{% endif %}
+            {% for value in targets %}
+            <option value="{{ value }}">{{ field_targets[value] }}</option>
+            {% endfor %}
+            {% if group %}</optgroup>{% endif %}
             {% endfor %}
           </select>
         </label>

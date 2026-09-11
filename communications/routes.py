@@ -26,8 +26,8 @@ from models import Client, DEFAULT_TIMEZONE, db
 
 from communications import config, jobs
 from communications.models import (
-    AUDIT_EVENT_LABELS, FIELD_TARGET_LABELS, RULE_CONVERT, RULE_HIDE,
-    RULE_LABELS, EmailMessage, EmailSyncSettings, EmailThread,
+    AUDIT_EVENT_LABELS, FIELD_TARGET_GROUPS, FIELD_TARGET_LABELS, RULE_CONVERT,
+    RULE_HIDE, RULE_LABELS, EmailMessage, EmailSyncSettings, EmailThread,
 )
 from communications.oauth import google_oauth
 from communications.providers.base import ProviderError
@@ -127,6 +127,7 @@ def integrations():
         convert_rules=sender_rules.rules_by_action(company_id, RULE_CONVERT),
         rule_labels=RULE_LABELS,
         field_targets=FIELD_TARGET_LABELS,
+        field_target_groups=FIELD_TARGET_GROUPS,
         has_calendar=calendar_service.has_calendar(company_id),
         scope_summary=account_service.scope_summary,
         available_providers=PROVIDER_LABELS,

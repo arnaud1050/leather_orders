@@ -442,6 +442,16 @@ what was printed, so mirroring four columns onto every invoice would buy nothing
 `province` stores the two-letter code; `PROVINCES` in `app.py` maps codes to full
 names for the dropdown, and `update_company_details()` rejects anything not in it.
 
+**Anything writing a province from free text goes through
+`normalize_province()`** (`billing/tax.py`, re-exported by `models.py`), which
+resolves "QC" / "quebec" / "Québec" / "P.E.I." and **returns `None` for
+anything else rather than guessing** — a form's "Out of country" stored raw
+truncates to "Ou" in a two-character column, matches no tax rule, and bills the
+client GST-only with nothing on screen looking wrong. Its callers today are the
+client edit form and the contact-form field mapping in `communications/`; the
+free-text address migration made the same call independently, filing an
+unparseable address entirely into `street` rather than inventing a province.
+
 Registration numbers are named Canadian columns rather than a generic label/value
 list, so they can be labelled correctly on the document; `IssuerDetails.registrations`
 returns the `(label, value)` pairs that are actually set, ordered **GST/HST → PST/RST

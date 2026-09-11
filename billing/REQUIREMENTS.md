@@ -90,6 +90,21 @@ accounting period closes.
 - **R9.** The rate table must be corrected **from the CRA**, never from the
   test — and the test corrected from the CRA too. A test that imported the
   constant it checks would pass no matter what the constant said.
+- **R10 — `normalize_province` resolves a written province to a code, or
+  returns `None`.** "QC", "quebec", "Québec", "P.E.I." and every name in
+  `PROVINCES` resolve; the lookup is **built from `PROVINCES`**, so a code and
+  its name can't drift apart from the rate table.
+- **R11 — Unrecognised input is dropped, never guessed**, and matching is
+  **exact** against the folded table — no prefix, no fuzzy matching. A
+  province column is two characters wide, so storing raw text truncates
+  "Quebec" to "Qu", which matches no rule and bills GST-only with nothing on
+  screen looking wrong — and F1 freezes that onto an issued invoice. Returning
+  `None` routes to the same honest "no province" path as a blank field.
+  Fuzzy matching is what would let "Nova Scotia office" or "not in canada"
+  land somewhere real. Callers: the client edit form, and
+  `communications/`'s contact-form field mapping (`F-20`, `F-21`), which
+  reaches it re-exported from the host's `models.py` rather than importing
+  `billing` module-to-module.
 
 ## 3. What actually gets charged
 
@@ -428,6 +443,8 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | R7 | `test_manitoba_uses_its_own_name_for_the_tax` |
 | R8 | `test_pst_provinces_share_one_registration_field`, `test_quebec_qst_is_gated_on_the_qst_registration` |
 | R9 | *(structural — `test_tax.py` writes the CRA table out a second time, independently of `PROVINCE_TAXES`. Nothing can test that a human did the corrections in the right direction.)* |
+| R10 | `test_the_spellings_of_one_province_all_resolve`, `test_the_other_provinces_resolve_too`, `test_every_code_and_name_in_the_table_resolves_to_itself` |
+| R11 | `test_anything_else_is_dropped_rather_than_guessed`, `test_a_dropped_province_is_not_a_taxable_one` |
 | C1 | `test_tax_follows_the_client_province_not_the_company`, `test_two_clients_in_different_provinces_are_taxed_differently` |
 | C2 | `test_a_tax_is_not_charged_without_its_registration`, `test_a_seller_registered_for_nothing_charges_nothing` |
 | C3 | `test_order_total_is_subtotal_plus_tax`, `test_quebec_client_is_charged_gst_and_qst`, `test_ontario_client_is_charged_one_hst_line`, `test_alberta_client_is_charged_gst_only` |

@@ -15,7 +15,9 @@ for, and tax follows the *client's* province, not the studio's.
 
 import pytest
 
-from billing.tax import PROVINCE_TAXES, TaxLine, status_for, taxes_for
+from billing.tax import (
+    PROVINCE_TAXES, PROVINCES, TaxLine, normalize_province, status_for, taxes_for,
+)
 from billing.services import invoicing
 from models import Client, Order, OrderLine, db
 
@@ -299,3 +301,59 @@ def test_a_taxless_order_still_totals_its_subtotal(company, client_record):
     order = make_order(client_record, 100.0)
     assert order.tax_lines == []
     assert order.total == 100.0
+
+
+# --- reading a province out of whatever somebody wrote --------------------
+#
+# `normalize_province` exists because `Client.province` is two characters wide
+# and picks the tax rate. A raw "Quebec" truncates to "Qu", matches no rule,
+# and bills GST-only with nothing on screen looking wrong — and once an
+# invoice is issued that is frozen. So the rule is: resolve it exactly, or
+# return None and leave a person to answer.
+
+@pytest.mark.parametrize("written", [
+    "QC", "qc", "Quebec", "quebec", "QUEBEC", "Québec", "québec", "  Quebec  ",
+])
+def test_the_spellings_of_one_province_all_resolve(written):
+    assert normalize_province(written) == "QC"
+
+
+@pytest.mark.parametrize("written,expected", [
+    ("British Columbia", "BC"),
+    ("b.c.", "BC"),
+    ("Ontario", "ON"),
+    ("Newfoundland and Labrador", "NL"),
+    ("Newfoundland", "NL"),
+    ("P.E.I.", "PE"),
+    ("Prince Edward Island", "PE"),
+    ("Northwest Territories", "NT"),
+    ("NWT", "NT"),
+])
+def test_the_other_provinces_resolve_too(written, expected):
+    assert normalize_province(written) == expected
+
+
+def test_every_code_and_name_in_the_table_resolves_to_itself():
+    """The lookup is built from PROVINCES, so this is really asserting that
+    building it that way can't leave one out."""
+    for code, name in PROVINCES.items():
+        assert normalize_province(code) == code
+        assert normalize_province(name) == code
+
+
+@pytest.mark.parametrize("written", [
+    "Out of country", "out of country", "USA", "United States", "Canada",
+    "New York", "Washington", "n/a", "-", "none", "ZZ", "H2X 3J5",
+    "not in canada", "Nova Scotia office", "", "   ", None,
+])
+def test_anything_else_is_dropped_rather_than_guessed(written):
+    """Including the near-misses: no prefix or fuzzy matching, which is what
+    would let "Nova Scotia office" or "not in canada" land somewhere real."""
+    assert normalize_province(written) is None
+
+
+def test_a_dropped_province_is_not_a_taxable_one():
+    """The point of returning None: it flows into the same "we don't know"
+    path as a blank province, rather than into a wrong rate."""
+    assert taxes_for(normalize_province("Out of country"),
+                     ALL_REGISTRATIONS, 100.0) == []

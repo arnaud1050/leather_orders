@@ -73,6 +73,10 @@ FIELD_FIRST_NAME = "first_name"
 FIELD_LAST_NAME = "last_name"
 FIELD_EMAIL = "email"
 FIELD_PHONE = "phone"
+FIELD_STREET = "street"
+FIELD_CITY = "city"
+FIELD_PROVINCE = "province"
+FIELD_POSTAL_CODE = "postal_code"
 FIELD_INQUIRY = "inquiry_type"
 FIELD_MESSAGE = "first_message"
 FIELD_SOURCE = "source"
@@ -83,11 +87,28 @@ FIELD_TARGET_LABELS = {
     FIELD_LAST_NAME: "Last name",
     FIELD_EMAIL: "Email address",
     FIELD_PHONE: "Phone",
+    FIELD_STREET: "Street address",
+    FIELD_CITY: "City",
+    FIELD_PROVINCE: "Province",
+    FIELD_POSTAL_CODE: "Postal code",
     FIELD_INQUIRY: "What it's about",
     FIELD_MESSAGE: "Their message",
     FIELD_SOURCE: "How they heard about us",
     FIELD_IGNORE: "Ignore (but end the field above)",
 }
+
+# The same targets, grouped for the picker. A flat list of thirteen reads as
+# thirteen unrelated choices; the groups are the question someone is actually
+# answering ("this line is part of their address"). Order is the order a form
+# usually asks in, and `Ignore` sits alone at the end because it isn't a
+# destination at all — it's the escape hatch (see FIELD_IGNORE above).
+FIELD_TARGET_GROUPS = (
+    ("Name", (FIELD_NAME, FIELD_FIRST_NAME, FIELD_LAST_NAME)),
+    ("Contact", (FIELD_EMAIL, FIELD_PHONE)),
+    ("Address", (FIELD_STREET, FIELD_CITY, FIELD_PROVINCE, FIELD_POSTAL_CODE)),
+    ("The enquiry", (FIELD_INQUIRY, FIELD_MESSAGE, FIELD_SOURCE)),
+    ("", (FIELD_IGNORE,)),
+)
 
 
 class EmailAccount(db.Model):
