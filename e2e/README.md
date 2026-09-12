@@ -213,6 +213,17 @@ route test structurally can't see:
   which nothing else exercises. Uses dispatched HTML5 drag events, since
   Playwright's `dragTo()` doesn't reliably produce the sequence these lists
   listen for.
+- **`sender-rules.spec.ts`** — the field-mapping picker's `<optgroup>`
+  structure (F-23), which is opened and closed by two separate
+  `{% if group %}` conditionals in the template: a mismatched pair renders
+  invalid HTML that still contains every option, so a substring check on
+  the response body passes either way and only a parsed DOM catches it.
+  Plus `required` on the address input (R-22) — browser-enforced, where
+  the server's own guard is a different code path — and both rule forms
+  driven as a person drives them (R-21, R-24), since a convert rule's card
+  carries three forms and two of them hold an input of the same name.
+  **No layout assertion here on purpose**; see the note at the top of the
+  file for why one was written and then removed.
 - **`order-form-errors.spec.ts`** — a refused save explaining itself where a
   person is looking (OR13): messages under the fields, everything typed
   kept, the new-client fields coming back revealed, and a timeline quick

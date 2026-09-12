@@ -236,10 +236,16 @@
     <ul class="settings-source-list">
       {% for rule in hide_rules %}
       <li class="settings-source-list__item">
-        <span class="settings-source-list__label">
-          {{ rule.pattern }}
-          {% if rule.note %}<span class="checkbox-group__hidden-tag">{{ rule.note }}</span>{% endif %}
-        </span>
+        {# Editable in place so changing an address doesn't mean deleting the
+           rule. Matters far more on a convert rule, which carries the field
+           mapping, but both work the same way rather than one list behaving
+           differently from the other. #}
+        <form method="post" action="{{ url_for('communications.update_sender_rule', rule_id=rule.id) }}" class="rule-edit">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="text" name="pattern" value="{{ rule.pattern }}" class="rule-edit__pattern" required
+                 aria-label="Address or domain">
+          <button type="submit" class="btn-secondary">Save</button>
+        </form>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -265,10 +271,15 @@
     {% for rule in convert_rules %}
     <div class="rule-card">
       <div class="rule-card__head">
-        <span class="settings-source-list__label">
-          {{ rule.pattern }}
-          {% if rule.note %}<span class="checkbox-group__hidden-tag">{{ rule.note }}</span>{% endif %}
-        </span>
+        {# The address is editable in place and the mapping below survives it:
+           changing contact-form provider shouldn't mean retyping every label,
+           which is the part that takes real effort to get right. #}
+        <form method="post" action="{{ url_for('communications.update_sender_rule', rule_id=rule.id) }}" class="rule-edit">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="text" name="pattern" value="{{ rule.pattern }}" class="rule-edit__pattern" required
+                 aria-label="Address or domain">
+          <button type="submit" class="btn-secondary">Save</button>
+        </form>
         <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-secondary">Delete</button>
@@ -347,9 +358,6 @@
           <option value="{{ value }}">{{ label }}</option>
           {% endfor %}
         </select>
-      </label>
-      <label>Note (optional)
-        <input type="text" name="note" placeholder="e.g. website contact form">
       </label>
       <div>
         <button type="submit" class="btn-primary">Add rule</button>

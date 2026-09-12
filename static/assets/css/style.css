@@ -2739,6 +2739,32 @@ dialog.modal::backdrop {
   border-bottom: 1px solid var(--hairline);
 }
 
+/* Editing a rule's address in place: the address and Save on one line, where
+   the label used to be plain text. Takes the free space so Delete stays hard
+   right, and wraps rather than squeezing the input to nothing when narrow. */
+.rule-edit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+
+.rule-edit__pattern {
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: var(--ink);
+  padding: 5px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper);
+  /* Grows to fill whichever row it sits in — a narrow <li> for a hide rule,
+     a wide card for a convert one — with min-width:0 so a long address
+     shrinks the input rather than pushing the row sideways. */
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
 /* Spaced with margins, not padding inside the text, so the arrow doesn't
    collapse against a long label at narrow widths. */
 .rule-card__arrow {

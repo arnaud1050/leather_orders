@@ -353,6 +353,193 @@ def test_the_sync_summary_reports_what_rules_did(app, company, account):
     assert "1 hidden by a rule" in summary
 
 
+# --- editing a rule's address ---------------------------------------------
+#
+# The point of editing rather than delete-and-re-add: a convert rule carries
+# the field mapping, which is the part that takes real effort to get right.
+# Changing contact-form provider must not cost the studio every label.
+
+def test_editing_a_rule_changes_which_sender_it_covers(app, company, account):
+    created = rule(company, FORM, RULE_HIDE)
+    sender_rules.update_rule(company.id, created.id, "@newsletter.example.com")
+
+    incoming(company, account, sender=FORM)
+    assert stored().is_dismissed is False
+
+    incoming(company, account, sender="weekly@newsletter.example.com",
+             thread_id="t-news")
+    assert stored("t-news").is_dismissed is True
+
+
+def test_editing_keeps_the_field_mappings(app, company):
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "Name", "name")
+    sender_rules.add_field(company.id, created.id, "Email", "email")
+
+    sender_rules.update_rule(company.id, created.id, "hello@bymonsieur.example")
+
+    assert created.pattern == "hello@bymonsieur.example"
+    assert [(f.label, f.target) for f in created.fields] == [
+        ("Name", "name"), ("Email", "email"),
+    ]
+
+
+def test_an_edited_pattern_is_normalised_like_a_new_one(app, company):
+    created = rule(company, FORM, RULE_HIDE)
+    sender_rules.update_rule(company.id, created.id, "  Shop <NEWS@Example.COM>  ")
+    assert created.pattern == "news@example.com"
+
+
+def test_an_edit_to_an_unusable_pattern_is_refused(app, company):
+    created = rule(company, FORM, RULE_HIDE)
+    with pytest.raises(sender_rules.SenderRuleError):
+        sender_rules.update_rule(company.id, created.id, "not an address")
+    assert created.pattern == FORM
+
+
+def test_an_edit_onto_another_rules_pattern_is_refused(app, company):
+    first = rule(company, FORM, RULE_HIDE)
+    second = rule(company, "@newsletter.example.com", RULE_HIDE)
+    with pytest.raises(sender_rules.SenderRuleError, match="already a rule"):
+        sender_rules.update_rule(company.id, second.id, FORM)
+    assert second.pattern == "@newsletter.example.com"
+    assert first.pattern == FORM
+
+
+def test_saving_a_rule_unchanged_is_not_an_error(app, company):
+    """Pressing Save without editing is the most likely thing to happen to
+    this form, and must not trip the duplicate check against itself."""
+    created = rule(company, FORM, RULE_HIDE)
+    sender_rules.update_rule(company.id, created.id, FORM)
+    assert created.pattern == FORM
+
+
+def test_editing_another_tenants_rule_is_refused(app, company, other_company):
+    theirs = sender_rules.add_rule(other_company.id, FORM, RULE_HIDE)
+    with pytest.raises(sender_rules.SenderRuleError):
+        sender_rules.update_rule(company.id, theirs.id, "@mine.example.com")
+    assert theirs.pattern == FORM
+
+
+def test_an_edited_address_is_audited_with_both_ends(app, company):
+    created = rule(company, FORM, RULE_HIDE)
+    sender_rules.update_rule(company.id, created.id, "@newsletter.example.com")
+
+    detail = AuditLog.query.filter(
+        AuditLog.event == AUDIT_SENDER_RULE_CHANGED,
+        AuditLog.detail.like("Changed%"),
+    ).one().detail
+    assert FORM in detail and "@newsletter.example.com" in detail
+
+
+def test_a_rule_is_an_address_and_an_action_and_nothing_else(app, company):
+    """There was a free-text `note` beside these. It earned its keep nowhere —
+    a tag nobody read on the list, a second box beside the only one that
+    matters on the edit row — so it's gone from the model and both forms."""
+    created = rule(company, FORM, RULE_HIDE)
+    assert not hasattr(created, "note")
+
+
+def test_the_route_edits_a_rule(logged_in, csrf, company):
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "Name", "name")
+
+    response = logged_in.post(
+        f"/integrations/rules/{created.id}",
+        data={"csrf_token": csrf, "pattern": "hello@bymonsieur.example"},
+        follow_redirects=True,
+    )
+
+    assert created.pattern == "hello@bymonsieur.example"
+    assert len(created.fields) == 1
+    assert "1 mapped field(s) kept" in response.get_data(as_text=True)
+
+
+# --- one label per target -------------------------------------------------
+#
+# Two labels on one client field is never something somebody means: the
+# winner is whichever appears last in the *email body*, which nobody can
+# predict from a settings page that lists mappings in the order they were
+# added. Refused, naming the mapping that's in the way.
+
+def test_two_labels_cannot_fill_the_same_field(app, company):
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "Phone", "phone")
+
+    with pytest.raises(sender_rules.SenderRuleError, match="already fills"):
+        sender_rules.add_field(company.id, created.id, "Mobile", "phone")
+
+    assert len(created.fields) == 1
+
+
+def test_the_refusal_names_the_mapping_in_the_way(app, company):
+    """So the fix is obvious without hunting through the list."""
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "Phone", "phone")
+
+    with pytest.raises(sender_rules.SenderRuleError, match='"Phone"'):
+        sender_rules.add_field(company.id, created.id, "Mobile", "phone")
+
+
+def test_a_full_name_conflicts_with_a_first_name(app, company):
+    """Full name writes both halves, so it's the same collision one level up
+    rather than a different question."""
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "Name", "name")
+
+    with pytest.raises(sender_rules.SenderRuleError, match="already fills"):
+        sender_rules.add_field(company.id, created.id, "First name", "first_name")
+
+
+def test_a_first_name_conflicts_with_a_full_name(app, company):
+    """And in the other order — the check can't depend on which was first."""
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "First name", "first_name")
+
+    with pytest.raises(sender_rules.SenderRuleError, match="already fills"):
+        sender_rules.add_field(company.id, created.id, "Name", "name")
+
+
+def test_first_and_last_name_are_not_in_conflict(app, company):
+    """The ordinary case for a form with two name boxes."""
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "First name", "first_name")
+    sender_rules.add_field(company.id, created.id, "Last name", "last_name")
+    assert len(created.fields) == 2
+
+
+def test_ignore_may_be_mapped_many_times(app, company):
+    """The one repeatable target: it stores nothing and exists to terminate
+    the field above it, so a form with several skippable lines needs several.
+    """
+    created = rule(company, FORM, RULE_CONVERT)
+    for label in ("File Upload", "Attachment", "Captcha"):
+        sender_rules.add_field(company.id, created.id, label, "ignore")
+    assert len(created.fields) == 3
+
+
+def test_the_same_target_on_a_different_rule_is_fine(app, company):
+    """Rules are independent; two forms both having a Phone field is normal."""
+    first = rule(company, FORM, RULE_CONVERT)
+    second = rule(company, "@other.example.com", RULE_CONVERT)
+    sender_rules.add_field(company.id, first.id, "Phone", "phone")
+    sender_rules.add_field(company.id, second.id, "Phone", "phone")
+    assert len(first.fields) == len(second.fields) == 1
+
+
+def test_the_route_reports_the_conflict(logged_in, csrf, company):
+    created = rule(company, FORM, RULE_CONVERT)
+    sender_rules.add_field(company.id, created.id, "Phone", "phone")
+
+    response = logged_in.post(
+        f"/integrations/rules/{created.id}/fields",
+        data={"csrf_token": csrf, "label": "Mobile", "target": "phone"},
+        follow_redirects=True,
+    )
+    assert "already fills" in response.get_data(as_text=True)
+    assert len(created.fields) == 1
+
+
 # --- the new-clients badge ------------------------------------------------
 #
 # N-10a is what shapes this whole section. A conversion *always* arrives
@@ -513,11 +700,10 @@ def test_a_rule_deletes_via_a_delete_button_not_remove(logged_in, company):
 def test_adding_a_rule_from_the_page(logged_in, csrf, company):
     logged_in.post("/integrations/rules", data={
         "csrf_token": csrf, "pattern": FORM, "action": RULE_CONVERT,
-        "note": "website contact form",
     })
     created = SenderRule.query.filter_by(company_id=company.id).one()
     assert created.pattern == FORM
-    assert created.note == "website contact form"
+    assert created.action == RULE_CONVERT
 
 
 def test_a_bad_pattern_is_reported_not_raised(logged_in, csrf, company):

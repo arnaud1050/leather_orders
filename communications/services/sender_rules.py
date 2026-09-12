@@ -73,7 +73,7 @@ def match(rules, address: str | None) -> SenderRule | None:
     return None
 
 
-def add_rule(company_id: int, pattern: str, action: str, note: str = "") -> SenderRule:
+def add_rule(company_id: int, pattern: str, action: str) -> SenderRule:
     """Create a rule. Commits.
 
     Raises SenderRuleError for anything the user can fix — a blank or
@@ -87,15 +87,56 @@ def add_rule(company_id: int, pattern: str, action: str, note: str = "") -> Send
     if existing is not None:
         raise SenderRuleError(f"There's already a rule for {pattern}.")
 
-    rule = SenderRule(
-        company_id=company_id, pattern=pattern, action=action,
-        note=(note or "").strip()[:255] or None,
-    )
+    rule = SenderRule(company_id=company_id, pattern=pattern, action=action)
     db.session.add(rule)
     audit.record(
         company_id, AUDIT_SENDER_RULE_CHANGED,
         f"Added: {pattern} → {rule.action_label.lower()}",
     )
+    db.session.commit()
+    return rule
+
+
+def update_rule(company_id: int, rule_id: int, pattern: str) -> SenderRule:
+    """Change which address or domain a rule covers. Commits.
+
+    **The field mappings come with it**, which is the whole reason this exists:
+    a studio that changes contact-form provider, or moves from a
+    `@squarespace.info` relay to their own domain, was otherwise forced to
+    delete the rule and retype every label — and a mapping is the one part of
+    this that takes real effort to get right.
+
+    The **action** is deliberately not editable here. Turning "hide everything
+    from this sender" into "create a client from everything from this sender"
+    is a different decision, not a correction, and the two are presented as two
+    lists precisely because they're read as two different statements. Delete
+    and re-add says what's happening; a dropdown that silently moves a rule
+    between the lists doesn't.
+
+    The pattern is the only thing here to change: a rule is one address and one
+    action, and the mappings below it are edited one at a time by their own
+    forms.
+    """
+    rule = SenderRule.query.filter_by(id=rule_id, company_id=company_id).first()
+    if rule is None:
+        raise SenderRuleError("That rule no longer exists.")
+
+    pattern = _clean_pattern(pattern)
+    clash = SenderRule.query.filter(
+        SenderRule.company_id == company_id,
+        SenderRule.pattern == pattern,
+        SenderRule.id != rule.id,
+    ).first()
+    if clash is not None:
+        raise SenderRuleError(f"There's already a rule for {pattern}.")
+
+    was = rule.pattern
+    rule.pattern = pattern
+    if was != pattern:
+        audit.record(
+            company_id, AUDIT_SENDER_RULE_CHANGED,
+            f"Changed: {was} → {pattern} ({len(rule.fields)} mapped field(s) kept)",
+        )
     db.session.commit()
     return rule
 
@@ -158,6 +199,45 @@ def _clean_pattern(pattern: str) -> str:
 # Field mapping: reading a contact form out of the body of an email.
 # ---------------------------------------------------------------------------
 
+#: The one target that may be mapped more than once. `Ignore` stores nothing
+#: and exists purely to terminate the field above it (see FIELD_IGNORE), so a
+#: form with three lines worth skipping needs three of them.
+_REPEATABLE_TARGETS = frozenset({FIELD_IGNORE})
+
+#: Which targets write the same thing. Mapping a label to the full name fills
+#: `first_name` *and* `last_name`, so a separate "First name" mapping is the
+#: same collision one level up rather than a different question.
+_TARGET_FILLS = {
+    FIELD_NAME: frozenset({FIELD_NAME, FIELD_FIRST_NAME, FIELD_LAST_NAME}),
+    FIELD_FIRST_NAME: frozenset({FIELD_FIRST_NAME, FIELD_NAME}),
+    FIELD_LAST_NAME: frozenset({FIELD_LAST_NAME, FIELD_NAME}),
+}
+
+
+def _conflicting_field(rule, target: str) -> SenderRuleField | None:
+    """The existing mapping that already fills `target`, if any.
+
+    **One label per target.** Two labels pointing at the same client field is
+    never a thing somebody means: `client_fields_from` builds a dict, so the
+    winner is whichever appears *last in the email body* — deterministic, and
+    impossible for anyone to predict from the settings page, which lists the
+    mappings in the order they were added rather than the order they arrive.
+    Better to refuse it and say which mapping is in the way.
+
+    Only applies to what's being added now. An existing rule with two labels on
+    one target keeps working exactly as it did: this runs on `add_field`, not
+    over what's already on file, because a deploy that quietly broke somebody's
+    working mapping would be a worse bug than the one it fixes.
+    """
+    if target in _REPEATABLE_TARGETS:
+        return None
+    clashes = _TARGET_FILLS.get(target, frozenset({target}))
+    for field in rule.fields:
+        if field.target in clashes:
+            return field
+    return None
+
+
 def add_field(company_id: int, rule_id: int, label: str, target: str) -> SenderRuleField:
     """Map one label to one client field. Commits."""
     rule = SenderRule.query.filter_by(id=rule_id, company_id=company_id).first()
@@ -168,6 +248,13 @@ def add_field(company_id: int, rule_id: int, label: str, target: str) -> SenderR
         raise SenderRuleError("Choose where that field should go.")
     if any(_normalise(field.label) == _normalise(label) for field in rule.fields):
         raise SenderRuleError(f"{label} is already mapped for this rule.")
+
+    clash = _conflicting_field(rule, target)
+    if clash is not None:
+        raise SenderRuleError(
+            f'"{clash.label}" already fills {clash.target_label.lower()}. '
+            "Delete that mapping first, or map this label to Ignore."
+        )
 
     field = SenderRuleField(rule_id=rule.id, label=label, target=target)
     db.session.add(field)

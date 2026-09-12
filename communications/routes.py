@@ -311,12 +311,35 @@ def add_sender_rule():
             current_user.company_id,
             request.form.get("pattern", ""),
             request.form.get("action", ""),
-            request.form.get("note", ""),
         )
     except sender_rules.SenderRuleError as exc:
         _flash(str(exc), "error")
     else:
         _flash(f"Mail from {rule.pattern} will now {rule.action_label.lower()}.", "success")
+    return redirect(url_for("communications.integrations"))
+
+
+@bp.route("/integrations/rules/<int:rule_id>", methods=["POST"])
+@login_required
+def update_sender_rule(rule_id: int):
+    """Change the address or domain a rule covers, keeping its field mappings.
+
+    Only the pattern. The action isn't editable — see `sender_rules.update_rule`.
+    """
+    try:
+        rule = sender_rules.update_rule(
+            current_user.company_id, rule_id,
+            request.form.get("pattern", ""),
+        )
+    except sender_rules.SenderRuleError as exc:
+        _flash(str(exc), "error")
+    else:
+        kept = len(rule.fields)
+        _flash(
+            f"Rule now covers {rule.pattern}."
+            + (f" {kept} mapped field(s) kept." if kept else ""),
+            "success",
+        )
     return redirect(url_for("communications.integrations"))
 
 

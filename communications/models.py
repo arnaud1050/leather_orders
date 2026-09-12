@@ -875,8 +875,13 @@ class SenderRule(db.Model):
     # Stored lowercased; either "someone@example.com" or "@example.com".
     pattern = db.Column(db.String(255), nullable=False)
     action = db.Column(db.String(20), nullable=False)
-    # Free text, so a rule someone added six months ago still explains itself.
-    note = db.Column(db.String(255))
+    # There was a free-text `note` here, for a rule to explain itself six
+    # months later. Removed: a rule is one address and one action, and the
+    # field earned its keep on neither the list (where it was a tag nobody
+    # read) nor the edit row (where it was a second box beside the only one
+    # that matters). An existing database keeps the unused column — the same
+    # call as the `lead_read_states` table, since dropping things is not
+    # something a boot-time migration should do.
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     company = db.relationship("Company")
