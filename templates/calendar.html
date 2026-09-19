@@ -81,7 +81,7 @@
                  appointments; orders live on the timeline. Each chip opens that
                  event's edit dialog, one dialog per event however many days it
                  spans (see events_in_view). #}
-              {% for event in cell.events %}
+              {% for event in cell.events[:cell_event_limit] %}
               <button type="button" class="chip chip--event" data-open-modal="event-modal-{{ event.id }}"
                       title="{{ event.description or 'Edit this event' }}">
                 <span class="chip__title">{{ event.title or '(untitled event)' }}</span>
@@ -90,6 +90,18 @@
                 </span>
               </button>
               {% endfor %}
+              {# Past the limit the rest collapse into one line. Hovering it
+                 lists them (a plain title tooltip, one per line); clicking it
+                 opens that day's week, where nothing is collapsed. #}
+              {% set extra = cell.events[cell_event_limit:] %}
+              {% if extra %}
+              {% set lines = [] %}
+              {% for event in extra %}
+              {% set _ = lines.append(((event.start_time|local_time) if (not event.all_day and event.start_time) else 'All day') ~ '  ' ~ (event.title or '(untitled event)')) %}
+              {% endfor %}
+              <a class="day__more" href="{{ url_for('week_view', year=year, month=month, day=cell.day) }}"
+                 title="{{ lines|join('\n') }}">+{{ extra|length }} more</a>
+              {% endif %}
             </div>
           </td>
           {% endif %}

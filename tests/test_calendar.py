@@ -559,12 +559,49 @@ def test_the_week_view_snaps_to_sunday(logged_in, company):
     assert "Aug 2" in response.get_data(as_text=True)  # the Sunday before it
 
 
-def test_the_month_and_week_views_link_to_each_other(logged_in, company):
-    month_body = logged_in.get("/month/2026/8").get_data(as_text=True)
-    assert 'href="/week/2026/8/1"' in month_body
+def test_the_view_toggle_always_lands_on_the_current_period(logged_in, company):
+    """From any month or week you've wandered to, the icons go home — not to
+    the period you happen to be looking at."""
+    month_body = logged_in.get("/month/2026/1").get_data(as_text=True)
+    assert 'href="/week"' in month_body
 
-    week_body = logged_in.get("/week/2026/8/5").get_data(as_text=True)
-    assert 'href="/month/2026/8"' in week_body
+    week_body = logged_in.get("/week/2026/1/7").get_data(as_text=True)
+    assert 'href="/calendar"' in week_body
+
+
+def test_the_current_week_route_shows_this_week(logged_in, company):
+    today = date.today()
+    body = logged_in.get("/week").get_data(as_text=True)
+    assert 'title="Today"' in body and str(today.year) in body
+
+
+def _four_events_on_one_day(account):
+    day = datetime(2026, 8, 5, 9, 0)
+    with fakes.fake_providers(events=[
+        fakes.event(event_id=f"e-{i}", title=f"Fitting {i}", start=day + timedelta(hours=i))
+        for i in range(1, 5)
+    ]):
+        calendar_sync.sync_calendar(account)
+
+
+def test_a_month_cell_caps_its_chips_and_counts_the_rest(logged_in, account):
+    _four_events_on_one_day(account)
+
+    body = logged_in.get("/month/2026/8").get_data(as_text=True)
+    assert body.count('class="chip chip--event"') == 3
+    assert "+1 more" in body
+    # The overflow event is named in the tooltip, and the link leads to the
+    # week that shows it.
+    assert "Fitting 4" in body.split("+1 more")[0].rsplit("<a", 1)[1]
+    assert 'href="/week/2026/8/5"' in body
+
+
+def test_the_week_view_never_collapses_a_day(logged_in, account):
+    _four_events_on_one_day(account)
+
+    body = logged_in.get("/week/2026/8/5").get_data(as_text=True)
+    assert body.count("chip--week") >= 4
+    assert "more</a>" not in body
 
 
 # --- guests and invitations -----------------------------------------------

@@ -4,12 +4,12 @@
    on screen at once. Shared by calendar.html and calendar_week.html so the
    two don't drift, same reasoning as _settings_nav.html.
 
-   Callers set calendar_view_mode ("month" or "week") plus month_link_year/
-   month_link_month and week_link_year/week_link_month/week_link_day —
-   the target of each icon, which is "itself" from the active view and
-   "a reasonable date inside what's currently showing" from the other. #}
+   Each icon always lands on the *current* month or week, whichever view
+   you're leaving from and however far you'd navigated — the prev/next arrows
+   are for wandering, this is for coming home. Callers set calendar_view_mode
+   ("month" or "week") to mark which icon is active. #}
 <div class="view-toggle">
-  <a href="{{ url_for('month_view', year=month_link_year, month=month_link_month) }}"
+  <a href="{{ url_for('calendar_view') }}"
      class="view-toggle__btn {{ 'is-active' if calendar_view_mode == 'month' else '' }}"
      title="Month view" aria-label="Month view">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -20,7 +20,7 @@
       <line x1="15" y1="4" x2="15" y2="21" />
     </svg>
   </a>
-  <a href="{{ url_for('week_view', year=week_link_year, month=week_link_month, day=week_link_day) }}"
+  <a href="{{ url_for('current_week_view') }}"
      class="view-toggle__btn {{ 'is-active' if calendar_view_mode == 'week' else '' }}"
      title="Week view" aria-label="Week view">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">

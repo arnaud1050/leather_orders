@@ -70,13 +70,17 @@ in `app.py`, distinct from the `/` route.
   boundary and a bare day-of-month can't say which month it meant.
 - **The month/week toggle** (`_calendar_view_toggle.html`, two icon buttons —
   a grid glyph and a columns glyph, both inline SVG) lives in `.ledger__nav`
-  next to the prev/next arrows on both templates. Each view hands the
-  partial where the *other* icon should land: the month view's week-icon
-  target is the week containing that month's 1st; the week view's
-  month-icon target is the month its Sunday falls in. Neither route needs
-  the other's window remembered anywhere — recomputing "a reasonable date
-  inside what's on screen" is the same trick `default_date` already uses for
-  the "+ New event" dialog.
+  next to the prev/next arrows on both templates. **Each icon always lands on
+  the *current* month or week** (`/calendar` and `/week`, the latter being
+  `current_week_view()`), not on the period the other view is showing — the
+  arrows are for wandering, the icons are for coming home. Nothing has to
+  remember a window across the switch.
+- **A month cell shows at most `MONTH_CELL_EVENT_LIMIT` (3) chips**; the rest
+  collapse into a `+N more` link (`.day__more`) whose `title` tooltip lists
+  them one per line (time, then title) and which opens that day's week view,
+  where nothing is collapsed. The count is over chips only — `month_total`
+  and the per-event dialogs still cover every event. The week view has no
+  cap.
 - **Week navigation moves by 7 days**, snapped to the same Sunday-first
   convention as the month grid and the timeline (`_sunday_on_or_before`,
   shared with `timeline_window`). The header reads "Mon d – Mon d" exactly

@@ -1004,6 +1004,11 @@ def client_lifecycle_help():
 # their due date.
 # ---------------------------------------------------------------------------
 
+# Chips a month cell shows before collapsing the rest into "+N more". The
+# week view has the room to show a whole day, which is what that link leads to.
+MONTH_CELL_EVENT_LIMIT = 3
+
+
 @app.route("/calendar")
 @login_required
 def calendar_view():
@@ -1075,13 +1080,16 @@ def month_view(year: int, month: int):
         # back through the module's own one-shot notice.
         notice=communications_routes.take_notice(),
         active_view="calendar",
-        # Month/week toggle in the header (see _calendar_view_toggle.html):
-        # the week icon jumps to the week containing this month's 1st, same
-        # "pick something reasonable inside the view" logic as default_date.
         calendar_view_mode="month",
-        month_link_year=year, month_link_month=month,
-        week_link_year=year, week_link_month=month, week_link_day=1,
+        cell_event_limit=MONTH_CELL_EVENT_LIMIT,
     )
+
+
+@app.route("/week")
+@login_required
+def current_week_view():
+    today = date.today()
+    return week_view(today.year, today.month, today.day)
 
 
 @app.route("/week/<int:year>/<int:month>/<int:day>")
@@ -1132,10 +1140,7 @@ def week_view(year: int, month: int, day: int):
         default_date=today if window_start <= today <= window_end else window_start,
         notice=communications_routes.take_notice(),
         active_view="calendar",
-        # Month icon lands on the month the visible week starts in.
         calendar_view_mode="week",
-        month_link_year=window_start.year, month_link_month=window_start.month,
-        week_link_year=window_start.year, week_link_month=window_start.month, week_link_day=window_start.day,
     )
 
 

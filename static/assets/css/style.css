@@ -508,6 +508,20 @@ body {
   gap: 4px;
 }
 
+/* "+N more" under a month cell's capped chips; its title attribute lists the
+   ones that didn't fit. */
+.day__more {
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+  padding: 1px 6px;
+}
+
+.day__more:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
 .chip {
   border-left: 4px solid var(--chip-color, var(--status-progress));
   background: rgba(255, 255, 255, 0.5);

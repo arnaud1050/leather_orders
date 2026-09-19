@@ -10,3 +10,6 @@ __pycache__/
 
 data/
 data-demo/
+
+# Release announcement emails and their screenshots
+docs/releases/
