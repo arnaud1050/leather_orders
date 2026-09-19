@@ -44,14 +44,45 @@ real start/due falls outside what's visible.
   each bar's horizontal position, since that's controlled independently by the
   server-computed `grid-column` inline style, not DOM order.
 
-**Calendar** (`/calendar`, `/month/<year>/<month>`) — month grid via Python's
-stdlib `calendar` module (`calendar.Calendar`), no external dependency. Shows only
-**synced Google Calendar events** (`.chip--event` — see the communications module's
-UI section) — orders never render here, and never did without a mailbox connected
-either (`orders_by_day()` was removed from `app.py`; `month_view()` only reads
-`calendar_service.events_by_day()`). Orders live on the Timeline instead. Not the
-default view (see Timeline above) — the function is named `calendar_view` in
-`app.py`, distinct from the `/` route.
+**Calendar** (`/calendar`, `/month/<year>/<month>`, `/week/<year>/<month>/<day>`) —
+month grid via Python's stdlib `calendar` module (`calendar.Calendar`), no
+external dependency, plus a week grid for days with enough appointments that
+the month cell's 108px doesn't hold them. Shows only **synced Google Calendar
+events** (`.chip--event` — see the communications module's UI section) —
+orders never render here, and never did without a mailbox connected either
+(`orders_by_day()` was removed from `app.py`; `month_view()` only reads
+`calendar_service.events_by_day()`). Orders live on the Timeline instead. Not
+the default view (see Timeline above) — the function is named `calendar_view`
+in `app.py`, distinct from the `/` route.
+
+- **Month and week are the same feature at two zoom levels**, not two
+  features: same events, same create/edit dialogs (`_event_dialogs.html`,
+  extracted so the two grids share one copy), same script
+  (`_event_dialogs_script.html`), same "no calendar connected" gating. Only
+  the grid markup differs — `calendar.html`'s table of `.day` cells versus
+  `calendar_week.html`'s `.calendar-week` of seven `.week-day` columns, wide
+  enough that `.chip--week` wraps its title instead of ellipsizing and has
+  room for a location line the month cell doesn't.
+- **`calendar_service.events_by_range(company_id, start, end)`** is the
+  date-keyed twin of `events_by_day()` (which stays day-of-month-keyed for
+  the month grid, and now calls the range version rather than duplicating
+  its walk) — the week grid needs it because a week can cross a month
+  boundary and a bare day-of-month can't say which month it meant.
+- **The month/week toggle** (`_calendar_view_toggle.html`, two icon buttons —
+  a grid glyph and a columns glyph, both inline SVG) lives in `.ledger__nav`
+  next to the prev/next arrows on both templates. Each view hands the
+  partial where the *other* icon should land: the month view's week-icon
+  target is the week containing that month's 1st; the week view's
+  month-icon target is the month its Sunday falls in. Neither route needs
+  the other's window remembered anywhere — recomputing "a reasonable date
+  inside what's on screen" is the same trick `default_date` already uses for
+  the "+ New event" dialog.
+- **Week navigation moves by 7 days**, snapped to the same Sunday-first
+  convention as the month grid and the timeline (`_sunday_on_or_before`,
+  shared with `timeline_window`). The header reads "Mon d – Mon d" exactly
+  like the timeline's own multi-week window label — a week spanning two
+  months (or, rarely, two years) still reads correctly since it's real
+  `strftime` output, not an assumption that both ends share a month.
 
 **Events are created and edited from here**, via the same pre-rendered
 `<dialog class="modal">` pattern as the timeline: a "+ New event" button in
@@ -570,8 +601,12 @@ templates/
   _settings_nav.html        # /settings sub-nav (+ integration alert badge), shared with the module
   _client_nav.html          # client page sub-nav, ditto
   _clients_nav.html         # Clients/Leads sub-nav + the waiting-leads badge
+  _calendar_view_toggle.html  # month/week icon toggle, shared by calendar.html + calendar_week.html
+  _event_dialogs.html       # calendar event create/edit <dialog>s, ditto
+  _event_dialogs_script.html  # modal open/close + guest-hint JS for the above, ditto
   login.html                # sign-in form (extends base.html)
   calendar.html             # month view (extends base.html)
+  calendar_week.html        # week view, same events/dialogs as calendar.html (extends base.html)
   timeline.html             # Gantt-style multi-week view + modals (extends base.html)
   client_page.html          # full client profile, editable (extends base.html)
   order_page.html           # full order detail, editable (extends base.html)

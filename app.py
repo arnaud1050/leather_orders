@@ -1075,6 +1075,67 @@ def month_view(year: int, month: int):
         # back through the module's own one-shot notice.
         notice=communications_routes.take_notice(),
         active_view="calendar",
+        # Month/week toggle in the header (see _calendar_view_toggle.html):
+        # the week icon jumps to the week containing this month's 1st, same
+        # "pick something reasonable inside the view" logic as default_date.
+        calendar_view_mode="month",
+        month_link_year=year, month_link_month=month,
+        week_link_year=year, week_link_month=month, week_link_day=1,
+    )
+
+
+@app.route("/week/<int:year>/<int:month>/<int:day>")
+@login_required
+def week_view(year: int, month: int, day: int):
+    try:
+        requested = date(year, month, day)
+    except ValueError:
+        abort(404)
+
+    window_start = _sunday_on_or_before(requested)
+    window_end = window_start + timedelta(days=6)
+    today = date.today()
+
+    # Same local mirror as the month grid, keyed by date instead of
+    # day-of-month since a week can cross a month boundary.
+    events = calendar_service.events_by_range(
+        current_user.company_id, window_start, window_start + timedelta(days=7),
+    )
+
+    days_data = [
+        {
+            "date": window_start + timedelta(days=offset),
+            "events": events.get(window_start + timedelta(days=offset), []),
+            "is_today": (window_start + timedelta(days=offset)) == today,
+        }
+        for offset in range(7)
+    ]
+
+    prev_start = window_start - timedelta(days=7)
+    next_start = window_start + timedelta(days=7)
+
+    events_in_view = list({event.id: event for day_events in events.values() for event in day_events}.values())
+    week_total = len(events_in_view)
+
+    return render_template(
+        "calendar_week.html",
+        days=days_data,
+        window_start=window_start,
+        window_end=window_end,
+        prev_start=prev_start,
+        next_start=next_start,
+        week_total=week_total,
+        has_calendar=calendar_service.has_calendar(current_user.company_id),
+        events_in_view=events_in_view,
+        clients=Client.query.filter_by(company_id=current_user.company_id)
+            .order_by(Client.first_name, Client.last_name).all(),
+        default_date=today if window_start <= today <= window_end else window_start,
+        notice=communications_routes.take_notice(),
+        active_view="calendar",
+        # Month icon lands on the month the visible week starts in.
+        calendar_view_mode="week",
+        month_link_year=window_start.year, month_link_month=window_start.month,
+        week_link_year=window_start.year, week_link_month=window_start.month, week_link_day=window_start.day,
     )
 
 

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Calendar — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="ledger__header">
+    <div class="ledger__mark">
+      <h1>Calendar</h1>
+      <p class="detail-subtitle">Appointments, by day</p>
+    </div>
+
+    <nav class="ledger__nav">
+      <a class="stamp" href="{{ url_for('week_view', year=prev_start.year, month=prev_start.month, day=prev_start.day) }}" title="Previous week">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 6l-6 6 6 6" />
+        </svg>
+      </a>
+      <div class="ledger__month">
+        {# Same "Mon d – Mon d" pattern as the timeline's own multi-week
+           header — a week can cross a month (or, rarely, a year) boundary,
+           and this reads correctly either way. #}
+        <span class="ledger__month-name">{{ window_start.strftime('%b') }} {{ window_start.day }} – {{ window_end.strftime('%b') }} {{ window_end.day }}</span>
+        <span class="ledger__year">{{ window_start.year }}</span>
+      </div>
+      <a class="stamp" href="{{ url_for('week_view', year=next_start.year, month=next_start.month, day=next_start.day) }}" title="Next week">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </a>
+      {% include "_calendar_view_toggle.html" %}
+    </nav>
+
+    <div class="ledger__summary">
+      <span class="ledger__summary-count">{{ week_total }}</span>
+      <span class="ledger__summary-label">appointment{{ 's' if week_total != 1 else '' }}<br>this week</span>
+    </div>
+  </header>
+
+  {% if notice %}
+  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  {% endif %}
+
+  {% if has_calendar %}
+  <div class="legend-row">
+    <div class="legend__actions">
+      <form method="post" action="{{ url_for('communications.sync_calendar_now') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_to" value="{{ request.path }}">
+        <button type="submit" class="btn-secondary">Sync now</button>
+      </form>
+      <button type="button" class="btn-primary" data-open-modal="event-modal-new">+ New event</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="calendar-week">
+    {% for cell in days %}
+    <div class="week-day {% if cell.is_today %}week-day--today{% endif %}">
+      <div class="week-day__label">{{ cell.date.strftime('%a') }}</div>
+      <div class="week-day__number">
+        {{ cell.date.day }}
+        {% if cell.is_today %}<span class="day__rivet" title="Today"></span>{% endif %}
+      </div>
+      <div class="week-day__events">
+        {# Same events, same dialogs as the month grid — just more room per
+           day, which is the whole point of a week view: several
+           appointments on one day stay readable instead of getting
+           squeezed into a 108px cell. #}
+        {% for event in cell.events %}
+        <button type="button" class="chip chip--event chip--week" data-open-modal="event-modal-{{ event.id }}">
+          <span class="chip__time">
+            {% if not event.all_day and event.start_time %}{{ event.start_time|local_time }}{% if event.end_time %} - {{ event.end_time|local_time }}{% endif %}{% else %}All day{% endif %}
+          </span>
+          <span class="chip__title">{{ event.title or '(untitled event)' }}</span>
+          {% if event.location %}<span class="chip__location">{{ event.location }}</span>{% endif %}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if has_calendar %}
+  {% include "_event_dialogs.html" %}
+  {% endif %}
+
+</div>
+
+{% if has_calendar %}
+{% include "_event_dialogs_script.html" %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,79 @@
+{# Wiring for the event dialogs in _event_dialogs.html — modal open/close,
+   the all-day field toggle, and the guest-invite hint. No template
+   variables, so calendar.html and calendar_week.html include it as-is
+   rather than each keeping a copy that drifts. #}
+<script>
+  document.querySelectorAll('[data-open-modal]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var modal = document.getElementById(el.dataset.openModal);
+      if (modal) modal.showModal();
+    });
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      el.closest('dialog').close();
+    });
+  });
+
+  // Backdrop click closes, same as the timeline's modals.
+  document.querySelectorAll('dialog.modal').forEach(function (dialog) {
+    dialog.addEventListener('click', function (event) {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+
+  // An all-day event has no times to enter. Disabled rather than hidden so the
+  // fields don't submit values the server would have to know to ignore.
+  document.querySelectorAll('[data-all-day]').forEach(function (checkbox) {
+    var apply = function () {
+      checkbox.closest('form').querySelectorAll('[data-timed-field]').forEach(function (field) {
+        field.disabled = checkbox.checked;
+      });
+    };
+    checkbox.addEventListener('change', apply);
+    apply();
+  });
+
+  // Who gets invited, said out loud before anyone commits to it.
+  //
+  // Two jobs. It names the address the invitation would go to, since the whole
+  // point is that nobody retypes it — and if the chosen client has no email on
+  // file it says *that*, rather than leaving a button whose only outcome is
+  // silence. And it hides the invite button when there is nobody to invite, so
+  // "send invite" is never an offer the form can't keep.
+  document.querySelectorAll('dialog.modal form').forEach(function (form) {
+    var select = form.querySelector('[data-client-select]');
+    var extra = form.querySelector('[data-extra-guests]');
+    var hint = form.querySelector('[data-guest-hint]');
+    var button = form.querySelector('[data-invite-button]');
+    if (!select || !button) return;
+
+    var apply = function () {
+      var option = select.options[select.selectedIndex];
+      var email = (option && option.dataset.email || '').trim();
+      var named = option && option.value ? option.text : '';
+      var others = (extra ? extra.value : '').split(',').filter(function (part) {
+        return part.trim() !== '';
+      }).length;
+
+      button.hidden = !email && others === 0;
+
+      if (named && email) {
+        hint.textContent = 'Invitation goes to ' + named + ' — ' + email;
+        hint.hidden = false;
+      } else if (named) {
+        // Deliberately not an error: the event is still worth creating, it
+        // just can't invite them until the address is on their record.
+        hint.textContent = named + ' has no email on file, so they can’t be invited.';
+        hint.hidden = false;
+      } else {
+        hint.hidden = true;
+      }
+    };
+
+    select.addEventListener('change', apply);
+    if (extra) extra.addEventListener('input', apply);
+    apply();
+  });
+</script>

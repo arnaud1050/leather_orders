@@ -13,7 +13,7 @@ a created event shows up without waiting for the next sync.
 """
 
 import logging
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from models import Client, db
 
@@ -52,28 +52,42 @@ def get_events(company_id: int, start: datetime, end: datetime) -> list[Calendar
     )
 
 
+def events_by_range(company_id: int, start: date, end: date) -> dict[date, list[CalendarEvent]]:
+    """calendar date -> events, for any grid spanning the half-open [start, end).
+
+    A multi-day event appears on each of its days inside the range, which is
+    what someone reading a grid — month or week — expects. `events_by_day`
+    builds on this rather than duplicating the walk, keyed by day-of-month for
+    the one view that still wants that.
+    """
+    range_start = datetime.combine(start, time.min)
+    range_end = datetime.combine(end, time.min)
+
+    grouped: dict[date, list[CalendarEvent]] = {}
+    for event in get_events(company_id, range_start, range_end):
+        if not event.start_time:
+            continue
+        cursor = max(event.start_time.date(), start)
+        last = min((event.end_time or event.start_time).date(), end - timedelta(days=1))
+        while cursor <= last:
+            grouped.setdefault(cursor, []).append(event)
+            cursor += timedelta(days=1)
+    return grouped
+
+
 def events_by_day(company_id: int, year: int, month: int) -> dict[int, list[CalendarEvent]]:
-    """day-of-month -> events, for the calendar view.
+    """day-of-month -> events, for the month grid.
 
     This is the only thing the month grid renders — orders live on the
     timeline. A multi-day event appears on each of its days within the month,
     which is what someone reading a month grid expects.
     """
-    month_start = datetime.combine(date(year, month, 1), time.min)
+    month_start = date(year, month, 1)
     next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-    month_end = datetime.combine(next_month, time.min)
-
-    grouped: dict[int, list[CalendarEvent]] = {}
-    for event in get_events(company_id, month_start, month_end):
-        if not event.start_time:
-            continue
-        cursor = max(event.start_time.date(), month_start.date())
-        last = min((event.end_time or event.start_time).date(), next_month)
-        while cursor <= last and cursor < next_month:
-            if cursor.month == month and cursor.year == year:
-                grouped.setdefault(cursor.day, []).append(event)
-            cursor = date.fromordinal(cursor.toordinal() + 1)
-    return grouped
+    return {
+        day.day: events
+        for day, events in events_by_range(company_id, month_start, next_month).items()
+    }
 
 
 def has_calendar(company_id: int) -> bool:

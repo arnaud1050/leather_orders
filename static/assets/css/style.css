@@ -219,6 +219,42 @@ body {
   letter-spacing: 0.08em;
 }
 
+/* Month/week toggle, appended to .ledger__nav after the prev/next arrows —
+   see _calendar_view_toggle.html. Sized to match .stamp so the three
+   circles (prev, next, and now these two) read as one family of controls. */
+.view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--hairline);
+}
+
+.view-toggle__btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.view-toggle__btn:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.view-toggle__btn.is-active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
 /* ---------------------------------------------------------------------
    Legend
    --------------------------------------------------------------------- */
@@ -515,6 +551,72 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------------
+   Calendar week grid — same events, same chips, just one column per day
+   instead of a 7-wide table row, so a day with several appointments has
+   somewhere to put them (see docs/views.md).
+   --------------------------------------------------------------------- */
+
+.calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+}
+
+.week-day {
+  background: var(--paper);
+  min-height: 420px;
+  padding: 10px 10px 12px;
+}
+
+.week-day--today {
+  background: #fbfaf7;
+  box-shadow: inset 0 0 0 2px var(--day-today);
+}
+
+.week-day__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+
+.week-day__number {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.week-day__events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The week grid has room a month cell doesn't, so its chips wrap instead
+   of ellipsizing and can show a location line the month grid has no space
+   for at all. */
+.chip--week .chip__title,
+.chip--week .chip__time {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: initial;
+}
+
+.chip__location {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+  white-space: normal;
+  margin-top: 1px;
 }
 
 /* ---------------------------------------------------------------------
@@ -2525,8 +2627,22 @@ dialog.modal::backdrop {
     grid-template-columns: 1fr;
     text-align: center;
   }
-  .ledger__nav { justify-self: center; }
+  .ledger__nav {
+    justify-self: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
   .ledger__summary { justify-self: center; text-align: center; }
+
+  /* Drops to its own centred row rather than fighting the arrows for space
+     on a narrow screen — see .view-toggle. */
+  .view-toggle {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
+    flex-basis: 100%;
+    justify-content: center;
+  }
 
   .calendar, .calendar thead, .calendar tbody, .calendar tr, .calendar td {
     display: block;
@@ -2542,6 +2658,13 @@ dialog.modal::backdrop {
   .day--empty { display: none; }
   .day__number::before {
     content: attr(data-label) " ";
+  }
+
+  .calendar-week {
+    grid-template-columns: 1fr;
+  }
+  .week-day {
+    min-height: 0;
   }
 
   .timeline {

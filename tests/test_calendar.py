@@ -1,6 +1,6 @@
 """Calendar sync and the service the month view reads through."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -211,6 +211,32 @@ def test_events_by_day_handles_a_december_window(account):
 
 def test_events_by_day_of_an_empty_month(account):
     assert calendar_service.events_by_day(account.company_id, 2020, 1) == {}
+
+
+def test_events_by_range_spans_a_month_boundary(account):
+    """The week view can straddle two months; events_by_day can't answer
+    that (a bare day-of-month doesn't say which month), which is why it
+    exists alongside it."""
+    with fakes.fake_providers(events=[
+        fakes.event(start=datetime(2026, 8, 31, 9, 0)),
+        fakes.event(event_id="e-2", start=datetime(2026, 9, 1, 9, 0)),
+    ]):
+        calendar_sync.sync_calendar(account)
+
+    by_date = calendar_service.events_by_range(
+        account.company_id, date(2026, 8, 30), date(2026, 9, 6),
+    )
+    assert set(by_date) == {date(2026, 8, 31), date(2026, 9, 1)}
+
+
+def test_events_by_range_end_is_exclusive(account):
+    with fakes.fake_providers(events=[fakes.event(start=datetime(2026, 9, 6, 9, 0))]):
+        calendar_sync.sync_calendar(account)
+
+    by_date = calendar_service.events_by_range(
+        account.company_id, date(2026, 8, 30), date(2026, 9, 6),
+    )
+    assert by_date == {}
 
 
 def test_has_calendar(account, company):
@@ -498,6 +524,47 @@ def test_the_month_view_hides_event_ui_without_a_calendar(logged_in, company):
 def test_the_month_view_offers_event_ui_with_a_calendar(logged_in, account):
     body = logged_in.get("/calendar").get_data(as_text=True)
     assert "+ New event" in body
+
+
+# --- week view --------------------------------------------------------
+#
+# Same feature as the month grid at a different zoom level: same events,
+# same create/edit dialogs, same has_calendar gating. These tests only
+# cover what's specific to the week route — the grouping itself is
+# test_events_by_range_* above, and the dialogs/invite logic is already
+# covered against the month view.
+
+def test_the_week_view_shows_a_synced_event(logged_in, account):
+    with fakes.fake_providers(events=[fakes.event(start=datetime(2026, 8, 5, 14, 0))]):
+        calendar_sync.sync_calendar(account)
+
+    body = logged_in.get("/week/2026/8/5").get_data(as_text=True)
+    assert "Fitting" in body
+
+
+def test_the_week_view_hides_event_ui_without_a_calendar(logged_in, company):
+    body = logged_in.get("/week/2026/8/5").get_data(as_text=True)
+    assert "+ New event" not in body
+
+
+def test_the_week_view_offers_event_ui_with_a_calendar(logged_in, account):
+    body = logged_in.get("/week/2026/8/5").get_data(as_text=True)
+    assert "+ New event" in body
+
+
+def test_the_week_view_snaps_to_sunday(logged_in, company):
+    """Requesting any day in the week lands on the same Sunday-first window
+    as the month grid and the timeline (_sunday_on_or_before)."""
+    response = logged_in.get("/week/2026/8/5")  # a Wednesday
+    assert "Aug 2" in response.get_data(as_text=True)  # the Sunday before it
+
+
+def test_the_month_and_week_views_link_to_each_other(logged_in, company):
+    month_body = logged_in.get("/month/2026/8").get_data(as_text=True)
+    assert 'href="/week/2026/8/1"' in month_body
+
+    week_body = logged_in.get("/week/2026/8/5").get_data(as_text=True)
+    assert 'href="/month/2026/8"' in week_body
 
 
 # --- guests and invitations -----------------------------------------------
