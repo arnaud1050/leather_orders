@@ -23,7 +23,7 @@ from billing.logos import LogoError
 from billing.models import BillingProfile, Invoice, InvoiceTaxLine, next_invoice_number
 
 __all__ = [
-    "Amounts", "LogoError", "amounts_for", "branding_for", "create_invoice",
+    "Amounts", "LogoError", "amounts_for", "branding_for", "clean_notes", "create_invoice",
     "document_for", "documents_for", "logo_path", "remove_logo", "set_logo",
     "get_invoice", "invoice_for_subject", "list_invoices", "next_number",
     "profile_for", "set_status", "update_profile",
@@ -339,8 +339,23 @@ def set_status(
         invoice.status = status
     if was_draft and invoice.status != "draft":
         freeze(company_id, invoice, billable, display_name)
-    invoice.notes = (notes or "").strip() or None
+    invoice.notes = clean_notes(notes)
     invoice.due_date = due_date
+
+
+def clean_notes(notes: str | None) -> str | None:
+    """Notes as they may be stored: at most three lines, 250 characters.
+
+    The PDF gives them a fixed three-line box. Extra lines are joined onto
+    the third rather than dropped, so nothing typed is lost before the
+    length cap; blank lines don't count as lines.
+    """
+    lines = [line.strip() for line in (notes or "").splitlines() if line.strip()]
+    if len(lines) > config.NOTES_MAX_LINES:
+        keep = config.NOTES_MAX_LINES - 1
+        lines = lines[:keep] + [" ".join(lines[keep:])]
+    text = "\n".join(lines)[:config.NOTES_MAX_LENGTH].strip()
+    return text or None
 
 
 # --- Reporting ------------------------------------------------------------

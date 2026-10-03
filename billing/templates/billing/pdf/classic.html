@@ -17,17 +17,24 @@
 <style>
   @page {
     size: letter portrait;
-    margin: 18mm 18mm {{ '28mm' if branding.has_footer else '20mm' }};
+    margin: 18mm 18mm {{ '14mm' if branding.has_footer else '20mm' }};
     @footnote { margin-top: 14pt; }
     {% if branding.has_footer %}
-    /* The footer band, 8mm clear of the paper's edge: inside what any
-       printer can print, unlike the very bottom of the sheet. */
+    /* The footer band fills the bottom margin exactly, so it runs to the
+       very bottom of the sheet, as on the invoice it's modelled on. Its
+       text is centred in the band, about 7mm up — clear of what most
+       printers can't reach — though the band's own colour may stop short
+       of the edge on a printer that can't print borderless. */
     @bottom-center {
       content: element(pagefoot);
       width: 100%;
       vertical-align: bottom;
-      padding-bottom: 8mm;
+      padding: 0;
     }
+    /* The page keeps its side margins, so the corners are coloured too:
+       the band reaches both edges, like Banded's. */
+    @bottom-left-corner { content: ""; background: {{ branding.footer_bg }}; }
+    @bottom-right-corner { content: ""; background: {{ branding.footer_bg }}; }
     {% else %}
     @bottom-left {
       /* Taken from the page via string-set (see .number) rather than
@@ -208,23 +215,37 @@
     text-align: right;
     color: #1c1a17;
   }
-  .notes p {
-    margin-top: 4pt;
-    white-space: pre-line;
-  }
+  /* The closing block — notes, then payment instructions — sits at the
+     bottom left of the last page, as on the invoice this layout comes
+     from, but in WeasyPrint's footnote area rather than pinned there, so
+     the items above can never run underneath it: when it doesn't fit under
+     the last line it moves to the next page instead. The call and marker a
+     footnote normally prints are off.
 
-  /* Payment instructions sit at the bottom left of the last page, as on
-     the invoice this layout comes from — but in WeasyPrint's footnote area
-     rather than pinned there, so the items above can never run underneath
-     them. If they don't fit under the last line, they move to the next
-     page instead. The call and marker a footnote normally prints are off. */
-  .pay {
+     The notes always take the room of three lines, written or not, so the
+     payment instructions print at the same height on every invoice. */
+  .closing {
     float: footnote;
     footnote-display: block;
+    padding-bottom: {{ '10mm' if branding.has_footer else '0' }};
   }
-  .pay::footnote-call { content: none; }
-  .pay::footnote-marker { content: none; }
-  .pay p {
+  .closing::footnote-call { content: none; }
+  .closing::footnote-marker { content: none; }
+  .closing__notes {
+    height: 58pt;
+    overflow: hidden;
+  }
+  .closing__notes p {
+    max-height: 4.35em;   /* three lines of 1.45 — older, longer notes are cut */
+    margin-top: 2pt;
+    overflow: hidden;
+    line-height: 1.45;
+    white-space: pre-line;
+  }
+  .closing__pay {
+    margin-top: 10pt;
+  }
+  .closing__pay p {
     margin-top: 2pt;
     white-space: pre-line;
   }
@@ -235,7 +256,8 @@
     justify-content: space-between;
     align-items: center;
     gap: 12pt;
-    padding: 5pt 8pt;
+    height: 14mm;
+    padding: 0;
     background: {{ branding.footer_bg }};
     color: {{ branding.footer_fg }};
     font-size: 8pt;
@@ -351,18 +373,17 @@
   </div>
   {% endif %}
 
-  {% if doc.notes %}
-  <div class="block notes">
-    <span class="label">Notes</span>
-    <p>{{ doc.notes }}</p>
+  {# The closing block: notes, then payment instructions, at the foot of
+     the last page (see .closing). No whitespace between the tags in here —
+     inside WeasyPrint's footnote area each gap becomes an empty ~27px line,
+     which once made it measure twice its height and pushed it onto a page
+     of its own. The empty notes box keeps its height when there are none. #}
+  {% if doc.notes or doc.shows_payment_instructions %}
+  <div class="closing">
+  {%- if doc.notes %}<div class="closing__notes"><span class="label">Notes</span><p>{{ doc.notes }}</p></div>
+  {%- else %}<div class="closing__notes"></div>{% endif %}
+  {%- if doc.shows_payment_instructions %}<div class="closing__pay"><span class="label">Payment instructions</span><p>{{ doc.issuer.payment_instructions }}</p></div>{% endif -%}
   </div>
-  {% endif %}
-
-  {% if doc.shows_payment_instructions %}
-  {# No whitespace between the tags in here: inside WeasyPrint's footnote
-     area each gap becomes an empty line ~27px tall, which made the block
-     measure twice its height and pushed it onto a page of its own. #}
-  <div class="pay"><span class="label">Payment instructions</span><p>{{ doc.issuer.payment_instructions }}</p></div>
   {% endif %}
 
 </body>

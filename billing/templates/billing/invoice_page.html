@@ -147,7 +147,7 @@
         </select>
       </label>
       <label>Payment due<input type="date" name="due_date" value="{{ doc.due_date.isoformat() if doc.due_date else '' }}"></label>
-      <label>Notes<textarea name="notes" rows="2" placeholder="Shown on the invoice">{{ doc.notes or '' }}</textarea></label>
+      <label>Notes<textarea name="notes" rows="3" maxlength="{{ notes_max_length }}" placeholder="Up to three lines, printed above the payment instructions">{{ doc.notes or '' }}</textarea></label>
       <div class="invoice-admin__buttons">
         <button type="submit" class="btn-primary">Save</button>
         {# The server-rendered PDF is the export. The browser's print dialog

@@ -68,6 +68,13 @@ LOGO_DIR = os.environ.get(
 # would otherwise refuse a bigger file before the app could explain why.
 LOGO_MAX_BYTES = int(os.environ.get("BILLING_LOGO_MAX_BYTES", 10 * 1024 * 1024))
 
+# An invoice's notes print in a box three lines tall above the payment
+# instructions (see the PDF templates), so that block sits at the same
+# height on every invoice. Enforced where notes are saved; ~85 characters
+# fill a line across the page.
+NOTES_MAX_LINES = 3
+NOTES_MAX_LENGTH = 250
+
 # How money arrived. A payment processor is just another entry here — the
 # app owns the invoice record either way, and the method only records how
 # the money came in.

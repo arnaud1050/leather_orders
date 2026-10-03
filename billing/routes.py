@@ -110,6 +110,7 @@ def invoice_page(invoice_id: int):
         status_labels=config.STATUS_LABELS,
         payment_method_labels=config.PAYMENT_METHOD_LABELS,
         settable_statuses=config.SETTABLE_STATUSES,
+        notes_max_length=config.NOTES_MAX_LENGTH,
         pdf_available=pdf.available(),
         active_view=None,
     )

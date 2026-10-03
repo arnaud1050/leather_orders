@@ -22,6 +22,7 @@ import billing.migrations as billing_migrations
 
 from billing.documents import Billable, LineItem, PartyDetails, PaymentRecord
 from billing.models import Invoice, InvoiceTaxLine, next_invoice_number
+from billing import config
 from billing.services import invoicing
 from billing_adapter import billable_for
 from models import Client, Order, OrderLine, Payment, db
@@ -586,3 +587,25 @@ def test_profile_names_are_backfilled_from_the_host(company, client_record):
     db.session.expire_all()
 
     assert invoicing.profile_for(company.id).display_name == "By Monsieur"
+
+
+# --- Notes: three lines at most ----------------------------------------------
+
+@pytest.mark.parametrize("typed, stored", [
+    (None, None),
+    ("", None),
+    ("   \n  ", None),
+    ("Rush order.", "Rush order."),
+    ("  One  \n\n Two \n", "One\nTwo"),
+    ("1\n2\n3", "1\n2\n3"),
+    ("1\n2\n3\n4\n5", "1\n2\n3 4 5"),
+])
+def test_notes_are_kept_to_three_lines(typed, stored):
+    """The PDF gives notes a box three lines tall; extra lines are joined
+    onto the third rather than lost."""
+    assert invoicing.clean_notes(typed) == stored
+
+
+def test_notes_are_capped_in_length():
+    assert len(invoicing.clean_notes("x" * 1000)) == config.NOTES_MAX_LENGTH
+

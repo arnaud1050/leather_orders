@@ -256,3 +256,27 @@ def test_issuing_an_invoice_requires_a_login(app, order):
     assert response.status_code == 302
     assert "/login" in response.headers["Location"]
     assert Invoice.query.count() == 0
+
+
+def test_saved_notes_are_kept_to_three_lines(logged_in, order):
+    logged_in.post(f"/subjects/{order.id}/invoice", data={})
+    db.session.expire_all()
+    invoice_id = invoice_for(order).id
+
+    logged_in.post(f"/invoices/{invoice_id}/status",
+                   data={"status": "draft", "notes": "a\nb\nc\nd"})
+
+    db.session.expire_all()
+    assert invoice_for(order).notes == "a\nb\nc d"
+
+
+def test_the_notes_box_says_it_holds_three_lines(logged_in, order):
+    from billing import config
+
+    logged_in.post(f"/subjects/{order.id}/invoice", data={})
+    db.session.expire_all()
+    body = logged_in.get(f"/invoices/{invoice_for(order).id}").get_data(as_text=True)
+
+    assert f'rows="3" maxlength="{config.NOTES_MAX_LENGTH}"' in body
+    assert "Up to three lines" in body
+

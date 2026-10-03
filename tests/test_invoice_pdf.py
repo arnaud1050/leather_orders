@@ -173,10 +173,10 @@ def test_payment_instructions_sit_at_the_foot_of_the_last_page(app, doc, look):
     and pushed to the next page rather than printed over the items."""
     html = pdf.render_html(doc, look)
 
-    assert '<div class="pay">' in html
+    assert '<div class="closing">' in html
     stylesheet = html.split("<style>")[1].split("</style>")[0]
     assert "float: footnote" in stylesheet
-    assert ".pay::footnote-call { content: none; }" in stylesheet
+    assert ".closing::footnote-call { content: none; }" in stylesheet
     # Not absolutely positioned, which is what let the original layout
     # print items underneath them.
     assert "position: absolute" not in stylesheet
@@ -186,11 +186,65 @@ def test_the_payment_block_has_no_whitespace_between_its_tags(app, doc, look):
     """Inside WeasyPrint's footnote area each gap between tags becomes an
     empty ~27px line: the block measured twice its height and was pushed
     onto a page of its own even with room to spare."""
-    html = pdf.render_html(doc, look)
-    block = html.split('<div class="pay">')[1].split("</div>")[0]
+    with_notes = pdf.render_html(replace(doc, notes="Rush."), look)
+    without = pdf.render_html(doc, look)
 
-    assert block == ('<span class="label">Payment instructions</span>'
-                     '<p>E-transfer to pay@example.com</p>')
+    def block(html):
+        return html.split('<div class="closing">')[1].split("</body>")[0].strip()
+
+    assert block(with_notes).startswith(
+        '<div class="closing__notes"><span class="label">Notes</span><p>Rush.</p></div>'
+        '<div class="closing__pay"><span class="label">Payment instructions</span>'
+        '<p>E-transfer to pay@example.com</p></div></div>')
+    # With no notes, an empty box still holds their place.
+    assert block(without).startswith(
+        '<div class="closing__notes"></div><div class="closing__pay">')
+
+
+def test_notes_take_the_room_of_three_lines_whatever_their_length(app, doc, look):
+    stylesheet = pdf.render_html(doc, look).split("<style>")[1].split("</style>")[0]
+
+    assert ".closing__notes {\n    height: 58pt;\n    overflow: hidden;" in stylesheet
+    assert "max-height: 4.35em;" in stylesheet
+
+
+def test_nothing_closes_an_invoice_with_no_notes_and_nothing_owed(app, doc, look):
+    paid = replace(doc, amount_paid=doc.total, notes=None)
+
+    assert '<div class="closing">' not in pdf.render_html(paid, look)
+
+
+def _closing_positions(html):
+    """(page height, y of the payment instructions, footer band bottom) on
+    the last page, from WeasyPrint's own layout."""
+    import weasyprint
+
+    rendered = weasyprint.HTML(string=html, url_fetcher=pdf._fetcher(weasyprint)).render()
+    page = rendered.pages[-1]
+    found = {}
+
+    def walk(box):
+        element = getattr(box, "element", None)
+        if element is not None:
+            cls = element.get("class")
+            if cls in ("closing__pay", "page-footer") and cls not in found:
+                found[cls] = (box.position_y, box.margin_height())
+        for child in getattr(box, "children", None) or []:
+            walk(child)
+
+    walk(page._page_box)
+    return page.height, found
+
+
+@needs_renderer
+def test_the_payment_instructions_print_at_the_same_height_whatever_the_notes(app, doc, look):
+    heights = set()
+    for notes in (None, "One line.", "First line.\nSecond line.\nThird line."):
+        _, found = _closing_positions(pdf.render_html(replace(doc, notes=notes), look))
+        heights.add(round(found["closing__pay"][0], 1))
+
+    assert len(heights) == 1, heights
+
 
 
 @needs_renderer
@@ -252,8 +306,8 @@ def test_the_footer_prints_its_text_and_the_page_number(app, doc, template):
     assert "color: #ffffff;" in stylesheet
     # The page number moves into the band instead of printing beside it.
     assert 'counter(page) " of " counter(pages);\n    white-space: nowrap;' in stylesheet
-    assert "@bottom-right" not in stylesheet
-    assert "@bottom-left" not in stylesheet
+    assert "@bottom-right {" not in stylesheet
+    assert "@bottom-left {" not in stylesheet
 
 
 @pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
@@ -288,11 +342,37 @@ def test_the_footer_is_off_with_grey_defaults_until_chosen():
 
 
 @pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
-def test_the_footer_keeps_clear_of_the_paper_edge(app, doc, template):
-    """8mm up from the bottom: inside what any printer can print."""
-    stylesheet = pdf.render_html(doc, footer_look(template)).split("<style>")[1]
+def test_the_footer_band_fills_the_bottom_margin(app, doc, template):
+    """The band is exactly as tall as the bottom margin, so it reaches the
+    very bottom of the sheet, as on the invoice it's modelled on."""
+    stylesheet = pdf.render_html(doc, footer_look(template)).split("<style>")[1].split("</style>")[0]
 
-    assert "padding-bottom: 8mm;" in stylesheet
+    assert " 14mm;\n    @footnote" in stylesheet      # the page's bottom margin
+    assert "height: 14mm;" in stylesheet              # the band
+    if template == "classic":
+        # Classic keeps its side margins, so the corners carry the colour.
+        assert "@bottom-left-corner" in stylesheet and "@bottom-right-corner" in stylesheet
+
+
+@needs_renderer
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_the_rendered_footer_band_touches_the_bottom_edge(app, doc, template):
+    page_height, found = _closing_positions(pdf.render_html(doc, footer_look(template)))
+    y, height = found["page-footer"]
+
+    assert abs((y + height) - page_height) < 1
+
+
+@needs_renderer
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_with_a_footer_the_payment_instructions_sit_well_above_it(app, doc, template):
+    """Higher up than the band: about 10mm of clear paper between them."""
+    page_height, found = _closing_positions(pdf.render_html(doc, footer_look(template)))
+    pay_y, pay_height = found["closing__pay"]
+    band_y, _ = found["page-footer"]
+
+    gap_mm = (band_y - (pay_y + pay_height)) * 25.4 / 96
+    assert 9 <= gap_mm <= 14, gap_mm
 
 
 needs_pdftotext = pytest.mark.skipif(
