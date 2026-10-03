@@ -34,7 +34,7 @@
   </header>
 
   {% if notice %}
-  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
   {% endif %}
 
   {# No event UI at all for a studio that hasn't connected a calendar — a

@@ -13,7 +13,7 @@
   {% with section = 'leads' %}{% include "_clients_nav.html" %}{% endwith %}
 
   {% if notice %}
-  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
   {% endif %}
 
   {# Same "Sync now" action as the integrations page, and the same

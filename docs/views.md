@@ -325,6 +325,12 @@ Email/Calendar → AI**:
   Orders and Clients used to be one "Order preferences" category; split once each
   side had its own settings-source-list section, so a page named for one entity
   isn't the place someone reaches for to edit the other.
+**Saving keeps your place** (REQUIREMENTS `MOD7`). Every posting form, on every
+page: when the page comes back, it reopens where you were, or on the message the
+save left (`data-save-notice`). It's one script, `static/assets/js/stay-in-place.js`,
+loaded by `base.html` — routes just redirect back to the same page, with no
+`#fragment`.
+
 - **`/settings/invoicing`** (`settings_invoicing()`) — **Company details**
   (`update_company_details()` — name, structured address with a province dropdown,
   GST/HST, PST/RST, QST, NEQ; the invoice letterhead. City/province/postal share a
@@ -341,7 +347,8 @@ Email/Calendar → AI**:
   `update_invoice_appearance()`, with a "Preview saved look" link. The
   script is `static/assets/js/invoice-appearance.js`; the miniatures and the
   logo tile follow the colour live through `--look-primary`. Every route
-  returns to `#invoice-appearance`, where its refusals are shown). The first two are frozen onto an invoice when it's
+  shows its refusals inside the section, and the page reopens there — see
+  "Saving keeps your place" below). The first two are frozen onto an invoice when it's
   issued; appearance never is, and the page says so. Grouped together because all
   of it feeds
   the invoice letterhead — company info without invoicing context (or vice versa)

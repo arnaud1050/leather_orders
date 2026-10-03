@@ -443,10 +443,10 @@ def test_a_logo_refusal_is_shown_beside_the_logo(logged_in, company):
     assert "couldn&#39;t be read" not in body.split('id="invoice-appearance"')[0]
 
 
-def test_the_logo_routes_return_to_the_appearance_section(logged_in, company):
-    assert upload(logged_in, image_bytes()).headers["Location"].endswith(
-        "#invoice-appearance")
-    assert logged_in.post(DELETE).headers["Location"].endswith("#invoice-appearance")
+def test_the_logo_routes_return_to_the_settings_page(logged_in, company):
+    """Where it reopens is stay-in-place.js's job (MOD7), so no #fragment."""
+    assert upload(logged_in, image_bytes()).headers["Location"].endswith("/settings/invoicing")
+    assert logged_in.post(DELETE).headers["Location"].endswith("/settings/invoicing")
 
 
 # --- Serving it back ------------------------------------------------------

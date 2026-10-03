@@ -109,7 +109,9 @@
     function send() {
       showError('');
       form.classList.add('is-uploading');
-      form.submit();
+      // requestSubmit, not submit(): it fires the submit event, which is
+      // how stay-in-place.js keeps the page where it was.
+      form.requestSubmit();
     }
 
     input.addEventListener('change', function () {

@@ -141,7 +141,6 @@ def test_update_invoicing_requires_a_login(app):
 # --- /settings/invoicing/appearance ----------------------------------------
 
 APPEARANCE = "/settings/invoicing/appearance"
-SECTION_ANCHOR = "/settings/invoicing#invoice-appearance"
 
 
 def test_update_appearance_saves_the_layout_and_the_colour(logged_in, company):
@@ -156,12 +155,12 @@ def test_update_appearance_saves_the_layout_and_the_colour(logged_in, company):
     assert profile.primary_color == "#1f4e79"   # normalised to lower case
 
 
-def test_saving_returns_to_the_appearance_section(logged_in, company):
-    """Not the top of the page: the section is near the bottom, and landing
-    above it hid both the result and any refusal."""
+def test_saving_returns_to_the_same_page_without_choosing_a_place(logged_in, company):
+    """No #fragment: where the page reopens is stay-in-place.js's job, the
+    same for every form (MOD7); a fragment would make it jump instead."""
     response = logged_in.post(APPEARANCE, data={"invoice_template": "banded"})
 
-    assert response.headers["Location"].endswith(SECTION_ANCHOR)
+    assert response.headers["Location"].endswith("/settings/invoicing")
 
 
 def test_update_appearance_refuses_a_colour_that_is_not_plain_hex(logged_in, company):

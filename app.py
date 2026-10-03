@@ -2687,13 +2687,13 @@ def delete_invoice_logo():
 
 def _flash_appearance_notice(message: str) -> None:
     """A refusal from the appearance or logo form, shown *inside* that
-    section rather than at the top of the page: the page reloads scrolled
-    to the section, and a message up top was easy to miss entirely."""
+    section rather than at the top of the page, beside what it's about.
+    The page reopening where it was is stay-in-place.js's job (MOD7)."""
     session["appearance_notice"] = message
 
 
 def _back_to_appearance():
-    return redirect(url_for("settings_invoicing", _anchor="invoice-appearance"))
+    return redirect(url_for("settings_invoicing"))
 
 
 # ---------------------------------------------------------------------------

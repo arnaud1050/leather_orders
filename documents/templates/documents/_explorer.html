@@ -91,7 +91,7 @@
 {% endmacro %}
 
 {% if documents_notice %}
-<p class="warning-note">{{ documents_notice }}</p>
+<p data-save-notice class="warning-note">{{ documents_notice }}</p>
 {% endif %}
 
 {% if has_document_types %}
@@ -121,7 +121,9 @@
   document.querySelectorAll('.doc-upload-input').forEach(function (input) {
     input.addEventListener('change', function () {
       if (this.files.length > 0) {
-        this.closest('form').submit();
+        // requestSubmit, not submit(): it fires the submit event, which is
+        // how stay-in-place.js keeps the page where it was.
+        this.closest('form').requestSubmit();
       }
     });
   });

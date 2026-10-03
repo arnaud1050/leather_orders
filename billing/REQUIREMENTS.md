@@ -492,8 +492,8 @@ reason being that a stored copy can disagree with the rows it describes.
   colour, **leaves the stored value as it was**, says so in a notice shown
   **inside the appearance section**, and still saves the fields that were
   valid. A field the form didn't send is left alone. Every appearance and
-  logo route returns to `/settings/invoicing#invoice-appearance`, not the
-  top of the page.
+  logo route returns to `/settings/invoicing`, which reopens where it was
+  (the host's MOD7), scrolled to that notice when there is one.
 - **BR8 — The preview.** `GET /invoices/preview.pdf` renders a sample
   invoice — the tenant's real letterhead and next number, an invented
   buyer — in the **saved** look, inline in the browser. It stores nothing
@@ -803,7 +803,7 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | BR4 | `test_branding_with_nothing_chosen_is_the_default_look` |
 | BR5 | `test_text_on_the_band_stays_readable` |
 | BR6 | every document test in `test_invoice_pdf.py` runs once per layout (the `look` fixture) |
-| BR7 | `test_update_appearance_saves_the_layout_and_the_colour`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_a_refusal_is_shown_inside_the_appearance_section`, `test_saving_returns_to_the_appearance_section`, `test_the_logo_routes_return_to_the_appearance_section` (settings tests in `tests/test_settings_company.py`) |
+| BR7 | `test_update_appearance_saves_the_layout_and_the_colour`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_a_refusal_is_shown_inside_the_appearance_section`, `test_saving_returns_to_the_same_page_without_choosing_a_place`, `test_the_logo_routes_return_to_the_settings_page` (settings tests in `tests/test_settings_company.py`) |
 | BR8 | `test_the_preview_shows_a_sample_in_the_saved_look`, `test_the_preview_uses_up_no_invoice_number`, `test_the_preview_requires_a_login`, `test_without_a_renderer_the_preview_goes_somewhere_that_works`, `test_the_sample_is_the_sellers_own_document`, `test_a_sample_from_an_unregistered_seller_charges_no_tax`, `test_the_preview_link_appears_only_where_a_pdf_can_be_rendered` |
 | BR9 | `test_update_appearance_is_per_company` |
 | BR10 | `test_the_logo_comes_before_the_layout`, `test_the_introduction_is_short`, `test_the_layouts_are_radio_buttons_named_classic_and_banded`, `test_each_layout_has_a_thumbnail`, `test_the_saved_layout_is_the_checked_one`, `test_the_page_shows_the_saved_colour`, `test_the_page_shows_the_defaults_before_anything_is_chosen`, `test_the_accent_colour_is_a_swatch_that_opens_a_picker` — gap: opening and closing the picker, dragging, keyboard control, the live miniatures and the Banded-only accent colour are script behaviour, checked by hand in a browser (desktop and phone width), not by the suite |

@@ -37,7 +37,7 @@
   </header>
 
   {% if notice %}
-  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
   {% endif %}
 
   {% if has_calendar %}

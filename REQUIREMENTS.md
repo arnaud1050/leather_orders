@@ -795,6 +795,18 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   every sort link's `?sort=`), and each of those previously fell through to
   a bare "Back".
 
+- **MOD7 — Saving keeps your place.** On every page, when a form posts and
+  the page that comes back is the same page, it opens scrolled to where you
+  were, not at the top. If that page shows a message from the save — every
+  one is marked `data-save-notice` — it opens on the message instead, so a
+  refusal is never off-screen. One script does this for every posting form
+  (`static/assets/js/stay-in-place.js`, loaded by `base.html`): nothing is
+  wired per form or per route, a response that names its own place with a
+  `#fragment` keeps it, a form can opt out with `data-no-stay`, and a form
+  submitted from script uses `requestSubmit()` so the script sees it. A
+  form that lands on a different page (MOD5's `return_to`, or anywhere
+  else) opens that page at the top as usual.
+
 ## 12. Settings
 
 - **SET1.** `/settings` itself is content-free — it redirects to
@@ -1008,6 +1020,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | CL15 | `test_orders_tab_is_a_table_with_the_expected_columns`, `test_orders_tab_shows_dash_for_an_uninvoiced_order`, `test_orders_tab_sorts_by_the_requested_column` (`tests/test_client_orders_tab.py`); the status filter itself is — gap — same as LST4's client-side limitation |
 | MOD5 | `test_edit_client_redirects_to_return_to`, `test_edit_order_redirects_to_return_to` |
 | MOD6 | `test_back_label_variants` |
+| MOD7 | `test_every_page_loads_the_script`, `test_the_script_is_served`, `test_every_save_message_is_marked_so_it_is_scrolled_to`, `test_no_form_is_submitted_without_its_submit_event` (`tests/test_stay_in_place.py`) — gap: the scrolling itself is browser behaviour, checked by hand on Settings → Invoicing (each section's Save, and a refused save on Settings → Orders), not by the suite |
 | SET1 | `test_settings_root_redirects_to_general` |
 | SET2–SET3 | — gap — |
 | SET4 | see OT1–OT3 |

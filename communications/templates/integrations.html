@@ -11,7 +11,7 @@
   {% include "_settings_nav.html" %}
 
   {% if notice %}
-  <p class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
   {% endif %}
 
   <section class="detail-orders">
