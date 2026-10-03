@@ -1364,15 +1364,6 @@ a.btn-secondary {
   resize: vertical;
 }
 
-/* A colour picker is a swatch, not a text box: the text inputs' padding
-   would leave a sliver of colour in the middle of a large empty field. */
-.detail-form input[type="color"] {
-  width: 100%;
-  height: 42px;
-  padding: 4px;
-  cursor: pointer;
-}
-
 .detail-form input:focus,
 .detail-form select:focus,
 .detail-form textarea:focus {
@@ -2496,21 +2487,6 @@ a.btn-secondary {
   flex-shrink: 0;
 }
 
-/* The current invoice logo, in a settings row. The swatch behind it is the
-   company's primary colour (set inline), so the logo is seen as the Banded
-   layout will print it. */
-.settings-logo {
-  display: inline-flex;
-  align-items: center;
-  padding: 10px 14px;
-  border-radius: var(--radius);
-}
-
-.settings-logo img {
-  display: block;
-  max-width: 200px;
-  max-height: 48px;
-}
 
 /* Drag handle — document types only, currently the sole draggable list in
    the app. Grab cursor signals draggability the way the label text alone
@@ -2880,6 +2856,445 @@ a.btn-secondary {
    (the sender rules). Smaller and quieter than the section's own <h2>, so it
    reads as a division of that section rather than a new one — the 40px
    section gap that separates real sections would be wrong here. */
+/* ---------------------------------------------------------------------
+   Settings → Invoicing → Invoice appearance: logo tile, layout cards with
+   live thumbnails, and the colour picker. `--look-primary` and
+   `--look-on-primary` are set inline on the section from Branding's
+   checked values, and updated by invoice-appearance.js as the colour
+   changes, so the thumbnails and the logo tile follow the picker.
+   --------------------------------------------------------------------- */
+
+.invoice-look__hint {
+  margin-top: 8px;
+}
+
+/* The upload tile when there's no logo yet — the order page's "Add file"
+   tile, wider, and a drop target. */
+.invoice-look__add {
+  display: flex;
+  max-width: 480px;
+  min-height: 110px;
+  margin-top: 10px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius);
+}
+
+.invoice-look__add.is-dragging {
+  border-color: var(--ink);
+  background: var(--paper-deep);
+}
+
+.invoice-look__add-hint {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+/* The native file input stays in the tab order and reachable by keyboard
+   and screen readers; it just isn't what's drawn. */
+.invoice-look__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* Without JS the tile can't upload on its own, so a plain button shows;
+   the script hides it once it has taken over. */
+.invoice-look.is-enhanced .invoice-look__no-js {
+  display: none;
+}
+
+.invoice-look__upload {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.invoice-look__upload label.btn-secondary {
+  display: inline-block;
+  font-size: 0.76rem;
+}
+
+.invoice-look__logo-list {
+  margin: 10px 0 0;
+}
+
+/* On a phone the buttons drop under the logo rather than off the edge. */
+.invoice-look__logo-list .settings-source-list__item {
+  flex-wrap: wrap;
+}
+
+.invoice-look__logo-tile {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--look-primary);
+}
+
+.invoice-look__logo-tile img {
+  display: block;
+  max-width: min(200px, 100%);
+  max-height: 48px;
+}
+
+.invoice-look__form {
+  margin-top: 8px;
+}
+
+.invoice-look__form .invoice-admin__buttons {
+  margin-top: 24px;
+}
+
+.invoice-look__fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.invoice-look__fieldset legend {
+  padding: 0;
+}
+
+/* Layout cards */
+.layout-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.layout-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Two side by side even on a phone; capped so they stay thumbnails. */
+  flex: 1 1 140px;
+  max-width: 196px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.layout-option:hover {
+  border-color: var(--ink);
+}
+
+.layout-option:has(.layout-option__input:checked) {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.layout-option:has(.layout-option__input:focus-visible) {
+  outline: 2px solid var(--status-progress);
+  outline-offset: 2px;
+}
+
+/* The radio itself: real and focusable, drawn as the card's border. */
+.layout-option__input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.layout-option__name {
+  margin-top: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.layout-option__note {
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+/* The miniature invoice. Proportioned like a Letter page (8.5 x 11). */
+.layout-thumb {
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: 17 / 22;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(28, 26, 23, 0.18);
+}
+
+.layout-thumb i,
+.layout-thumb b {
+  display: block;
+  height: 4px;
+  border-radius: 1px;
+  background: #d9d9d6;
+}
+
+.layout-thumb__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 12px 10px;
+}
+
+.layout-thumb--banded .layout-thumb__head {
+  padding: 18px 12px;
+  background: var(--look-primary);
+}
+
+.layout-thumb--classic .layout-thumb__head {
+  flex-direction: column;
+  align-items: flex-start;
+  margin: 0 12px;
+  padding: 14px 0 8px;
+  border-bottom: 1px solid #1c1a17;
+}
+
+.layout-thumb__logo {
+  display: block;
+  min-width: 0;
+  max-width: min(76px, 55%);
+  max-height: 20px;
+}
+
+.layout-thumb__name {
+  display: block;
+  width: 56px;
+  height: 7px;
+  border-radius: 1px;
+  background: #1c1a17;
+}
+
+.layout-thumb--banded .layout-thumb__name {
+  background: var(--look-on-primary);
+}
+
+.layout-thumb__address {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 3px;
+}
+
+.layout-thumb__address i:first-child { width: 40px; }
+.layout-thumb__address i:last-child { width: 30px; }
+
+.layout-thumb--classic .layout-thumb__address {
+  align-items: flex-start;
+}
+
+.layout-thumb--banded .layout-thumb__address i {
+  background: var(--look-on-primary);
+  opacity: 0.6;
+}
+
+.layout-thumb__body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px;
+}
+
+.layout-thumb__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.layout-thumb__meta i { width: 36px; }
+.layout-thumb__meta b {
+  width: 30px;
+  height: 7px;
+  margin-left: auto;
+  background: #1c1a17;
+}
+
+.layout-thumb--banded .layout-thumb__meta b {
+  background: var(--look-primary);
+}
+
+.layout-thumb__rule {
+  height: 1px;
+  background: #83898d;
+}
+
+.layout-thumb--banded .layout-thumb__rule {
+  height: 2px;
+  background: var(--look-primary);
+}
+
+.layout-thumb__row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.layout-thumb__row i:first-child { width: 70px; }
+.layout-thumb__row i:last-child { width: 24px; }
+
+.layout-thumb__totals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.layout-thumb__totals i { width: 44px; }
+.layout-thumb__totals b {
+  width: 52px;
+  background: #1c1a17;
+}
+
+.layout-thumb--banded .layout-thumb__totals b {
+  background: var(--look-primary);
+}
+
+/* Colour picker */
+.invoice-look__colour[hidden] {
+  display: none;
+}
+
+/* Wide enough for the ten suggestions and the wheel on one row. */
+.color-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 400px;
+  margin: 10px 0 0;
+}
+
+.color-picker__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.color-picker__swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(28, 26, 23, 0.2);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.color-picker__swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
+}
+
+.color-picker__swatch:focus-visible {
+  outline: 2px solid var(--status-progress);
+  outline-offset: 3px;
+}
+
+/* "Any colour" — a wheel, so it reads as "more than these". */
+.color-picker__swatch--custom {
+  background: conic-gradient(#e53935, #fdd835, #43a047, #1e88e5, #8e24aa, #e53935);
+}
+
+.color-picker__swatch--custom[aria-expanded="true"] {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
+}
+
+.color-picker__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.color-picker__panel[hidden] {
+  display: none;
+}
+
+/* Saturation left to right, brightness bottom to top, over the hue. */
+.color-picker__area {
+  position: relative;
+  height: 150px;
+  border-radius: var(--radius);
+  background:
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, rgba(255, 255, 255, 0)),
+    hsl(var(--picker-hue, 0), 100%, 50%);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.color-picker__hue {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(to right,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.color-picker__area:focus-visible,
+.color-picker__hue:focus-visible {
+  outline: 2px solid var(--status-progress);
+  outline-offset: 2px;
+}
+
+.color-picker__area-handle,
+.color-picker__hue-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.color-picker__hue-handle {
+  top: 50%;
+  background: hsl(var(--picker-hue, 0), 100%, 50%);
+}
+
+.color-picker__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-picker__current {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--look-primary);
+}
+
+.color-picker__field input {
+  width: 120px;
+  padding: 9px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  text-transform: lowercase;
+}
+
+.color-picker__field input:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.color-picker__field input:invalid {
+  border-color: var(--day-today);
+}
+
 .settings-subheading {
   margin: 24px 0 4px;
   font-size: 0.82rem;

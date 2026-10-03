@@ -267,7 +267,7 @@ carrying `return_to` like everything else. `invoice_page()` renders one invoice:
 `.invoice-doc` is the printable document, and the controls below it are marked
 `.no-print`. The export is the **"Download PDF"** button — a real PDF rendered on
 the server by `billing/pdf.py` from its own standalone template, not this page.
-Its layout and colours are the company's choice, under **Settings → Invoicing →
+Its layout, colour and logo are the company's choice, under **Settings → Invoicing →
 Invoice appearance** (`update_invoice_appearance()`; a "Preview saved look" link
 there opens a sample at `/invoices/preview.pdf`), along with a logo
 (`upload_invoice_logo()` / `delete_invoice_logo()`, shown on the page on the
@@ -331,9 +331,15 @@ Email/Calendar → AI**:
   line via `.field-row`, which wraps rather than squeezing) and **Invoicing**
   (`update_invoicing_settings()` — number prefix, which also shows what the next
   number will be, plus payment instructions), and **Invoice appearance**
-  (`update_invoice_appearance()` — PDF layout and two colours, with a "Preview
-  saved look" link; then a **Logo** sub-section, `upload_invoice_logo()` /
-  `delete_invoice_logo()`). The first two are frozen onto an invoice when it's
+  (top to bottom: a **Logo** tile, `upload_invoice_logo()` /
+  `delete_invoice_logo()`, uploading on choose or drop like an order's "Add
+  file"; the **Layout** as two radio cards, Classic and Banded, each with a
+  miniature invoice; and the **Colour**, shown only for Banded, from
+  suggestions or a picker the page draws itself — saved by
+  `update_invoice_appearance()`, with a "Preview saved look" link. The
+  script is `static/assets/js/invoice-appearance.js`; the miniatures and the
+  logo tile follow the colour live through `--look-primary`. Every route
+  returns to `#invoice-appearance`, where its refusals are shown). The first two are frozen onto an invoice when it's
   issued; appearance never is, and the page says so. Grouped together because all
   of it feeds
   the invoice letterhead — company info without invoicing context (or vice versa)

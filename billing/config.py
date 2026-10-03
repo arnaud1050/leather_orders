@@ -35,16 +35,24 @@ STATUS_LABELS = {
 # label a settings form shows. Here rather than beside the renderer because
 # the host's settings page needs the list too.
 INVOICE_TEMPLATES = {
-    "classic": "Classic — plain, black on white",
-    "banded": "Banded — coloured header band",
+    "classic": "Classic",
+    "banded": "Banded",
 }
 DEFAULT_INVOICE_TEMPLATE = "classic"
 
-# What the coloured layout uses until a tenant chooses: the app's own ink
-# and soft grey, so an unconfigured invoice is sober rather than branded
-# with somebody else's taste.
+# What the coloured layout uses until a tenant chooses: the app's own ink,
+# so an unconfigured invoice is sober rather than branded with somebody
+# else's taste.
 DEFAULT_PRIMARY_COLOR = "#1c1a17"
-DEFAULT_SECONDARY_COLOR = "#7e7a78"
+
+# Suggestions offered beside the colour picker in settings. Dark enough
+# that white text and a white logo stay readable on the band, and spread
+# across the wheel so most brands find a neighbour. Not a restriction:
+# any #rrggbb can be chosen.
+SUGGESTED_PRIMARY_COLORS = (
+    "#1c1a17", "#3b3b3b", "#1f3a5f", "#2c5d8a", "#2f4f3a",
+    "#3d6b5a", "#6b1f2a", "#8c2f39", "#4a2c4a", "#8c6d1f",
+)
 
 # Where invoice logos are kept (see billing/logos.py). The same data/
 # directory as the SQLite file and the order documents — the bind-mounted
@@ -54,8 +62,10 @@ _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO_DIR = os.environ.get(
     "BILLING_LOGO_DIR", os.path.join(_BASE_DIR, "data", "billing_logos"))
 # Cap on the *upload*. What's stored is a re-encoded, downscaled copy and is
-# normally far smaller.
-LOGO_MAX_BYTES = int(os.environ.get("BILLING_LOGO_MAX_BYTES", 2 * 1024 * 1024))
+# normally far smaller, so this only has to admit a photo straight off a
+# phone. 10 MB matches nginx's client_max_body_size (server_config), which
+# would otherwise refuse a bigger file before the app could explain why.
+LOGO_MAX_BYTES = int(os.environ.get("BILLING_LOGO_MAX_BYTES", 10 * 1024 * 1024))
 
 # How money arrived. A payment processor is just another entry here — the
 # app owns the invoice record either way, and the method only records how

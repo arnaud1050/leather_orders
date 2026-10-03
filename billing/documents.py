@@ -44,8 +44,8 @@ def clean_color(value) -> str | None:
 
 @dataclass(frozen=True)
 class Branding:
-    """How a tenant's invoices look: which layout, its two colours, and
-    the logo.
+    """How a tenant's invoices look: which layout, its colour, and the
+    logo.
 
     Read live at render time, never frozen onto an invoice — the freeze
     contract covers what a document says, not how it's dressed.
@@ -57,7 +57,6 @@ class Branding:
 
     template: str | None = None
     primary_color: str | None = None
-    secondary_color: str | None = None
     # The logo, already as a `data:` URI — built by the service from bytes
     # this module re-encoded itself (billing/logos.py), so a template can
     # put it straight into an <img> and the renderer has nothing to fetch.
@@ -73,9 +72,6 @@ class Branding:
     def primary(self) -> str:
         return clean_color(self.primary_color) or config.DEFAULT_PRIMARY_COLOR
 
-    @property
-    def secondary(self) -> str:
-        return clean_color(self.secondary_color) or config.DEFAULT_SECONDARY_COLOR
 
     @property
     def on_primary(self) -> str:

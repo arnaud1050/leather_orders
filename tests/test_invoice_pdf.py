@@ -201,7 +201,6 @@ def test_branding_with_nothing_chosen_is_the_default_look():
 
     assert branding.template_key == config.DEFAULT_INVOICE_TEMPLATE
     assert branding.primary == config.DEFAULT_PRIMARY_COLOR
-    assert branding.secondary == config.DEFAULT_SECONDARY_COLOR
 
 
 @pytest.mark.parametrize("primary, text", [
@@ -215,14 +214,21 @@ def test_text_on_the_band_stays_readable(primary, text):
     assert Branding(primary_color=primary).on_primary == text
 
 
-def test_the_banded_layout_wears_the_chosen_colours(app, doc):
-    html = pdf.render_html(doc, Branding(
-        template="banded", primary_color="#1f4e79", secondary_color="#8a6d3b",
-    ))
+def test_the_banded_layout_wears_the_chosen_colour(app, doc):
+    html = pdf.render_html(doc, Branding(template="banded", primary_color="#1f4e79"))
 
     assert "background: #1f4e79" in html
-    assert "color: #ffffff" in html      # text on the dark band
-    assert "color: #8a6d3b" in html      # labels
+    assert "color: #ffffff" in html          # text on the dark band
+    assert "border-top: 2.25pt solid #1f4e79" in html   # table heading rule
+    assert "color: #7e7a78" in html          # labels stay a quiet grey
+
+
+def test_the_suggested_colours_are_all_clean_and_carry_white_text():
+    """Offered as suggestions in settings, so each must survive the CSS
+    check and keep a white logo readable on the band."""
+    for color in config.SUGGESTED_PRIMARY_COLORS:
+        assert clean_color(color) == color
+        assert Branding(primary_color=color).on_primary == "#ffffff", color
 
 
 def test_a_bad_stored_colour_never_reaches_the_stylesheet(app, doc):
@@ -230,8 +236,7 @@ def test_a_bad_stored_colour_never_reaches_the_stylesheet(app, doc):
     written into CSS."""
     html = pdf.render_html(doc, Branding(
         template="banded",
-        primary_color="red;} body{display:none} .x{",
-        secondary_color="url(https://evil.test/x)",
+        primary_color="red;} body{display:none} .x{url(https://evil.test/x)",
     ))
 
     assert "display:none" not in html
@@ -242,7 +247,7 @@ def test_a_bad_stored_colour_never_reaches_the_stylesheet(app, doc):
 def test_the_classic_layout_ignores_the_colours(app, doc):
     plain = pdf.render_html(doc, Branding(template="classic"))
     coloured = pdf.render_html(doc, Branding(
-        template="classic", primary_color="#ff0000", secondary_color="#00ff00",
+        template="classic", primary_color="#ff0000",
     ))
 
     assert coloured == plain
@@ -500,7 +505,7 @@ def test_the_pdf_wears_the_companys_saved_look(
 ):
     invoicing.update_profile(
         company.id, invoice_template="banded",
-        primary_color="#1f4e79", secondary_color="#8a6d3b",
+        primary_color="#1f4e79",
     )
     db.session.commit()
 
@@ -509,7 +514,6 @@ def test_the_pdf_wears_the_companys_saved_look(
     ((_, branding),) = fake_renderer
     assert branding.template_key == "banded"
     assert branding.primary == "#1f4e79"
-    assert branding.secondary == "#8a6d3b"
 
 
 def test_an_issued_invoice_follows_a_rebrand_but_keeps_what_it_said(

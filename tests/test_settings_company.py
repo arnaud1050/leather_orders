@@ -11,6 +11,8 @@ module's BillingProfile, not on Company, so the assertions read it back
 through that module rather than off the tenant row.
 """
 
+import re
+
 from billing.services import invoicing
 from models import Company, db
 
@@ -137,37 +139,53 @@ def test_update_invoicing_requires_a_login(app):
 # --- /settings/invoicing/appearance ----------------------------------------
 
 APPEARANCE = "/settings/invoicing/appearance"
+SECTION_ANCHOR = "/settings/invoicing#invoice-appearance"
 
 
-def test_update_appearance_saves_the_layout_and_both_colours(logged_in, company):
+def test_update_appearance_saves_the_layout_and_the_colour(logged_in, company):
     response = logged_in.post(APPEARANCE, data={
         "invoice_template": "banded",
         "primary_color": "#1F4E79",
-        "secondary_color": "#8a6d3b",
     })
 
     assert response.status_code == 302
     profile = _profile(company)
     assert profile.invoice_template == "banded"
     assert profile.primary_color == "#1f4e79"   # normalised to lower case
-    assert profile.secondary_color == "#8a6d3b"
+
+
+def test_saving_returns_to_the_appearance_section(logged_in, company):
+    """Not the top of the page: the section is near the bottom, and landing
+    above it hid both the result and any refusal."""
+    response = logged_in.post(APPEARANCE, data={"invoice_template": "banded"})
+
+    assert response.headers["Location"].endswith(SECTION_ANCHOR)
 
 
 def test_update_appearance_refuses_a_colour_that_is_not_plain_hex(logged_in, company):
-    """These end up in a stylesheet, so nothing but #rrggbb is stored."""
+    """It ends up in a stylesheet, so nothing but #rrggbb is stored."""
     logged_in.post(APPEARANCE, data={"primary_color": "#1f4e79"})
 
     response = logged_in.post(APPEARANCE, data={
+        "invoice_template": "banded",
         "primary_color": "red;} body{display:none",
-        "secondary_color": "#8a6d3b",
     }, follow_redirects=True)
 
     profile = _profile(company)
-    assert profile.primary_color == "#1f4e79"    # left as it was
-    assert profile.secondary_color == "#8a6d3b"  # the valid one still saved
+    assert profile.primary_color == "#1f4e79"     # left as it was
+    assert profile.invoice_template == "banded"   # the valid field still saved
     body = response.get_data(as_text=True)
-    assert "Not saved" in body
-    assert "primary colour" in body
+    assert "Not saved: the colour" in body
+
+
+def test_a_refusal_is_shown_inside_the_appearance_section(logged_in, company):
+    response = logged_in.post(
+        APPEARANCE, data={"primary_color": "nope"}, follow_redirects=True)
+
+    body = response.get_data(as_text=True)
+    section = body.split('id="invoice-appearance"')[1]
+    assert "Not saved" in section
+    assert "Not saved" not in body.split('id="invoice-appearance"')[0]
 
 
 def test_update_appearance_refuses_an_unknown_layout(logged_in, company):
@@ -177,22 +195,28 @@ def test_update_appearance_refuses_an_unknown_layout(logged_in, company):
         APPEARANCE, data={"invoice_template": "fancy"}, follow_redirects=True)
 
     assert _profile(company).invoice_template == "banded"
-    assert "Not saved" in response.get_data(as_text=True)
+    assert "Not saved: the layout" in response.get_data(as_text=True)
 
 
 def test_update_appearance_leaves_alone_what_the_form_did_not_send(logged_in, company):
     logged_in.post(APPEARANCE, data={
-        "invoice_template": "banded",
-        "primary_color": "#1f4e79",
-        "secondary_color": "#8a6d3b",
+        "invoice_template": "banded", "primary_color": "#1f4e79",
     })
 
-    logged_in.post(APPEARANCE, data={"secondary_color": "#222222"})
+    logged_in.post(APPEARANCE, data={"primary_color": "#222222"})
 
     profile = _profile(company)
     assert profile.invoice_template == "banded"
-    assert profile.primary_color == "#1f4e79"
-    assert profile.secondary_color == "#222222"
+    assert profile.primary_color == "#222222"
+
+
+def test_there_is_no_secondary_colour_any_more(logged_in, company):
+    logged_in.post(APPEARANCE, data={"secondary_color": "#8a6d3b"})
+
+    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
+    assert "secondary" not in body.lower().split('id="invoice-appearance"')[1] \
+        .replace("btn-secondary", "")
+    assert not hasattr(_profile(company), "secondary_color")
 
 
 def test_update_appearance_does_not_touch_the_letterhead(logged_in, company):
@@ -221,29 +245,81 @@ def test_update_appearance_requires_a_login(app):
     assert "/login" in response.headers["Location"]
 
 
-def test_the_settings_page_shows_the_saved_appearance(logged_in, company):
-    logged_in.post(APPEARANCE, data={
-        "invoice_template": "banded",
-        "primary_color": "#1f4e79",
-        "secondary_color": "#8a6d3b",
-    })
-
-    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
-
-    assert "Invoice appearance" in body
-    assert '<option value="banded" selected>' in body
-    assert 'name="primary_color" value="#1f4e79"' in body
-    assert 'name="secondary_color" value="#8a6d3b"' in body
+def _section(client):
+    body = client.get("/settings/invoicing").get_data(as_text=True)
+    return body.split('id="invoice-appearance"')[1].split("</section>")[0]
 
 
-def test_the_settings_page_shows_the_defaults_before_anything_is_chosen(
-    logged_in, company
-):
-    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
+def test_the_layouts_are_radio_buttons_named_classic_and_banded(logged_in, company):
+    section = _section(logged_in)
 
-    assert '<option value="classic" selected>' in body
-    assert 'name="primary_color" value="#1c1a17"' in body
-    assert 'name="secondary_color" value="#7e7a78"' in body
+    assert "<select" not in section
+    radios = re.findall(r'<input type="radio" name="invoice_template" value="(\w+)"', section)
+    assert radios == ["classic", "banded"]
+    assert ">Classic<" in section
+    assert ">Banded<" in section
+
+
+def test_each_layout_has_a_thumbnail(logged_in, company):
+    section = _section(logged_in)
+
+    assert 'class="layout-thumb layout-thumb--classic"' in section
+    assert 'class="layout-thumb layout-thumb--banded"' in section
+
+
+def test_the_saved_layout_is_the_checked_one(logged_in, company):
+    logged_in.post(APPEARANCE, data={"invoice_template": "banded"})
+
+    section = _section(logged_in)
+
+    checked = re.findall(r'value="(\w+)" class="layout-option__input"\s+checked', section)
+    assert checked == ["banded"]
+
+
+def test_the_page_shows_the_saved_colour(logged_in, company):
+    logged_in.post(APPEARANCE, data={"primary_color": "#1f4e79"})
+
+    section = _section(logged_in)
+
+    assert 'name="primary_color" value="#1f4e79"' in section
+    # Drives the thumbnails and the logo tile, with readable text on it.
+    assert "--look-primary: #1f4e79" in logged_in.get(
+        "/settings/invoicing").get_data(as_text=True)
+    assert "--look-on-primary: #ffffff" in logged_in.get(
+        "/settings/invoicing").get_data(as_text=True)
+
+
+def test_the_page_shows_the_defaults_before_anything_is_chosen(logged_in, company):
+    section = _section(logged_in)
+
+    checked = re.findall(r'value="(\w+)" class="layout-option__input"\s+checked', section)
+    assert checked == ["classic"]
+    assert 'name="primary_color" value="#1c1a17"' in section
+
+
+def test_the_colour_picker_offers_the_suggested_colours(logged_in, company):
+    from billing import config
+
+    section = _section(logged_in)
+
+    for color in config.SUGGESTED_PRIMARY_COLORS:
+        assert f'data-color="{color}"' in section
+    # No browser-native picker: the page draws its own.
+    assert 'type="color"' not in section
+
+
+def test_the_suggested_colour_in_use_is_marked(logged_in, company):
+    logged_in.post(APPEARANCE, data={"primary_color": "#1f3a5f"})
+
+    section = _section(logged_in)
+
+    assert re.search(r'data-color="#1f3a5f"\s+aria-label="Use #1f3a5f" aria-pressed="true"', section)
+
+
+def test_the_logo_comes_before_the_layout(logged_in, company):
+    section = _section(logged_in)
+
+    assert section.index(">Logo<") < section.index(">Layout<") < section.index(">Colour<")
 
 
 def test_the_preview_link_appears_only_where_a_pdf_can_be_rendered(

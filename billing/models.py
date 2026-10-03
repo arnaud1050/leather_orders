@@ -69,9 +69,10 @@ class BillingProfile(db.Model):
 
     # How the PDF looks. Null means "not chosen", which Branding resolves to
     # the defaults in config — so a default can change without a migration.
+    # (A `secondary_color` column existed briefly; databases that booted
+    # that version still carry it, unused and harmless.)
     invoice_template = db.Column(db.String(20))
     primary_color = db.Column(db.String(7))    # "#rrggbb"
-    secondary_color = db.Column(db.String(7))
     # Opaque name of the logo file; only billing/logos.py knows it's a path.
     logo_filename = db.Column(db.String(80))
 
@@ -86,7 +87,6 @@ class BillingProfile(db.Model):
         return Branding(
             template=self.invoice_template,
             primary_color=self.primary_color,
-            secondary_color=self.secondary_color,
         )
 
     @property

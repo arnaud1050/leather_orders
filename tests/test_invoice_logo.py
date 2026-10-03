@@ -64,6 +64,52 @@ def test_a_jpeg_is_accepted_and_stored_as_png():
     assert opened(result).format == "PNG"
 
 
+def test_a_phone_jpeg_is_accepted():
+    """Phones and cameras embed a second picture in their JPEGs, and Pillow
+    reports those as MPO. Refusing them refused most photos off a phone —
+    the "my JPG doesn't upload" bug."""
+    out = io.BytesIO()
+    first, second = Image.new("RGB", (400, 300), (40, 60, 90)), Image.new("RGB", (400, 300), "white")
+    first.save(out, "MPO", save_all=True, append_images=[second])
+    assert opened(out.getvalue()).format == "MPO"
+
+    result = logos.normalise(out.getvalue())
+
+    assert opened(result).format == "PNG"
+    assert opened(result).size == (400, 300)
+
+
+def test_a_photo_sized_jpeg_is_accepted():
+    """A few megabytes is an ordinary JPEG straight off a camera; the cap
+    has to admit it, since what's stored is downscaled anyway."""
+    out = io.BytesIO()
+    Image.effect_noise((3000, 2000), 90).convert("RGB").save(out, "JPEG", quality=95)
+    assert len(out.getvalue()) > 2 * 1024 * 1024
+
+    result = logos.normalise(out.getvalue())
+
+    assert opened(result).size == (1200, 800)
+
+
+def test_the_upload_cap_matches_what_nginx_lets_through():
+    """nginx (server_config) allows 10 MB bodies. A lower cap here is fine
+    in principle, but a *higher* one would be a promise nginx breaks with
+    a bare 413 page before the app can explain."""
+    assert config.LOGO_MAX_BYTES == 10 * 1024 * 1024
+
+
+def test_a_sideways_photo_is_stored_the_right_way_up():
+    """Cameras store pixels as shot plus an orientation tag; ignoring the
+    tag prints a phone-photographed logo rotated."""
+    image = Image.new("RGB", (300, 100), (31, 78, 121))
+    exif = image.getexif()
+    exif[0x0112] = 6  # "rotate 90° clockwise to display"
+    out = io.BytesIO()
+    image.save(out, "JPEG", exif=exif)
+
+    assert opened(logos.normalise(out.getvalue())).size == (100, 300)
+
+
 def test_transparency_survives():
     """The whole point of asking for a transparent PNG on the band."""
     result = logos.normalise(image_bytes("PNG", mode="RGBA", color=(255, 255, 255, 0)))
@@ -264,7 +310,7 @@ def test_a_logo_whose_file_has_gone_is_simply_left_off(company):
     assert branding.logo_data_uri is None
 
 
-def test_the_logo_keeps_the_layout_and_colours_beside_it(company):
+def test_the_logo_keeps_the_layout_and_colour_beside_it(company):
     invoicing.update_profile(
         company.id, invoice_template="banded", primary_color="#1f4e79")
     invoicing.set_logo(company.id, image_bytes())
@@ -359,25 +405,48 @@ def test_the_logo_routes_require_a_login(app, url):
     assert "/login" in response.headers["Location"]
 
 
-def test_the_settings_page_offers_an_upload_when_there_is_no_logo(logged_in, company):
+def test_the_settings_page_offers_an_add_logo_tile_when_there_is_none(logged_in, company):
     body = logged_in.get("/settings/invoicing").get_data(as_text=True)
 
     assert 'name="logo"' in body
     assert 'enctype="multipart/form-data"' in body
-    assert ">Upload<" in body
+    assert "Add logo" in body
+    assert "data-logo-drop" in body          # a drop target, like order documents
     assert "/invoices/logo.png" not in body
 
 
-def test_the_settings_page_shows_the_logo_with_a_delete_button(logged_in, company):
+def test_the_file_picker_takes_jpg_files_by_extension_too(logged_in, company):
+    """Some systems give a .jpg no MIME type at all; listing the extensions
+    keeps those files selectable in the picker."""
+    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
+
+    assert 'accept="image/png,image/jpeg,.png,.jpg,.jpeg"' in body
+
+
+def test_the_settings_page_shows_the_logo_with_replace_and_delete(logged_in, company):
     upload(logged_in, image_bytes())
 
     body = logged_in.get("/settings/invoicing").get_data(as_text=True)
 
     assert "/invoices/logo.png" in body
-    assert ">Replace<" in body
+    assert ">Replace</label>" in body
     assert f'action="{DELETE}"' in body
     assert ">Delete<" in body       # the app's delete convention, never "Remove"
     assert "Remove" not in body.split("Invoice appearance")[1]
+
+
+def test_a_logo_refusal_is_shown_beside_the_logo(logged_in, company):
+    response = upload(logged_in, b"not an image", follow=True)
+
+    body = response.get_data(as_text=True)
+    assert "couldn&#39;t be read" in body.split('id="invoice-appearance"')[1]
+    assert "couldn&#39;t be read" not in body.split('id="invoice-appearance"')[0]
+
+
+def test_the_logo_routes_return_to_the_appearance_section(logged_in, company):
+    assert upload(logged_in, image_bytes()).headers["Location"].endswith(
+        "#invoice-appearance")
+    assert logged_in.post(DELETE).headers["Location"].endswith("#invoice-appearance")
 
 
 # --- Serving it back ------------------------------------------------------

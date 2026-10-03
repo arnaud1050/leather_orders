@@ -23,7 +23,11 @@ from billing import config
 
 __all__ = ["LogoError", "delete", "normalise", "path_for", "read", "save"]
 
-ALLOWED_FORMATS = {"PNG", "JPEG"}
+# "MPO" is a JPEG too: phones and cameras add a second embedded picture
+# (a depth map, a preview) and Pillow reports those files as MPO. Refusing
+# it refused most photos taken on a phone, which is where a lot of logos
+# end up being saved from.
+ALLOWED_FORMATS = {"PNG", "JPEG", "MPO"}
 # Longest edge of the stored image. A logo prints about 6cm wide; 1200px
 # is 500dpi at that size, and anything past it only makes every PDF heavier.
 MAX_EDGE = 1200
@@ -41,13 +45,13 @@ def normalise(data: bytes) -> bytes:
     """Check an upload and return it re-encoded as a size-capped PNG."""
     # Lazy, like the module's other heavy imports: billing stays importable
     # without Pillow, and only uploading a logo finds out.
-    from PIL import Image
+    from PIL import Image, ImageOps
 
     if not data:
         raise LogoError("Choose an image file first.")
     if len(data) > config.LOGO_MAX_BYTES:
         megabytes = config.LOGO_MAX_BYTES // (1024 * 1024)
-        raise LogoError(f"That file is too large — a logo can be up to {megabytes} MB.")
+        raise LogoError(f"That file is too large. A logo can be up to {megabytes} MB.")
     try:
         image = Image.open(io.BytesIO(data))
         if image.format not in ALLOWED_FORMATS:
@@ -63,6 +67,9 @@ def normalise(data: bytes) -> bytes:
         # distinguishing for the person holding the file.
         raise LogoError("That file couldn't be read as a PNG or JPEG image.") from None
 
+    # A photo is stored sideways with a note saying which way is up; apply
+    # it, or a logo photographed on a phone prints rotated.
+    image = ImageOps.exif_transpose(image)
     has_alpha = image.mode in ("RGBA", "LA") or (
         image.mode == "P" and "transparency" in image.info
     )

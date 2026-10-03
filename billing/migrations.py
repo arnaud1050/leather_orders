@@ -32,7 +32,6 @@ ADDED_COLUMNS = [
     ("invoices", "issued_subtotal", "FLOAT"),
     ("billing_profiles", "invoice_template", "VARCHAR(20)"),
     ("billing_profiles", "primary_color", "VARCHAR(7)"),
-    ("billing_profiles", "secondary_color", "VARCHAR(7)"),
     ("billing_profiles", "logo_filename", "VARCHAR(80)"),
 ]
 

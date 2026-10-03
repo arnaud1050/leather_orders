@@ -8,10 +8,12 @@
    Same rules as classic.html: standalone, stylesheet inline, nothing
    fetched, host links not rendered, everything read from `doc`.
 
-   The three `branding.*` values written into the stylesheet are the only
-   tenant-chosen text that ever lands in CSS, and each is a `#rrggbb` that
-   Branding has already checked (billing/documents.py) — never the stored
-   string as typed. #}
+   The two `branding.*` values written into the stylesheet (`primary`,
+   and `on_primary` derived from it) are the only tenant-chosen text that
+   ever lands in CSS, and each is a `#rrggbb` that Branding has already
+   checked (billing/documents.py) — never the stored string as typed. The
+   small labels, status pill and footer use the app's soft grey: one colour
+   to choose, and everything else stays quiet. #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,7 +30,7 @@
       content: string(invoice-number) "  ·  Page " counter(page) " of " counter(pages);
       font-family: Inter, "DejaVu Sans", sans-serif;
       font-size: 8pt;
-      color: {{ branding.secondary }};
+      color: #7e7a78;
     }
   }
   @page :first { margin-top: 0; }
@@ -47,7 +49,7 @@
     display: block;
     margin-bottom: 2pt;
     font-size: 9pt;
-    color: {{ branding.secondary }};
+    color: #7e7a78;
   }
 
   .columns {
@@ -109,13 +111,13 @@
     display: inline-block;
     margin-top: 3pt;
     padding: 1pt 7pt;
-    border: 0.75pt solid {{ branding.secondary }};
+    border: 0.75pt solid #7e7a78;
     border-radius: 8pt;
     font-size: 7.5pt;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: {{ branding.secondary }};
+    color: #7e7a78;
   }
   .status--void {
     border-color: #b3261e;
@@ -146,7 +148,7 @@
     text-align: right;
     white-space: nowrap;
   }
-  .lines .empty { color: {{ branding.secondary }}; }
+  .lines .empty { color: #7e7a78; }
 
   .totals {
     width: 46%;

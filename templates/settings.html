@@ -338,27 +338,142 @@
     </form>
   </section>
 
-  <section class="detail-orders">
+  {# Invoice appearance: logo, then layout, then colour, top to bottom in
+     the order they're noticed on the page. Everything here works without
+     JavaScript (a plain file input with its own button, real radio
+     buttons, a hex text field); static/assets/js/invoice-appearance.js
+     turns those into the upload tile, the live thumbnails and the colour
+     picker. Branding hands out only checked #rrggbb values, so the inline
+     colours below can't carry anything else. #}
+  <section class="detail-orders invoice-look" id="invoice-appearance"
+           style="--look-primary: {{ branding.primary }}; --look-on-primary: {{ branding.on_primary }};"
+           data-invoice-look>
     <h2>Invoice appearance</h2>
     <p class="detail-note">
-      How the PDF looks when you download an invoice. Unlike the details
-      above, this applies to every invoice straight away, including ones
-      already issued: what an invoice says stays as it was sent, how it's
-      dressed follows your current choice. The colours are used by the
-      Banded layout; Classic stays black on white.
+      How your invoices look when you download them as a PDF. A change here
+      applies to every invoice straight away, including ones already sent:
+      what an invoice says stays as it was sent, only its look follows your
+      choice.
     </p>
-    <form method="post" action="{{ url_for('update_invoice_appearance') }}" class="detail-form settings-form">
-      <label>Layout
-        <select name="invoice_template">
-          {% for key, label in invoice_templates.items() %}
-          <option value="{{ key }}" {% if key == branding.template_key %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
+
+    {% if appearance_notice %}
+    <p class="warning-note" role="alert">{{ appearance_notice }}</p>
+    {% endif %}
+    <p class="warning-note" role="alert" data-logo-error hidden></p>
+
+    <h3 class="settings-subheading">Logo</h3>
+    {% if profile.has_logo %}
+    <ul class="settings-source-list invoice-look__logo-list">
+      <li class="settings-source-list__item">
+        {# On the chosen colour, as the Banded layout prints it — a white
+           logo on this page's pale background would be invisible. #}
+        <span class="invoice-look__logo-tile">
+          <img src="{{ url_for('billing.logo', v=profile.logo_filename) }}" alt="Your invoice logo">
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('upload_invoice_logo') }}" enctype="multipart/form-data" class="invoice-look__upload" data-logo-upload>
+            <label class="btn-secondary" for="invoice-logo-input">Replace</label>
+            <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="invoice-logo-input" class="invoice-look__file" data-max-bytes="{{ logo_max_bytes }}">
+            <button type="submit" class="btn-secondary invoice-look__no-js">Upload</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_invoice_logo') }}">
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+        </div>
+      </li>
+    </ul>
+    {% else %}
+    <form method="post" action="{{ url_for('upload_invoice_logo') }}" enctype="multipart/form-data" class="invoice-look__upload invoice-look__add" data-logo-upload data-logo-drop>
+      {# Same tile as an order's "Add file": the label opens the picker, and
+         choosing a file uploads it — no separate button once JS is on. #}
+      <label class="doc-explorer__add-trigger" for="invoice-logo-input">
+        <span class="doc-explorer__add-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <path d="M10 4v12M4 10h12"/>
+          </svg>
+        </span>
+        <span class="doc-explorer__add-label">Add logo</span>
+        <span class="invoice-look__add-hint">or drop an image here</span>
       </label>
-      <div class="field-row">
-        <label>Primary colour<input type="color" name="primary_color" value="{{ branding.primary }}"></label>
-        <label>Secondary colour<input type="color" name="secondary_color" value="{{ branding.secondary }}"></label>
+      <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="invoice-logo-input" class="invoice-look__file" data-max-bytes="{{ logo_max_bytes }}">
+      <button type="submit" class="btn-secondary invoice-look__no-js">Upload</button>
+    </form>
+    {% endif %}
+    <p class="detail-note invoice-look__hint">
+      PNG or JPEG, up to {{ (logo_max_bytes / 1048576)|round|int }} MB. A white
+      logo on a transparent background suits Banded; Classic prints it on white.
+    </p>
+
+    <form method="post" action="{{ url_for('update_invoice_appearance') }}" class="invoice-look__form">
+      <fieldset class="invoice-look__fieldset">
+        <legend class="settings-subheading">Layout</legend>
+        <div class="layout-options">
+          {% set layout_notes = {
+            'classic': 'Black on white, your details at the top.',
+            'banded': 'Your colour across the top, with your logo on it.',
+          } %}
+          {% for key, label in invoice_templates.items() %}
+          <label class="layout-option">
+            <input type="radio" name="invoice_template" value="{{ key }}" class="layout-option__input"
+                   {% if key == branding.template_key %}checked{% endif %}>
+            {# A miniature of the PDF, drawn rather than pictured, so it can
+               show this company's own colour and logo as they change. #}
+            <span class="layout-thumb layout-thumb--{{ key }}" aria-hidden="true">
+              <span class="layout-thumb__head">
+                {% if profile.has_logo %}
+                <img class="layout-thumb__logo" src="{{ url_for('billing.logo', v=profile.logo_filename) }}" alt="">
+                {% else %}
+                <span class="layout-thumb__name"></span>
+                {% endif %}
+                <span class="layout-thumb__address"><i></i><i></i></span>
+              </span>
+              <span class="layout-thumb__body">
+                <span class="layout-thumb__meta"><i></i><i></i><b></b></span>
+                <span class="layout-thumb__rule"></span>
+                <span class="layout-thumb__row"><i></i><i></i></span>
+                <span class="layout-thumb__row"><i></i><i></i></span>
+                <span class="layout-thumb__row"><i></i><i></i></span>
+                <span class="layout-thumb__totals"><i></i><i></i><b></b></span>
+              </span>
+            </span>
+            <span class="layout-option__name">{{ label }}</span>
+            <span class="layout-option__note">{{ layout_notes.get(key, '') }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="invoice-look__colour" data-colour-section>
+        <h3 class="settings-subheading">Colour</h3>
+        <p class="detail-note">Used by Banded for the band, the table headings and the total.</p>
+        <div class="color-picker" data-color-picker>
+          <div class="color-picker__swatches" role="group" aria-label="Suggested colours">
+            {% for color in suggested_colors %}
+            <button type="button" class="color-picker__swatch" style="background: {{ color }}" data-color="{{ color }}"
+                    aria-label="Use {{ color }}" aria-pressed="{{ 'true' if color == branding.primary else 'false' }}"></button>
+            {% endfor %}
+            <button type="button" class="color-picker__swatch color-picker__swatch--custom" data-color-toggle
+                    aria-expanded="false" aria-controls="invoice-colour-panel" aria-label="Choose any colour" hidden></button>
+          </div>
+          <div class="color-picker__panel" id="invoice-colour-panel" data-color-panel hidden>
+            <div class="color-picker__area" data-color-area tabindex="0" role="slider"
+                 aria-label="Saturation and brightness" aria-valuetext="">
+              <span class="color-picker__area-handle"></span>
+            </div>
+            <div class="color-picker__hue" data-color-hue tabindex="0" role="slider"
+                 aria-label="Hue" aria-valuemin="0" aria-valuemax="360" aria-valuenow="0">
+              <span class="color-picker__hue-handle"></span>
+            </div>
+          </div>
+          <label class="color-picker__field">
+            <span class="color-picker__current" aria-hidden="true"></span>
+            <input type="text" name="primary_color" value="{{ branding.primary }}" maxlength="7"
+                   pattern="#[0-9a-fA-F]{6}" spellcheck="false" autocomplete="off"
+                   aria-label="Colour as a hex code" data-color-hex>
+          </label>
+        </div>
       </div>
+
       <div class="invoice-admin__buttons">
         <button type="submit" class="btn-primary">Save</button>
         {# Renders the *saved* look, so it's a link beside Save rather than a
@@ -369,37 +484,7 @@
         {% endif %}
       </div>
     </form>
-
-    <h3 class="settings-subheading">Logo</h3>
-    <p class="detail-note">
-      Printed at the top of the invoice, in either layout. PNG or JPEG, up
-      to {{ (logo_max_bytes / 1048576)|round|int }} MB. Banded prints it on your primary colour, so a PNG with a
-      transparent background works best there; Classic prints it on white,
-      so a white logo won't show.
-    </p>
-    {% if profile.has_logo %}
-    <ul class="settings-source-list">
-      <li class="settings-source-list__item">
-        {# Shown on the primary colour, as the band will show it — a white
-           logo on this page's pale background would be invisible. The
-           colour is Branding's checked #rrggbb, never the stored string. #}
-        <span class="settings-logo" style="background: {{ branding.primary }}">
-          <img src="{{ url_for('billing.logo', v=profile.logo_filename) }}" alt="Current invoice logo">
-        </span>
-        <div class="settings-source-list__actions">
-          <form method="post" action="{{ url_for('delete_invoice_logo') }}">
-            <button type="submit" class="btn-secondary">Delete</button>
-          </form>
-        </div>
-      </li>
-    </ul>
-    {% endif %}
-    <form method="post" action="{{ url_for('upload_invoice_logo') }}" enctype="multipart/form-data" class="detail-form settings-form">
-      <label>{{ 'Replace logo' if profile.has_logo else 'Logo file' }}<input type="file" name="logo" accept="image/png,image/jpeg" required></label>
-      <div>
-        <button type="submit" class="btn-primary">{{ 'Replace' if profile.has_logo else 'Upload' }}</button>
-      </div>
-    </form>
+    <script src="{{ url_for('static', filename='assets/js/invoice-appearance.js') }}" defer></script>
   </section>
 
   {% endif %}

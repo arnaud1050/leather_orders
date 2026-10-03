@@ -2268,8 +2268,10 @@ def settings_invoicing():
         provinces=PROVINCES,
         next_number=invoicing.next_number(company.id, company.name),
         invoice_templates=billing_config.INVOICE_TEMPLATES,
+        suggested_colors=billing_config.SUGGESTED_PRIMARY_COLORS,
         branding=profile.branding,
         logo_max_bytes=billing_config.LOGO_MAX_BYTES,
+        appearance_notice=session.pop("appearance_notice", None),
         notice=_take_settings_notice(),
         active_view="settings",
     )
@@ -2621,22 +2623,20 @@ def update_invoice_appearance():
             fields["invoice_template"] = template
         else:
             rejected.append("layout")
-    for field, label in (("primary_color", "primary colour"),
-                         ("secondary_color", "secondary colour")):
-        if field in request.form:
-            color = clean_color(request.form[field])
-            if color:
-                fields[field] = color
-            else:
-                rejected.append(label)
+    if "primary_color" in request.form:
+        color = clean_color(request.form["primary_color"])
+        if color:
+            fields["primary_color"] = color
+        else:
+            rejected.append("colour")
     invoicing.update_profile(company.id, company.name, **fields)
     db.session.commit()
     if rejected:
-        _flash_settings_notice(
+        _flash_appearance_notice(
             "Not saved: the " + " and ".join(rejected) + " wasn't recognised. "
-            "Colours need to look like #1c1a17."
+            "A colour needs to look like #1c1a17."
         )
-    return redirect(url_for("settings_invoicing"))
+    return _back_to_appearance()
 
 
 @app.route("/settings/invoicing/logo", methods=["POST"])
@@ -2658,10 +2658,10 @@ def upload_invoice_logo():
     except invoicing.LogoError as error:
         # Nothing to roll back: the image is checked before anything is
         # written, so a refusal has touched neither the row nor the disk.
-        _flash_settings_notice(str(error))
+        _flash_appearance_notice(str(error))
     else:
         db.session.commit()
-    return redirect(url_for("settings_invoicing"))
+    return _back_to_appearance()
 
 
 @app.route("/settings/invoicing/logo/delete", methods=["POST"])
@@ -2669,7 +2669,18 @@ def upload_invoice_logo():
 def delete_invoice_logo():
     invoicing.remove_logo(current_user.company_id)
     db.session.commit()
-    return redirect(url_for("settings_invoicing"))
+    return _back_to_appearance()
+
+
+def _flash_appearance_notice(message: str) -> None:
+    """A refusal from the appearance or logo form, shown *inside* that
+    section rather than at the top of the page: the page reloads scrolled
+    to the section, and a message up top was easy to miss entirely."""
+    session["appearance_notice"] = message
+
+
+def _back_to_appearance():
+    return redirect(url_for("settings_invoicing", _anchor="invoice-appearance"))
 
 
 # ---------------------------------------------------------------------------

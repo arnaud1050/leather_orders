@@ -150,7 +150,7 @@ accounting period closes.
   host form can post whatever it renders. The editable set is exactly:
   `invoice_prefix`, `street`, `city`, `province`, `postal_code`,
   `gst_number`, `pst_number`, `qst_number`, `neq`, `payment_instructions`,
-  `invoice_template`, `primary_color`, `secondary_color`.
+  `invoice_template`, `primary_color`.
 - **P6.** `invoice_prefix` falls back to `"INV"` whenever it would
   otherwise be empty.
 - **P7.** `has_letterhead` is true once **anything beyond the name** is set.
@@ -162,7 +162,7 @@ accounting period closes.
   rather than a tax account. Unset ones are omitted entirely.
 - **P10.** Validation of what a *person* may type (province must be a real
   code, prefix uppercased and capped at 10 characters, layout must be a
-  known one, colours must be `#rrggbb`) is the **host's** job, in its
+  known one, the colour must be `#rrggbb`) is the **host's** job, in its
   settings form. The module stores what it's given — and, for the look,
   re-checks it on the way out (BR3), because those values reach a
   stylesheet.
@@ -411,7 +411,7 @@ reason being that a stored copy can disagree with the rows it describes.
 - **PD5 — No typed text inside CSS.** Everything a person typed is
   HTML-escaped, and the invoice number reaches the page footer through CSS
   `string-set`, never by being templated into the stylesheet. The one
-  exception is the tenant's colours, and only as `Branding` hands them out
+  exception is the tenant's colour, and only as `Branding` hands it out
   (BR3).
 - **PD6 — Host links are not rendered.** `doc.payer.url` and
   `doc.subject_url` are for the app's own page; the PDF prints names as text.
@@ -430,7 +430,7 @@ reason being that a stored copy can disagree with the rows it describes.
 - **PD11.** An unknown template name falls back to the default (`classic`)
   rather than raising — a stale stored value must not block an export.
 - **PD12 — Presentation is live; content is frozen.** The freeze contract
-  (§6) covers what an invoice *says*. How it *looks* — layout, colours and
+  (§6) covers what an invoice *says*. How it *looks* — layout, colour and
   logo — is read from the profile at render time, for every
   invoice however long ago it was issued. A reprint after a rebrand carries
   the same seller details and figures in the new look.
@@ -439,22 +439,23 @@ reason being that a stored copy can disagree with the rows it describes.
 
 ## 13. Branding (`Branding`, Settings → Invoicing → Invoice appearance)
 
-- **BR1 — Two layouts.** `config.INVOICE_TEMPLATES` lists them: `classic`
-  (plain, black on white — the default) and `banded` (a full-width coloured
-  header band, accent table header, large invoice total). Every layout
-  listed there has a template in `pdf.TEMPLATES`, and vice versa.
-- **BR2 — Two colours, used by `banded` only.** *Primary*: the band, the
-  table header and its rule, the totals labels, the invoice total.
-  *Secondary*: the small section labels, the status pill and the page
-  footer. `classic` ignores both.
+- **BR1 — Two layouts**, named **Classic** and **Banded**.
+  `config.INVOICE_TEMPLATES` lists them: `classic` (plain, black on white —
+  the default) and `banded` (a full-width coloured header band, accent
+  table header, large invoice total). Every layout listed there has a
+  template in `pdf.TEMPLATES`, and vice versa.
+- **BR2 — One colour, used by `banded` only**: the band, the table header
+  and its rule, the totals labels and the invoice total. The small labels,
+  the status pill and the page footer stay the app's soft grey (`#7e7a78`)
+  whatever is chosen. `classic` ignores the colour.
 - **BR3 — Only a checked `#rrggbb` reaches the stylesheet.** `clean_color`
   accepts exactly a `#` and six hex digits (lower-cased), nothing else — no
-  names, no shorthand, no functions. `Branding.primary` / `.secondary`
-  return the cleaned value or the default, so a bad stored value can
-  neither break a render nor inject CSS. Templates use those properties,
-  never the stored strings.
-- **BR4 — Defaults.** With nothing chosen: `classic`, primary `#1c1a17`,
-  secondary `#7e7a78` — the app's own ink and soft grey.
+  names, no shorthand, no functions. `Branding.primary` returns the cleaned
+  value or the default, so a bad stored value can neither break a render
+  nor inject CSS. Templates use that property (and `on_primary`, derived
+  from it), never the stored string.
+- **BR4 — Defaults.** With nothing chosen: `classic`, colour `#1c1a17` —
+  the app's own ink.
 - **BR5 — The band stays readable.** Text on the band is white on a dark
   primary and near-black on a pale one, chosen by relative luminance rather
   than left to the tenant.
@@ -464,9 +465,11 @@ reason being that a stored copy can disagree with the rows it describes.
   (PD7). The whole of PD1–PD10 holds for both.
 - **BR7 — The settings form** (the host's, `POST
   /settings/invoicing/appearance`) refuses an unknown layout or a malformed
-  colour, **leaves the stored value as it was**, says so in a notice, and
-  still saves the fields that were valid. A field the form didn't send is
-  left alone.
+  colour, **leaves the stored value as it was**, says so in a notice shown
+  **inside the appearance section**, and still saves the fields that were
+  valid. A field the form didn't send is left alone. Every appearance and
+  logo route returns to `/settings/invoicing#invoice-appearance`, not the
+  top of the page.
 - **BR8 — The preview.** `GET /invoices/preview.pdf` renders a sample
   invoice — the tenant's real letterhead and next number, an invented
   buyer — in the **saved** look, inline in the browser. It stores nothing
@@ -474,21 +477,39 @@ reason being that a stored copy can disagree with the rows it describes.
   a PDF can be rendered (PD2).
 - **BR9.** Branding is per tenant: one company's choice never shows on
   another's invoices.
+- **BR10 — The settings section, top to bottom: logo, layout, colour.**
+  The layouts are radio buttons drawn as cards, each with a miniature of
+  the invoice; no dropdown. The colour is chosen from
+  `config.SUGGESTED_PRIMARY_COLORS` or any colour, through a picker the
+  page draws itself (a saturation/brightness area and a hue bar, usable by
+  pointer and keyboard) — never the browser's native colour input. The
+  submitted field is a plain `#rrggbb` text box, so the page works without
+  JavaScript; the script (`static/assets/js/invoice-appearance.js`) only
+  adds the picker, shows the colour section only while Banded is selected,
+  and makes the miniatures and the logo tile follow the colour live.
+- **BR11 — Every suggested colour is clean and dark enough for white
+  text**, so a white logo stays readable on the band whichever is picked.
 
 ## 14. The logo (`billing/logos.py`)
 
 - **L1 — PNG or JPEG, decided by the bytes.** An upload is a logo only if
-  it decodes as a PNG or JPEG image. The filename and the browser's content
-  type are ignored. GIF, WebP, BMP, TIFF and **SVG** are refused.
+  it decodes as a PNG or JPEG image — **including a JPEG that Pillow reports
+  as MPO**, which is what phones and cameras save (a JPEG carrying a second
+  embedded picture). The filename and the browser's content type are
+  ignored. GIF, WebP, BMP, TIFF and **SVG** are refused.
 - **L2 — What is stored is never the upload.** The image is decoded and
   written back out as a PNG of this module's making, so metadata and
   anything appended to the file are left behind. This is why SVG is out:
   it can't be made inert without rasterising it.
 - **L3 — Capped three ways.** The upload may be at most
-  `config.LOGO_MAX_BYTES` (2 MB by default, `BILLING_LOGO_MAX_BYTES`); an
+  `config.LOGO_MAX_BYTES` (10 MB by default, `BILLING_LOGO_MAX_BYTES` —
+  the same as nginx's `client_max_body_size`, so nginx never refuses a file
+  the app would have explained, and a photo off a phone fits); an
   image declaring more than 40 megapixels is refused before it is decoded;
   the stored copy is scaled down so its longest edge is at most 1200px,
   keeping its proportions and its transparency, and never scaled up.
+- **L3b — Camera orientation is applied.** A JPEG's orientation tag is
+  applied before storing, so a logo photographed sideways prints upright.
 - **L3a — Transparent margins are trimmed.** Fully transparent space around
   the mark is cropped away before storing, so a logo exported with padding
   doesn't print smaller than one without. An entirely transparent image is
@@ -515,9 +536,17 @@ reason being that a stored copy can disagree with the rows it describes.
   is never cached.
 - **L10 — The settings form** (the host's, `POST /settings/invoicing/logo`
   and `…/logo/delete`) reads at most one byte past the cap, shows a refusal
-  as a notice, touches nothing else on the profile, and offers removal as a
-  button reading **"Delete"** in a `.settings-source-list` — the app's
-  convention, never "Remove".
+  inside the appearance section (BR7), touches nothing else on the profile,
+  and offers removal as a button reading **"Delete"** in a
+  `.settings-source-list` — the app's convention, never "Remove".
+- **L11 — Upload like an order document.** With no logo, an **"Add logo"**
+  tile (the order page's "Add file" tile) opens the file picker and also
+  takes a dropped image; with a logo, it shows on the chosen colour with
+  **Replace** and **Delete**. Choosing or dropping a file uploads it at
+  once, after the same type and size checks in the browser, which show
+  their refusal without leaving the page. The picker lists `.png`, `.jpg`
+  and `.jpeg` as well as the two MIME types, for systems that give a JPEG
+  no type. Without JavaScript, a plain Upload button does the same job.
 
 ## 15. Explicit non-requirements
 
@@ -702,17 +731,20 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | PD13 | `test_the_pdf_requires_a_login`, `test_another_tenants_invoice_pdf_404s`, `test_a_missing_invoice_pdf_404s` |
 | P11 | `test_branding_with_nothing_chosen_is_the_default_look`, `test_the_settings_page_shows_the_defaults_before_anything_is_chosen` |
 | BR1 | `test_every_layout_offered_in_settings_has_a_template_behind_it` |
-| BR2 | `test_the_banded_layout_wears_the_chosen_colours`, `test_the_classic_layout_ignores_the_colours` — gap: *which* element takes which colour was checked by eye on rendered PDFs, not asserted |
+| BR2 | `test_the_banded_layout_wears_the_chosen_colour`, `test_the_classic_layout_ignores_the_colours`, `test_there_is_no_secondary_colour_any_more` |
 | BR3 | `test_only_a_plain_hex_colour_counts_as_a_colour`, `test_a_bad_stored_colour_never_reaches_the_stylesheet` |
 | BR4 | `test_branding_with_nothing_chosen_is_the_default_look` |
 | BR5 | `test_text_on_the_band_stays_readable` |
 | BR6 | every document test in `test_invoice_pdf.py` runs once per layout (the `look` fixture) |
-| BR7 | `test_update_appearance_saves_the_layout_and_both_colours`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_the_settings_page_shows_the_saved_appearance` (all in `tests/test_settings_company.py`) |
+| BR7 | `test_update_appearance_saves_the_layout_and_the_colour`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_a_refusal_is_shown_inside_the_appearance_section`, `test_saving_returns_to_the_appearance_section`, `test_the_logo_routes_return_to_the_appearance_section` (settings tests in `tests/test_settings_company.py`) |
 | BR8 | `test_the_preview_shows_a_sample_in_the_saved_look`, `test_the_preview_uses_up_no_invoice_number`, `test_the_preview_requires_a_login`, `test_without_a_renderer_the_preview_goes_somewhere_that_works`, `test_the_sample_is_the_sellers_own_document`, `test_a_sample_from_an_unregistered_seller_charges_no_tax`, `test_the_preview_link_appears_only_where_a_pdf_can_be_rendered` |
 | BR9 | `test_update_appearance_is_per_company` |
-| L1 | `test_a_png_is_accepted`, `test_a_jpeg_is_accepted_and_stored_as_png`, `test_other_image_formats_are_refused`, `test_anything_that_is_not_a_readable_png_or_jpeg_is_refused`, `test_the_file_name_does_not_make_it_an_image` |
+| BR10 | `test_the_logo_comes_before_the_layout`, `test_the_layouts_are_radio_buttons_named_classic_and_banded`, `test_each_layout_has_a_thumbnail`, `test_the_saved_layout_is_the_checked_one`, `test_the_page_shows_the_saved_colour`, `test_the_page_shows_the_defaults_before_anything_is_chosen`, `test_the_colour_picker_offers_the_suggested_colours`, `test_the_suggested_colour_in_use_is_marked` — gap: the picker's dragging, keyboard control, live thumbnails and the Banded-only colour section are script behaviour, checked by hand in a browser (desktop and phone width), not by the suite |
+| BR11 | `test_the_suggested_colours_are_all_clean_and_carry_white_text` |
+| L1 | `test_a_png_is_accepted`, `test_a_jpeg_is_accepted_and_stored_as_png`, `test_other_image_formats_are_refused`, `test_anything_that_is_not_a_readable_png_or_jpeg_is_refused`, `test_the_file_name_does_not_make_it_an_image`, `test_a_phone_jpeg_is_accepted` |
 | L2 | `test_what_is_stored_is_a_fresh_encoding_not_the_upload` |
-| L3 | `test_an_upload_over_the_size_cap_is_refused`, `test_an_image_with_enormous_dimensions_is_refused_before_decoding`, `test_a_large_image_is_scaled_down_keeping_its_shape`, `test_a_small_image_is_not_scaled_up`, `test_transparency_survives` |
+| L3 | `test_an_upload_over_the_size_cap_is_refused`, `test_an_image_with_enormous_dimensions_is_refused_before_decoding`, `test_a_large_image_is_scaled_down_keeping_its_shape`, `test_a_small_image_is_not_scaled_up`, `test_transparency_survives`, `test_a_photo_sized_jpeg_is_accepted`, `test_the_upload_cap_matches_what_nginx_lets_through` |
+| L3b | `test_a_sideways_photo_is_stored_the_right_way_up` |
 | L3a | `test_transparent_margins_are_trimmed`, `test_an_opaque_image_is_not_cropped`, `test_a_fully_transparent_image_is_left_alone` |
 | L4 | `test_a_refused_upload_leaves_the_existing_logo_alone`, `test_a_refused_upload_keeps_the_logo_already_there` |
 | L5 | `test_setting_a_logo_stores_a_file_for_that_company`, `test_the_stored_name_is_generated_never_taken_from_anyone`, `test_logos_are_per_company`, `test_one_companys_filename_does_not_open_anothers_file`, `test_a_stored_name_that_points_elsewhere_opens_nothing` |
@@ -720,7 +752,8 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | L7 | `test_branding_carries_the_logo_embedded`, `test_branding_without_a_logo_has_none`, `test_a_logo_whose_file_has_gone_is_simply_left_off`, `test_the_logo_keeps_the_layout_and_colours_beside_it`, `test_a_real_pdf_renders_with_a_logo` *(skipped without WeasyPrint)* |
 | L8 | `test_every_layout_prints_the_logo`, `test_the_seller_is_still_named_in_words_beside_a_logo`, `test_no_logo_no_image` |
 | L9 | `test_the_logo_is_served_to_its_own_company`, `test_no_logo_is_a_404`, `test_another_companys_logo_is_never_served`, `test_the_logo_requires_a_login` |
-| L10 | `test_uploading_a_logo_saves_it`, `test_uploading_something_else_says_why_and_saves_nothing`, `test_uploading_nothing_says_so`, `test_an_oversized_upload_is_refused`, `test_deleting_the_logo`, `test_uploading_does_not_touch_the_rest_of_the_look`, `test_the_logo_routes_require_a_login`, `test_the_settings_page_offers_an_upload_when_there_is_no_logo`, `test_the_settings_page_shows_the_logo_with_a_delete_button` |
+| L10 | `test_uploading_a_logo_saves_it`, `test_uploading_something_else_says_why_and_saves_nothing`, `test_uploading_nothing_says_so`, `test_an_oversized_upload_is_refused`, `test_deleting_the_logo`, `test_uploading_does_not_touch_the_rest_of_the_look`, `test_the_logo_routes_require_a_login`, `test_a_logo_refusal_is_shown_beside_the_logo`, `test_the_settings_page_shows_the_logo_with_replace_and_delete` |
+| L11 | `test_the_settings_page_offers_an_add_logo_tile_when_there_is_none`, `test_the_file_picker_takes_jpg_files_by_extension_too` — gap: upload-on-choose, drag-and-drop and the in-browser type/size refusal are script behaviour, checked by hand in a browser |
 | Z1–Z10 | *(non-requirements — nothing to test)* |
 
 ### The tax-collected report

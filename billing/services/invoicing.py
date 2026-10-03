@@ -87,7 +87,7 @@ def update_profile(company_id: int, display_name: str = "", **fields) -> Billing
     editable = {
         "invoice_prefix", "street", "city", "province", "postal_code",
         "gst_number", "pst_number", "qst_number", "neq", "payment_instructions",
-        "invoice_template", "primary_color", "secondary_color",
+        "invoice_template", "primary_color",
     }
     for key, value in fields.items():
         if key in editable:
