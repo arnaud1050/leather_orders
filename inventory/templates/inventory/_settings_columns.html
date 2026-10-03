@@ -8,7 +8,9 @@
    in settings.html, deliberately: they're the same control over two tables,
    and a second visual idiom for it would be one to learn for no reason. #}
 
+{% from "_save_notice.html" import notice_field, notice_slot %}
 <h2>Inventory list columns</h2>
+{{ notice_slot(notice, 'inventory-columns') }}
 <p class="detail-note">
   Reorder and hide/show the columns shown on the
   <a href="{{ url_for('inventory.inventory_list') }}">Inventory</a> list. Drag
@@ -44,6 +46,7 @@
     <div class="settings-source-list__actions">
       {% if column.can_hide %}
       <form method="post" action="{{ url_for('inventory.toggle_column', key=column.key) }}">
+        {{ notice_field('inventory-columns') }}
         <button type="submit" class="btn-secondary">{{ 'Show' if not column.visible else 'Hide' }}</button>
       </form>
       {% else %}

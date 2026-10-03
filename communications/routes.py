@@ -14,6 +14,7 @@ Every route is @login_required and derives its tenant from
 enforces CSRF on every unsafe request (see security.validate_csrf).
 """
 
+import re
 from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 
@@ -83,15 +84,34 @@ def _protect():
     validate_csrf()
 
 
-def _flash(message: str, category: str = "info") -> None:
+def _flash(message: str, category: str = "info", section: str | None = None,
+           typed: dict | None = None) -> None:
     """One-shot message for the next page render.
 
     The app has no flash-message convention yet (every existing form just
     redirects), so rather than introduce Flask's flash + a base.html
     partial across the whole app, notices are kept in the session under one
     key and rendered only by this module's templates.
+
+    `section` says which section of the page shows it (MOD8): the posting
+    form's `notice_section` field by default, or named here by a route that
+    has no form behind it (the OAuth callback) or lands on another page.
+    `typed` is what a refused dialog was submitted with, so it can reopen
+    with it (the calendar's event dialogs). Not "values": a template reads
+    notice['values'] as the dict's own .values method when the key is
+    missing.
     """
-    session["comms_notice"] = {"message": message, "category": category}
+    session["comms_notice"] = {
+        "message": message, "category": category,
+        "section": _notice_section(section),
+    }
+    if typed is not None:
+        session["comms_notice"]["typed"] = typed
+
+
+def _notice_section(section: str | None) -> str | None:
+    raw = section or request.form.get("notice_section") or ""
+    return raw if re.fullmatch(r"[a-z0-9-]{1,40}", raw) else None
 
 
 def _take_notice():
@@ -163,7 +183,7 @@ def google_connect():
             return_to=url_for("communications.integrations"),
         )
     except ProviderError as exc:
-        _flash(str(exc), "error")
+        _flash(str(exc), "error", section="accounts")
         return redirect(url_for("communications.integrations"))
     return redirect(url)
 
@@ -179,7 +199,7 @@ def google_callback():
     """
     if request.args.get("error"):
         # User hit "Cancel" on the consent screen, or Google refused.
-        _flash(f"Google sign-in was cancelled ({request.args['error']}).", "error")
+        _flash(f"Google sign-in was cancelled ({request.args['error']}).", "error", section="accounts")
         return redirect(url_for("communications.integrations"))
 
     try:
@@ -187,14 +207,14 @@ def google_callback():
             session, request.url, request.args.get("state"),
         )
     except ProviderError as exc:
-        _flash(str(exc), "error")
+        _flash(str(exc), "error", section="accounts")
         return redirect(url_for("communications.integrations"))
 
     # The flow was started by this user, for this company — but check
     # anyway. A session that changed identity mid-flow (logged out and back
     # in as someone else) must not graft a mailbox onto the wrong tenant.
     if company_id != current_user.company_id:
-        _flash("That sign-in was started by a different account. Please try again.", "error")
+        _flash("That sign-in was started by a different account. Please try again.", "error", section="accounts")
         return redirect(url_for("communications.integrations"))
 
     try:
@@ -203,11 +223,11 @@ def google_callback():
     except Exception as exc:  # noqa: BLE001 — surface, don't 500 the callback
         current_app.logger.exception("Google account connection failed")
         db.session.rollback()
-        _flash(f"Could not finish connecting the account: {exc}", "error")
+        _flash(f"Could not finish connecting the account: {exc}", "error", section="accounts")
         return redirect(url_for("communications.integrations"))
 
     db.session.commit()
-    _flash(f"Connected {account.email_address}.", "success")
+    _flash(f"Connected {account.email_address}.", "success", section="accounts")
     return redirect(return_to)
 
 
@@ -232,9 +252,15 @@ def update_account_flags(account_id: int):
     for flag in ("sync_enabled", "send_enabled", "is_default"):
         if flag in request.form:
             flags[flag] = request.form.get(flag) == "1"
-    if account_service.set_flags(current_user.company_id, account_id, **flags) is None:
+    account = account_service.set_flags(current_user.company_id, account_id, **flags)
+    if account is None:
         abort(404)
     db.session.commit()
+    if "sync_enabled" in flags:
+        _flash(f"Sync {'resumed' if account.sync_enabled else 'paused'} for "
+               f"{account.email_address}.", "success")
+    elif flags.get("is_default"):
+        _flash(f"{account.email_address} is now the default sending address.", "success")
     return redirect(url_for("communications.integrations"))
 
 
@@ -582,7 +608,10 @@ def convert_lead(thread_id: int):
         _flash(str(exc), "error")
         return redirect(request.form.get("return_to") or url_for("communications.leads"))
 
-    _flash(f"Created {client.name} and linked this conversation.", "success")
+    # Shown on the client page it lands on, not the conversation the
+    # form was on (MOD8).
+    _flash(f"Created {client.name} and linked this conversation.", "success",
+           section="client")
     return redirect(url_for("client_page", client_id=client.id))
 
 
@@ -712,8 +741,7 @@ def create_calendar_event():
     try:
         start, end, all_day = _event_window(request.form)
     except ValueError as exc:
-        _flash(str(exc), "error")
-        return redirect(return_to)
+        return _event_refused(str(exc), return_to)
 
     notify = _wants_invite(request.form)
     try:
@@ -728,9 +756,9 @@ def create_calendar_event():
             notify=notify,
         )
     except (calendar_service.CalendarServiceError, ProviderError) as exc:
-        _flash(str(exc), "error")
-        return redirect(return_to)
-    _flash(_event_notice("Event added to your Google Calendar.", event, notify), "success")
+        return _event_refused(str(exc), return_to)
+    _flash(_event_notice("Event added to your Google Calendar.", event, notify), "success",
+           section="calendar")
     return redirect(return_to)
 
 
@@ -750,8 +778,7 @@ def update_calendar_event(event_id: int):
     try:
         start, end, all_day = _event_window(request.form)
     except ValueError as exc:
-        _flash(str(exc), "error")
-        return redirect(return_to)
+        return _event_refused(str(exc), return_to)
 
     notify = _wants_invite(request.form)
     try:
@@ -766,9 +793,35 @@ def update_calendar_event(event_id: int):
             notify=notify,
         )
     except (calendar_service.CalendarServiceError, ProviderError) as exc:
-        _flash(str(exc), "error")
-        return redirect(return_to)
-    _flash(_event_notice("Event updated.", event, notify), "success")
+        return _event_refused(str(exc), return_to)
+    # The dialog closes on success, so the message goes beside the buttons
+    # above the grid rather than back into it (MOD8).
+    _flash(_event_notice("Event updated.", event, notify), "success", section="calendar")
+    return redirect(return_to)
+
+
+# What a refused event dialog hands back, and the most of each it keeps. The
+# session is a signed cookie with a ~4KB ceiling that the browser silently
+# drops when it's exceeded (taking the message with it), so long notes are
+# cut rather than allowed to cost everything else.
+_EVENT_FIELD_LIMITS = {
+    "title": 200, "start_date": 10, "start_time": 8, "end_date": 10, "end_time": 8,
+    "location": 200, "description": 1500, "client_id": 12, "attendees": 400,
+}
+
+
+def _event_refused(message: str, return_to: str):
+    """Report a refused event save inside the dialog it came from.
+
+    The form's `notice_section` names that dialog; the values let it reopen
+    with what was typed rather than blank (MOD8).
+    """
+    typed = {
+        field: request.form.get(field, "")[:limit]
+        for field, limit in _EVENT_FIELD_LIMITS.items() if field in request.form
+    }
+    typed["all_day"] = bool(request.form.get("all_day"))
+    _flash(message, "error", typed=typed)
     return redirect(return_to)
 
 

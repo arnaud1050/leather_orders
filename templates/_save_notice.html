@@ -1,0 +1,39 @@
+{#
+  The message a save leaves, shown in the section whose button was pressed
+  (REQUIREMENTS MOD8, CLAUDE.md hard rule 17).
+
+  A notice is the dict a route stashes in the session for the next page:
+  {"message", "category", "section"}. `category` is "error" for a refused
+  save and anything else for one that went through. `section` comes from
+  the form that posted — `notice_field('x')` inside the form, and
+  `notice_slot(notice, 'x')` under that section's heading on the page the
+  route redirects back to. `tests/test_save_notices.py` checks that every
+  form's section has its slot on the page.
+
+  `page_notice(notice, slots)` is the fallback, at the top of the page,
+  where every message used to go: it renders a notice whose section isn't
+  one of `slots` — the slots this page actually rendered. That covers a
+  form that named no section, and a section that isn't on the page this
+  time (no calendar connected, an event no longer in view), so a message
+  can land in the wrong place but never nowhere. Keep each page's list in
+  step with its slots; the test renders every slot it lists.
+#}
+
+{% macro save_notice(notice) -%}
+{%- set refused = notice.category == 'error' -%}
+<p data-save-notice class="save-notice save-notice--{{ 'error' if refused else 'success' }}" role="{{ 'alert' if refused else 'status' }}">{{ notice.message }}</p>
+{%- endmacro %}
+
+{% macro notice_field(section) -%}
+<input type="hidden" name="notice_section" value="{{ section }}">
+{%- endmacro %}
+
+{% macro notice_slot(notice, section) -%}
+<div class="notice-slot" data-notice-slot="{{ section }}">
+{%- if notice and notice.section == section %}{{ save_notice(notice) }}{% endif -%}
+</div>
+{%- endmacro %}
+
+{% macro page_notice(notice, slots=[]) -%}
+{%- if notice and notice.section not in slots %}{{ save_notice(notice) }}{% endif -%}
+{%- endmacro %}

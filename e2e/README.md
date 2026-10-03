@@ -44,7 +44,11 @@ Every run:
 2. Seeds it with a small, known dataset (`seed/e2e-data.json`) via
    `seed/seed_e2e_data.py` — six clients, a handful of orders covering
    each status, one rush order, one cancelled order, one delivered order
-   far enough in the past to be off the timeline's default window.
+   far enough in the past to be off the timeline's default window, plus a
+   paused Gmail account with calendar access and one event today, so the
+   calendar renders its event dialogs. That account's tokens are
+   placeholders: no spec may save an event (that goes to Google) — only
+   refused saves, which are rejected before any provider call.
 3. Starts Flask against that database on `http://127.0.0.1:5000`
    (override with `E2E_PORT`).
 4. Logs in once as the seeded admin and saves that session, so individual

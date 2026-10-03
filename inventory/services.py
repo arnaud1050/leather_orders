@@ -105,18 +105,29 @@ def add_unit(company_id: int, key: str) -> InventoryUnit | None:
     return unit
 
 
-def toggle_unit(company_id: int, unit_id: int) -> None:
+def toggle_unit(company_id: int, unit_id: int) -> InventoryUnit | None:
+    """The unit as it now stands, or None when nothing changed (not this
+    company's, or "Each", which can't be hidden)."""
     unit = InventoryUnit.query.filter_by(id=unit_id, company_id=company_id).first()
     if unit is not None and not unit.is_default:
         unit.is_active = not unit.is_active
         db.session.commit()
+        return unit
+    return None
 
 
-def delete_unit(company_id: int, unit_id: int) -> None:
+def delete_unit(company_id: int, unit_id: int) -> tuple[str, bool] | None:
+    """(label, deleted) — so the caller can say which unit, and whether it
+    went or is still in use. None when the id isn't this company's."""
     unit = InventoryUnit.query.filter_by(id=unit_id, company_id=company_id).first()
-    if unit is not None and unit.can_delete:
-        db.session.delete(unit)
-        db.session.commit()
+    if unit is None:
+        return None
+    label = unit.label
+    if not unit.can_delete:
+        return label, False
+    db.session.delete(unit)
+    db.session.commit()
+    return label, True
 
 
 def reorder_units(company_id: int, ordered_ids: list[int]) -> None:
@@ -222,17 +233,21 @@ def _save_columns(company_id: int, columns: list[dict]) -> None:
     db.session.commit()
 
 
-def toggle_column(company_id: int, key: str) -> None:
-    """Flip one column's visibility. A key outside INVENTORY_COLUMNS, or one
-    that can't be hidden at all, is a silent no-op — same quiet-validation
-    posture as every other function here."""
+def toggle_column(company_id: int, key: str) -> dict | None:
+    """Flip one column's visibility, returning the column as it now stands.
+    A key outside INVENTORY_COLUMNS, or one that can't be hidden at all, is
+    a no-op returning None — same quiet-validation posture as every other
+    function here."""
     if key not in INVENTORY_COLUMNS or key in INVENTORY_REQUIRED_COLUMNS:
-        return
+        return None
     columns = list_columns(company_id)
+    toggled = None
     for column in columns:
         if column["key"] == key:
             column["visible"] = not column["visible"]
+            toggled = column
     _save_columns(company_id, columns)
+    return toggled
 
 
 def reorder_columns(company_id: int, ordered_keys: list[str]) -> None:
@@ -305,22 +320,29 @@ def add_type(company_id: int, label: str) -> InventoryType | None:
     return inventory_type
 
 
-def toggle_type(company_id: int, inventory_type_id: int) -> None:
+def toggle_type(company_id: int, inventory_type_id: int) -> InventoryType | None:
     inventory_type = InventoryType.query.filter_by(
         id=inventory_type_id, company_id=company_id
     ).first()
     if inventory_type is not None:
         inventory_type.is_active = not inventory_type.is_active
         db.session.commit()
+    return inventory_type
 
 
-def delete_type(company_id: int, inventory_type_id: int) -> None:
+def delete_type(company_id: int, inventory_type_id: int) -> tuple[str, bool] | None:
+    """(label, deleted), same contract as delete_unit."""
     inventory_type = InventoryType.query.filter_by(
         id=inventory_type_id, company_id=company_id
     ).first()
-    if inventory_type is not None and inventory_type.can_delete:
-        db.session.delete(inventory_type)
-        db.session.commit()
+    if inventory_type is None:
+        return None
+    label = inventory_type.label
+    if not inventory_type.can_delete:
+        return label, False
+    db.session.delete(inventory_type)
+    db.session.commit()
+    return label, True
 
 
 # ---------------------------------------------------------------------------

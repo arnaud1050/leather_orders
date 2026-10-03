@@ -35,6 +35,21 @@ export class IntegrationsPage extends BasePage {
     });
   }
 
+  /**
+   * Press a button whose form posts and redirects back here, and wait for
+   * the page that comes back. Without this, the next step can read (or type
+   * into) the page that was just submitted — a race that only shows when
+   * the suite runs in parallel and the server is slow to answer.
+   */
+  async submitAndReload(button: Locator): Promise<void> {
+    const reloaded = this.page.waitForResponse(
+      (r) => r.request().method() === "GET" && r.url().includes("/settings/integrations")
+    );
+    await button.click();
+    await reloaded;
+    await this.page.waitForLoadState("domcontentloaded");
+  }
+
   /** The whole card for a convert rule — address row, mappings, add-field
    * form. Hide rules are a plain `<li>`; see `hideRuleRow`. */
   ruleCard(pattern: string): Locator {
@@ -60,13 +75,13 @@ export class IntegrationsPage extends BasePage {
     await step(`Add a '${action}' rule for ${pattern}`, async () => {
       await this.addRuleForm.locator('input[name="pattern"]').fill(pattern);
       await this.addRuleForm.locator('select[name="action"]').selectOption(action);
-      await this.addRuleForm.getByRole("button", { name: "Add rule" }).click();
+      await this.submitAndReload(this.addRuleForm.getByRole("button", { name: "Add rule" }));
     });
   }
 
   async deleteRule(pattern: string): Promise<void> {
     await step(`Delete the rule for ${pattern}`, async () => {
-      await this.editRow(pattern).getByRole("button", { name: "Delete" }).click();
+      await this.submitAndReload(this.editRow(pattern).getByRole("button", { name: "Delete" }));
     });
   }
 
@@ -74,7 +89,7 @@ export class IntegrationsPage extends BasePage {
     await step(`Change the rule's address from ${from} to ${to}`, async () => {
       const row = this.editRow(from);
       await row.locator('input[name="pattern"]').fill(to);
-      await row.getByRole("button", { name: "Save" }).click();
+      await this.submitAndReload(row.getByRole("button", { name: "Save" }));
     });
   }
 
@@ -94,7 +109,7 @@ export class IntegrationsPage extends BasePage {
       const form = this.addFieldForm(pattern);
       await form.locator('input[name="label"]').fill(label);
       await form.locator('select[name="target"]').selectOption(target);
-      await form.getByRole("button", { name: "Add field" }).click();
+      await this.submitAndReload(form.getByRole("button", { name: "Add field" }));
     });
   }
 
@@ -120,9 +135,32 @@ export class IntegrationsPage extends BasePage {
     });
   }
 
-  /** A flash message the module's one-shot notice rendered at the top. */
+  /** The section that holds a heading, e.g. "Calendar sync". */
+  section(heading: string): Locator {
+    return this.page
+      .locator("section")
+      .filter({ has: this.page.getByRole("heading", { name: heading, exact: true }) });
+  }
+
+  /** The message slot a section's forms report into (MOD8). */
+  slot(name: string): Locator {
+    return this.page.locator(`[data-notice-slot="${name}"]`);
+  }
+
+  async saveCalendarSync(): Promise<void> {
+    await step("Save the Calendar sync settings as they are", async () => {
+      await this.submitAndReload(
+        this.section("Calendar sync").getByRole("button", { name: "Save", exact: true })
+      );
+    });
+  }
+
+  /** A save's message, in the Automatic handling section's own slot
+   * (REQUIREMENTS MOD8), where every rule and mapping form reports. */
   notice(text: string | RegExp): Locator {
-    return this.page.locator(".warning-note, .detail-note").filter({ hasText: text });
+    return this.page
+      .locator('[data-notice-slot="rules"] .save-notice')
+      .filter({ hasText: text });
   }
 
 }

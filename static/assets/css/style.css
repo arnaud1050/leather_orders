@@ -1382,9 +1382,10 @@ a.btn-secondary {
   color: var(--status-rush);
 }
 
-/* A field a save refused (OR13, templates/_field_error.html). Same red and
-   the same plain, unboxed treatment as .password-status--error — "that
-   submission didn't go through" — not the amber .warning-note panel, which
+/* A field a save refused (OR13, templates/_field_error.html). Same red as
+   .save-notice--error — "that submission didn't go through" — but plain
+   and unboxed, since it sits under its own input. Not the amber
+   .warning-note panel, which
    means a standing condition of the page. It sits inside the field's
    <label>, so it resets the label's small uppercase caption styling back to
    a readable sentence. */
@@ -1767,6 +1768,37 @@ a.btn-secondary {
 .warning-note--alert {
   border-left-color: var(--day-today);
   background: rgba(194, 59, 52, 0.07);
+}
+
+/* The message a save leaves — templates/_save_notice.html renders it, in
+   the section whose button was pressed (REQUIREMENTS MOD8). Same box as
+   .warning-note, but in the result's own colour: green for a save that went
+   through, red for one that was refused. Never the amber one: amber is a
+   standing condition of the page, and a save result isn't. */
+.save-notice {
+  max-width: 480px;
+  margin: 14px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--status-delivered);
+  background: rgba(47, 125, 79, 0.1);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.save-notice--error {
+  border-left-color: var(--day-today);
+  background: rgba(194, 59, 52, 0.07);
+}
+
+.save-notice a {
+  color: var(--status-progress);
+}
+
+/* Inside a dialog the box spans the form, like its fields do. */
+.modal__form .save-notice {
+  max-width: none;
+  margin: 0 0 4px;
 }
 
 /* Impersonation banner — a platform admin working inside somebody else's
@@ -2543,16 +2575,6 @@ a.btn-secondary {
 /* Settings → Account. Same reasoning as .compose-form__ai-status: transient
    feedback about one button press, not a standing condition of the page, so
    plain text rather than the amber .warning-note panel. */
-.password-status {
-  margin: 12px 0 0;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-}
-
-.password-status--error {
-  color: var(--day-today);
-}
-
 /* Wider than .settings-source-add — these forms carry addresses and
    multi-line instructions, not a single short label. */
 .settings-form {

@@ -32,10 +32,23 @@ export interface ClientFixture {
   orders: OrderFixture[];
 }
 
+export interface CalendarEventFixture {
+  key: string;
+  title: string;
+  location?: string;
+  dayOffset: number;
+  startHour: number;
+  durationHours: number;
+}
+
 export interface E2EData {
   company: { name: string };
   adminUser: { email: string; password: string; fullName: string };
   freshUser: { email: string; password: string; fullName: string };
+  calendar: {
+    account: { email: string; displayName?: string };
+    events: CalendarEventFixture[];
+  };
   clients: ClientFixture[];
 }
 
@@ -53,6 +66,12 @@ export function orderByKey(key: string): { client: ClientFixture; order: OrderFi
     if (order) return { client, order };
   }
   throw new Error(`No fixture order with key "${key}"`);
+}
+
+export function calendarEventByKey(key: string): CalendarEventFixture {
+  const event = testData.calendar.events.find((e) => e.key === key);
+  if (!event) throw new Error(`No fixture calendar event with key "${key}"`);
+  return event;
 }
 
 export function clientFullName(client: ClientFixture): string {

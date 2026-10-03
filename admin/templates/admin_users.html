@@ -10,12 +10,13 @@
 
   {% include "_admin_nav.html" %}
 
-  {% if notice %}
-  <p data-save-notice class="warning-note">{{ notice }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['admins', 'add-admin']) }}
 
   <section class="detail-orders">
     <h2>Platform admins</h2>
+    {{ notice_slot(notice, 'admins') }}
     <p class="detail-note">
       Staff accounts — they belong to no company, and see this page rather
       than a timeline. There's deliberately no way to promote a studio's user
@@ -35,6 +36,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('admin.set_user_active', user_id=admin.id) }}">
+            {{ notice_field('admins') }}
             <input type="hidden" name="active" value="{{ '0' if admin.is_active else '1' }}">
             <button type="submit" class="btn-secondary">
               {{ 'Deactivate' if admin.is_active else 'Reactivate' }}
@@ -49,6 +51,7 @@
          see the note in admin_company.html. #}
       <li class="settings-source-list__item">
         <form method="post" action="{{ url_for('admin.reset_password', user_id=admin.id) }}" class="detail-form settings-source-add">
+          {{ notice_field('admins') }}
           <label>New password for {{ admin.display_name }}
             <input type="password" name="password" autocomplete="new-password"
                    minlength="{{ min_password_length }}" required>
@@ -59,7 +62,9 @@
       {% endfor %}
     </ul>
 
+    {{ notice_slot(notice, 'add-admin') }}
     <form method="post" action="{{ url_for('admin.add_platform_admin') }}" class="detail-form settings-source-add">
+      {{ notice_field('add-admin') }}
       <label>Name<input type="text" name="full_name" placeholder="e.g. Platform Admin"></label>
       <label>Email<input type="email" name="email" autocomplete="off" required></label>
       <label>Initial password

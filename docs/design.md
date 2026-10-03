@@ -185,14 +185,23 @@ Current tokens (top of `style.css`):
   its own `<label>`** (`.field-error`), and a red border
   (`[aria-invalid="true"]`) — `templates/_field_error.html` renders both, so
   a form calls it on every field and it draws nothing for the fine ones.
-  Same red and the same plain, unboxed treatment as `.password-status--error`,
-  for the same reason: it says *that submission didn't go through*, which is
-  not what the amber-bordered `.warning-note` means (a standing condition of
-  the page). The sentence names the problem and what to do about it —
+  Same red as a refused save's `.save-notice--error`, for the same reason:
+  it says *that submission didn't go through*, which is not what the
+  amber-bordered `.warning-note` means (a standing condition of the page). The sentence names the problem and what to do about it —
   "The due date (Aug 1, 2026) is before the start date (Aug 20, 2026)…" —
   never a bare "Invalid". And the form comes back with everything that was
   typed still in it; a message that costs someone their notes is worse than
   no message.
+
+- **A save's message is a `.save-notice`: the `.warning-note` box, green
+  (`--status-delivered`) for done and red (`--day-today`) for refused**, in
+  the section whose button was pressed (REQUIREMENTS `MOD8`). Drawn only by
+  `templates/_save_notice.html` — never by hand. It replaced three styles
+  that said the same thing differently: amber boxes for both outcomes on
+  Settings and Admin (so "Company saved." looked like a warning), grey
+  italic `.detail-note` for successes elsewhere (easy to miss after a
+  save), and `.password-status` on Settings → Account. Amber stays what it
+  was: a standing condition, like "set a new password" or "running low".
 
 **When extending the UI:** match the current restrained, high-contrast, no-flourish
 look. Don't add serif/display fonts, decorative stitching, or brownish/muted accent

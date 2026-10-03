@@ -31,17 +31,21 @@ def register(app, *, resolve_order) -> None:
     app.register_blueprint(bp)
 
 
-def _flash(message: str) -> None:
+def _flash(message: str, category: str = "error") -> None:
     """One-shot message for the next page render.
 
     Same reasoning as communications' `_flash`/`take_notice`: the app has
     no flash-message convention, so this stays scoped to a session key this
     module owns rather than introducing Flask's flash app-wide.
+
+    Shown inside the section it's about — Documents on the order page,
+    Document types on Settings → Orders — so it needs no section name (the
+    host's MOD8). `category` is "error" for a refusal, "success" otherwise.
     """
-    session["documents_notice"] = message
+    session["documents_notice"] = {"message": message, "category": category}
 
 
-def take_notice() -> str | None:
+def take_notice() -> dict | None:
     """Public form, for order_page() in app.py — the page this module's
     upload form redirects back to — to surface an upload rejection."""
     return session.pop("documents_notice", None)
@@ -138,20 +142,35 @@ def add_type():
     # a duplicate — the only other reason add_document_type() returns None.
     if document_type is None and label.strip():
         _flash(f'A document type called "{label.strip()}" already exists.')
+    elif document_type is not None:
+        _flash(f'Document type "{document_type.label}" added.', "success")
     return redirect(url_for("settings_orders"))
 
 
 @bp.route("/settings/document-types/<int:document_type_id>/toggle", methods=["POST"])
 @login_required
 def toggle_type(document_type_id: int):
-    services.toggle_document_type(current_user.company_id, document_type_id)
+    document_type = services.toggle_document_type(current_user.company_id, document_type_id)
+    if document_type is not None:
+        _flash(
+            f'"{document_type.label}" is offered again for new uploads.' if document_type.is_active
+            else f'"{document_type.label}" hidden. It\'s no longer offered for new uploads; '
+                 "documents filed under it keep their section.",
+            "success")
     return redirect(url_for("settings_orders"))
 
 
 @bp.route("/settings/document-types/<int:document_type_id>/delete", methods=["POST"])
 @login_required
 def delete_type(document_type_id: int):
-    services.delete_document_type(current_user.company_id, document_type_id)
+    result = services.delete_document_type(current_user.company_id, document_type_id)
+    if result is not None:
+        label, deleted = result
+        if deleted:
+            _flash(f'"{label}" deleted.', "success")
+        else:
+            _flash(f'"{label}" can\'t be deleted because documents are filed under it. '
+                   "Hide it instead.")
     return redirect(url_for("settings_orders"))
 
 

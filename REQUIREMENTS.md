@@ -807,6 +807,39 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   form that lands on a different page (MOD5's `return_to`, or anywhere
   else) opens that page at the top as usual.
 
+- **MOD8 — A save's message shows in the section whose button was
+  pressed.** Not at the top of the page, and never on a page that doesn't
+  show it. Every message a save leaves is drawn by
+  `templates/_save_notice.html`, in one of two colours: the bordered box of
+  `.warning-note`, **green** (`.save-notice--success`) for a save that went
+  through and **red** (`.save-notice--error`) for one that was refused —
+  never amber, which means a standing condition of the page, not the result
+  of a button press. The wiring: the form names its section
+  (`notice_field('x')`), the route stashes the message with that name
+  (`{message, category, section}` in the module's own session key), and the
+  page renders it under that section's heading (`notice_slot(notice, 'x')`).
+  A message for a section that isn't on the page — a form that named none,
+  a section shown only sometimes — falls back to the top (`page_notice`,
+  given the slots the page rendered), so it can be out of place but never
+  lost. Where a save lands on another page, the route names the section
+  there: "Create a client" on a lead conversation reports on the client
+  page it opens; creating a company reports in that company's Company
+  section. A refused save from a dialog reopens that dialog with the
+  message inside it and what was typed still in it (the calendar's event
+  dialogs, like the timeline's OR13). Two lists whose add form sits under a
+  long list (a company's Users, Platform admins) report the add beside the
+  form rather than under a heading a screen away.
+  **Every save on the Settings pages, the account switches and the invoice
+  page reports**, not only refusals: adding, hiding, showing and deleting a
+  configured option (order and document types, sources, units, inventory
+  types), a list column, the time zone, company details, invoicing, invoice
+  appearance and the logo, pausing or defaulting a mailbox, and an
+  invoice's status, due date and notes (marking it sent says that what it
+  says is now frozen). A delete refused because the row is in use says why
+  and what to do instead ("…can't be deleted because orders are tagged with
+  it. Hide it instead.") rather than doing nothing. Drag-to-reorder still
+  saves without a message: it doesn't reload the page.
+
 ## 12. Settings
 
 - **SET1.** `/settings` itself is content-free — it redirects to
@@ -1020,7 +1053,8 @@ rows. See [e2e/README.md](e2e/README.md).
 | CL15 | `test_orders_tab_is_a_table_with_the_expected_columns`, `test_orders_tab_shows_dash_for_an_uninvoiced_order`, `test_orders_tab_sorts_by_the_requested_column` (`tests/test_client_orders_tab.py`); the status filter itself is — gap — same as LST4's client-side limitation |
 | MOD5 | `test_edit_client_redirects_to_return_to`, `test_edit_order_redirects_to_return_to` |
 | MOD6 | `test_back_label_variants` |
-| MOD7 | `test_every_page_loads_the_script`, `test_the_script_is_served`, `test_every_save_message_is_marked_so_it_is_scrolled_to`, `test_no_form_is_submitted_without_its_submit_event` (`tests/test_stay_in_place.py`) — gap: the scrolling itself is browser behaviour, checked by hand on Settings → Invoicing (each section's Save, and a refused save on Settings → Orders), not by the suite |
+| MOD7 | `test_every_page_loads_the_script`, `test_the_script_is_served`, `test_every_save_message_is_marked_so_it_is_scrolled_to`, `test_no_form_is_submitted_without_its_submit_event` (`tests/test_stay_in_place.py`); the scrolling itself is `e2e/tests/save-notices.spec.ts` (a save halfway down Settings → Email/Calendar and a refusal at the bottom reopen scrolled to their message, and a refused duplicate on Settings → Orders shows in view) |
+| MOD8 | `tests/test_save_notices.py`: `test_every_tenant_page_is_wired` and `test_every_admin_page_is_wired` (every form names a slot its page renders, every slot shows what's sent to it, anything else lands at the top), `test_every_form_that_leaves_a_message_names_its_section` (static: a form posting to a route that reports must carry `notice_field`), plus one test per kind of save posting it for real and finding its message in the right slot in the right colour (the formerly silent saves: `test_saving_the_time_zone_says_which_zone` through `test_invoice_settings_report_what_changed`, refused deletes included); `test_every_save_message_is_marked_so_it_is_scrolled_to` (`tests/test_stay_in_place.py`) checks no template draws a notice by hand. Checked against three deliberate regressions: a form's field removed, a slot renamed, errors drawn green. In a browser: `e2e/tests/save-notices.spec.ts` (the colours as drawn), `e2e/tests/calendar-event-errors.spec.ts` (a refused event dialog reopening, see CAL-14), `e2e/tests/invoice-logo.spec.ts` (a logo refused by `invoice-appearance.js` before upload, in red, nothing sent) |
 | SET1 | `test_settings_root_redirects_to_general` |
 | SET2–SET3 | — gap — |
 | SET4 | see OT1–OT3 |

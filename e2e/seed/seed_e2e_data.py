@@ -36,14 +36,24 @@ E2E_SEED_DATA_FILE in e2e/.env.example.
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
 from app import app  # noqa: E402  (must follow the sys.path fix-up)
 from admin.services import add_user  # noqa: E402
+from communications.models import CalendarEvent, EmailAccount  # noqa: E402
 from models import Client, Order, OrderLine, Payment, create_company, db  # noqa: E402
+
+# What a fully connected Gmail account grants (communications S-12). Only the
+# calendar one matters here: it's what has_calendar() checks.
+GRANTED_SCOPES = (
+    "https://www.googleapis.com/auth/gmail.modify "
+    "https://www.googleapis.com/auth/gmail.send "
+    "https://www.googleapis.com/auth/calendar"
+)
 
 DEFAULT_DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "e2e-data.json")
 
@@ -121,12 +131,54 @@ def seed(data: dict) -> None:
                     )
                 )
 
+    if data.get("calendar"):
+        _seed_calendar(company, data["calendar"])
+
     db.session.commit()
     total_orders = sum(len(c.get("orders", [])) for c in data["clients"])
     print(
         f"Seeded '{company.name}' (company id={company.id}): "
         f"{len(data['clients'])} clients, {total_orders} orders."
     )
+
+
+def _seed_calendar(company, spec: dict) -> None:
+    """A calendar-scoped account and its events, as a sync would have left
+    them — so the calendar renders its event dialogs.
+
+    Paused (`sync_enabled=False`) with placeholder tokens: the suite must
+    never reach Google, and nothing schedules a sync in the E2E server
+    anyway (RUN_SCHEDULER is unset). Event times are the company's wall
+    clock, converted to naive UTC the way communications stores them
+    (CAL-3), so "11:00 today" is 11:00 on the calendar page whatever the
+    machine's own zone.
+    """
+    account = EmailAccount(
+        company_id=company.id, provider="gmail",
+        email_address=spec["account"]["email"],
+        display_name=spec["account"].get("displayName"),
+        is_default=True, sync_enabled=False, granted_scopes=GRANTED_SCOPES,
+    )
+    account.access_token = "e2e-placeholder-access-token"
+    account.refresh_token = "e2e-placeholder-refresh-token"
+    db.session.add(account)
+    db.session.flush()
+
+    zone = ZoneInfo(company.timezone)
+    today = datetime.now(zone).date()
+    for event_spec in spec.get("events", []):
+        local_start = datetime.combine(
+            today + timedelta(days=event_spec["dayOffset"]),
+            time(hour=event_spec["startHour"]), tzinfo=zone,
+        )
+        start = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+        db.session.add(CalendarEvent(
+            company_id=company.id, email_account_id=account.id,
+            provider_event_id=f"e2e-{event_spec['key']}",
+            title=event_spec["title"], location=event_spec.get("location"),
+            start_time=start,
+            end_time=start + timedelta(hours=event_spec["durationHours"]),
+        ))
 
 
 def main() -> int:

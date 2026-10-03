@@ -76,4 +76,11 @@
     if (extra) extra.addEventListener('input', apply);
     apply();
   });
+
+  // A save that came back refused reopens its own dialog (MOD8), so the
+  // message lands over what was typed. Last, so every listener above is
+  // already wired when it opens.
+  document.querySelectorAll('dialog[data-open-on-load]').forEach(function (dialog) {
+    dialog.showModal();
+  });
 </script>

@@ -38,22 +38,23 @@ def test_the_script_is_served(app):
     assert b"data-save-notice" in response.data
 
 
-# The flash-style values a save leaves for the next page to show.
-SAVE_MESSAGES = re.compile(
-    r"{%\s*if\s+(\w*notice|password_status|signature_saved)\s*%}\s*<p([^>]*)>")
-
-
 def test_every_save_message_is_marked_so_it_is_scrolled_to():
     """A message from a save shown above the fold is a refusal nobody sees
-    once the page reopens where they were."""
-    found = 0
+    once the page reopens where they were.
+
+    Every save message is drawn by `_save_notice.html` (MOD8), which marks
+    it; so what's checked is that the macro does, and that no template
+    draws one by hand, where the marker could be forgotten."""
+    macro = (ROOT / "templates" / "_save_notice.html").read_text(encoding="utf-8")
+    assert "<p data-save-notice" in macro
+
+    by_hand = re.compile(r"{{\s*\w*notice(\.message)?\s*}}")
     for path in templates():
-        for match in SAVE_MESSAGES.finditer(path.read_text(encoding="utf-8")):
-            found += 1
-            assert "data-save-notice" in match.group(2), (
-                f"{path.relative_to(ROOT)}: the {match.group(1)} message needs "
-                "data-save-notice (see stay-in-place.js)")
-    assert found >= 15, "the scan matched too little to mean anything"
+        if path.name == "_save_notice.html":
+            continue
+        assert not by_hand.search(path.read_text(encoding="utf-8")), (
+            f"{path.relative_to(ROOT)} renders a save notice by hand; "
+            "use save_notice / notice_slot from _save_notice.html")
 
 
 def test_no_form_is_submitted_without_its_submit_event():

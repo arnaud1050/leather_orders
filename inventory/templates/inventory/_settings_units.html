@@ -8,7 +8,9 @@
    yet added, grouped alphabetically by UNIT_CATALOG's group for the
    "Add a unit" dropdown — see inventory.services.available_catalog_units). #}
 
+{% from "_save_notice.html" import notice_field, notice_slot %}
 <h2>Units</h2>
+{{ notice_slot(notice, 'units') }}
 <p class="detail-note">
   What quantities are measured in — shown as a dropdown when adding or
   editing an inventory item. Picked from a fixed list rather than typed
@@ -50,10 +52,12 @@
     {% else %}
     <div class="settings-source-list__actions">
       <form method="post" action="{{ url_for('inventory.toggle_unit', unit_id=unit.id) }}">
+        {{ notice_field('units') }}
         <button type="submit" class="btn-secondary">{{ 'Unhide' if not unit.is_active else 'Hide' }}</button>
       </form>
       {% if unit.can_delete %}
       <form method="post" action="{{ url_for('inventory.delete_unit', unit_id=unit.id) }}">
+        {{ notice_field('units') }}
         <button type="submit" class="btn-secondary">Delete</button>
       </form>
       {% endif %}
@@ -65,6 +69,7 @@
 
 {% if available_units %}
 <form method="post" action="{{ url_for('inventory.add_unit') }}" class="detail-form settings-source-add">
+  {{ notice_field('units') }}
   <label>Add a unit
     <select name="key">
       {% set ns = namespace(current_group=None, open_group=False) %}

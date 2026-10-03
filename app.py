@@ -1590,6 +1590,8 @@ def client_page(client_id: int):
         source_options=source_options,
         other_source_option=other_source_option,
         provinces=PROVINCES,
+        # "Create a client" on a lead conversation lands here (MOD8).
+        notice=communications_routes.take_notice(),
         active_view=None,
     )
 
@@ -2136,18 +2138,34 @@ def get_order_type_or_404(order_type_id: int) -> OrderType:
     return order_type
 
 
-def _flash_settings_notice(message: str) -> None:
+def _flash_settings_notice(message: str, category: str = "error",
+                           section: str | None = None) -> None:
     """One-shot message for the next settings page render.
 
     Same session-key-scoped shape as documents' _flash/take_notice and
     communications' _flash/_take_notice — this app has no app-wide flash
     convention, so each part that needs one keeps its own key rather than
     introducing Flask's flash() globally.
+
+    Shown in the section whose form posted it, which the form names in its
+    `notice_section` field (MOD8), unless the route names it — the invoice
+    appearance routes do, since their logo forms are submitted from script.
+    `category` is "error" for a refused save and "success" otherwise.
     """
-    session["settings_notice"] = message
+    session["settings_notice"] = {
+        "message": message, "category": category,
+        "section": section or _notice_section(),
+    }
 
 
-def _take_settings_notice() -> str | None:
+def _notice_section() -> str | None:
+    """The posting form's `notice_section`, if it's a well-formed slot name.
+    Anything else falls back to the top of the page (`page_notice`)."""
+    raw = request.form.get("notice_section") or ""
+    return raw if re.fullmatch(r"[a-z0-9-]{1,40}", raw) else None
+
+
+def _take_settings_notice() -> dict | None:
     return session.pop("settings_notice", None)
 
 
@@ -2178,6 +2196,7 @@ def settings_general():
         section="general",
         company=db.session.get(Company, current_user.company_id),
         time_zones=TIME_ZONES,
+        notice=_take_settings_notice(),
         active_view="settings",
     )
 
@@ -2271,7 +2290,6 @@ def settings_invoicing():
         branding=profile.branding,
         logo_max_bytes=billing_config.LOGO_MAX_BYTES,
         footer_text_max=billing_config.FOOTER_TEXT_MAX_LENGTH,
-        appearance_notice=session.pop("appearance_notice", None),
         notice=_take_settings_notice(),
         active_view="settings",
     )
@@ -2293,6 +2311,10 @@ def update_preferences():
     if chosen in dict(TIME_ZONES):
         company.timezone = chosen
         db.session.commit()
+        _flash_settings_notice(
+            f"Time zone saved. Times now show in {dict(TIME_ZONES)[chosen]}.", "success")
+    else:
+        _flash_settings_notice("That time zone isn't one the app offers, so nothing changed.")
     return redirect(url_for("settings_general"))
 
 
@@ -2316,6 +2338,7 @@ def add_order_type():
             sort_order=max_sort_order,
         ))
         db.session.commit()
+        _flash_settings_notice(f'Order type "{label}" added.', "success")
     return redirect(url_for("settings_orders"))
 
 
@@ -2325,6 +2348,11 @@ def toggle_order_type(order_type_id: int):
     order_type = get_order_type_or_404(order_type_id)
     order_type.is_active = not order_type.is_active
     db.session.commit()
+    _flash_settings_notice(
+        f'"{order_type.label}" is offered again for new orders.' if order_type.is_active
+        else f'"{order_type.label}" hidden. It\'s no longer offered for new orders; '
+             "orders already tagged with it keep it.",
+        "success")
     return redirect(url_for("settings_orders"))
 
 
@@ -2332,9 +2360,16 @@ def toggle_order_type(order_type_id: int):
 @login_required
 def delete_order_type(order_type_id: int):
     order_type = get_order_type_or_404(order_type_id)
+    label = order_type.label
     if order_type.can_delete:
         db.session.delete(order_type)
         db.session.commit()
+        _flash_settings_notice(f'"{label}" deleted.', "success")
+    else:
+        # Only reachable from a page loaded before the first order was
+        # tagged: the Delete button isn't rendered once it can't work.
+        _flash_settings_notice(
+            f'"{label}" can\'t be deleted because orders are tagged with it. Hide it instead.')
     return redirect(url_for("settings_orders"))
 
 
@@ -2349,10 +2384,16 @@ def toggle_order_column(key: str):
     if key not in ORDER_COLUMNS:
         abort(404)
     columns = _order_columns_for(current_user.company_id)
+    shown = None
     for col in columns:
         if col["key"] == key:
             col["visible"] = not col["visible"]
+            shown = col["visible"]
     _save_order_columns(current_user.company_id, columns)
+    if shown is not None:
+        _flash_settings_notice(
+            f'The {ORDER_COLUMNS[key][0]} column is now {"shown" if shown else "hidden"} '
+            "on the Orders list.", "success")
     return redirect(url_for("settings_orders"))
 
 
@@ -2391,6 +2432,7 @@ def add_source_option():
             sort_order=max_sort_order,
         ))
         db.session.commit()
+        _flash_settings_notice(f'Option "{label}" added.', "success")
     return redirect(url_for("settings_clients"))
 
 
@@ -2400,6 +2442,10 @@ def toggle_source_option(source_option_id: int):
     option = get_source_option_or_404(source_option_id)
     option.is_active = not option.is_active
     db.session.commit()
+    _flash_settings_notice(
+        f'"{option.label}" is shown on client pages again.' if option.is_active
+        else f'"{option.label}" hidden from client pages. Clients who picked it keep it.',
+        "success")
     return redirect(url_for("settings_clients"))
 
 
@@ -2417,11 +2463,25 @@ def set_other_source_option(source_option_id: int):
     """
     option = get_source_option_or_404(source_option_id)
     turning_on = not option.is_other
+    previous = SourceOption.query.filter(
+        SourceOption.company_id == current_user.company_id,
+        SourceOption.is_other.is_(True), SourceOption.id != option.id,
+    ).first()
+    previous_label = previous.label if previous else None
     SourceOption.query.filter_by(
         company_id=current_user.company_id, is_other=True
     ).update({"is_other": False})
     option.is_other = turning_on
     db.session.commit()
+    if turning_on:
+        # Saying where it moved from: only one option can carry the box, so
+        # adding it here silently took it off another.
+        message = f'"{option.label}" now has a text box on the client page.'
+        if previous_label:
+            message += f' "{previous_label}" no longer does.'
+    else:
+        message = f'"{option.label}" no longer has a text box.'
+    _flash_settings_notice(message, "success")
     return redirect(url_for("settings_clients"))
 
 
@@ -2451,9 +2511,14 @@ def reorder_source_options():
 @login_required
 def delete_source_option(source_option_id: int):
     option = get_source_option_or_404(source_option_id)
+    label = option.label
     if option.can_delete:
         db.session.delete(option)
         db.session.commit()
+        _flash_settings_notice(f'"{label}" deleted.', "success")
+    else:
+        _flash_settings_notice(
+            f'"{label}" can\'t be deleted because clients have picked it. Hide it instead.')
     return redirect(url_for("settings_clients"))
 
 
@@ -2481,6 +2546,10 @@ def update_company_details():
         neq=request.form.get("neq", "").strip() or None,
     )
     db.session.commit()
+    _flash_settings_notice(
+        "Company details saved." if name
+        else "Company details saved. The company name can't be blank, so it was kept.",
+        "success")
     return redirect(url_for("settings_invoicing"))
 
 
@@ -2491,32 +2560,19 @@ def update_company_details():
 MIN_PASSWORD_LENGTH = 8
 
 
-def _flash_password_status(message: str, ok: bool) -> None:
-    """One-shot feedback for the next Settings → Account render.
-
-    Its own session key rather than `_flash_settings_notice`'s: that one
-    renders as a .warning-note, which is right for a standing condition of
-    the page and wrong for "that worked" after one button press.
-    """
-    session["password_status"] = {"message": message, "ok": ok}
-
-
 @app.route("/settings/account")
 @login_required
 def settings_account():
-    notice = (
-        "You need to set a new password before continuing."
-        if current_user.must_change_password else None
-    )
     return render_template(
         "settings.html",
         section="account",
         company=db.session.get(Company, current_user.company_id),
-        password_status=session.pop("password_status", None),
-        signature_saved=session.pop("signature_saved", False),
+        # A standing condition of the account, not the result of a save —
+        # so an amber .warning-note at the top, not a save notice (MOD8).
+        password_required=current_user.must_change_password,
         min_password_length=MIN_PASSWORD_LENGTH,
         active_view="settings",
-        notice=notice,
+        notice=_take_settings_notice(),
     )
 
 
@@ -2538,7 +2594,7 @@ def update_signature():
     signature = request.form.get("signature", "").replace("\r\n", "\n").replace("\r", "\n")
     current_user.signature = signature.strip() or None
     db.session.commit()
-    session["signature_saved"] = True
+    _flash_settings_notice("Signature saved.", "success")
     return redirect(url_for("settings_account"))
 
 
@@ -2573,7 +2629,7 @@ def change_password():
         error = None
 
     if error is not None:
-        _flash_password_status(error, ok=False)
+        _flash_settings_notice(error)
     else:
         # current_user is a proxy around the row; write through the session's
         # own instance so the commit is unambiguous.
@@ -2581,7 +2637,7 @@ def change_password():
         user.set_password(new)
         user.must_change_password = False
         db.session.commit()
-        _flash_password_status("Password changed.", ok=True)
+        _flash_settings_notice("Password changed.", "success")
 
     return redirect(url_for("settings_account"))
 
@@ -2602,6 +2658,7 @@ def update_invoicing_settings():
         fields["invoice_prefix"] = prefix[:10]
     invoicing.update_profile(company.id, company.name, **fields)
     db.session.commit()
+    _flash_settings_notice("Invoicing settings saved.", "success")
     return redirect(url_for("settings_invoicing"))
 
 
@@ -2649,6 +2706,8 @@ def update_invoice_appearance():
             "Not saved: the " + " and ".join(rejected) + " wasn't recognised. "
             "A colour needs to look like #1c1a17."
         )
+    else:
+        _flash_settings_notice("Invoice appearance saved.", "success", section="appearance")
     return _back_to_appearance()
 
 
@@ -2674,6 +2733,7 @@ def upload_invoice_logo():
         _flash_appearance_notice(str(error))
     else:
         db.session.commit()
+        _flash_settings_notice("Logo uploaded.", "success", section="appearance")
     return _back_to_appearance()
 
 
@@ -2682,14 +2742,15 @@ def upload_invoice_logo():
 def delete_invoice_logo():
     invoicing.remove_logo(current_user.company_id)
     db.session.commit()
+    _flash_settings_notice("Logo removed.", "success", section="appearance")
     return _back_to_appearance()
 
 
 def _flash_appearance_notice(message: str) -> None:
-    """A refusal from the appearance or logo form, shown *inside* that
-    section rather than at the top of the page, beside what it's about.
-    The page reopening where it was is stay-in-place.js's job (MOD7)."""
-    session["appearance_notice"] = message
+    """A refusal from the appearance or logo form, shown in that section's
+    slot (MOD8). Named here rather than by the forms: a logo is uploaded by
+    invoice-appearance.js the moment it's chosen."""
+    _flash_settings_notice(message, section="appearance")
 
 
 def _back_to_appearance():

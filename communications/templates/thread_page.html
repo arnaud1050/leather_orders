@@ -25,19 +25,21 @@
     </div>
   </header>
 
-  {% if notice %}
-  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['compose'] + (['create-client'] if thread.is_lead else [])) }}
 
   {% if thread.is_lead %}
   <section class="detail-orders">
     <h2>Create a client</h2>
+    {{ notice_slot(notice, 'create-client') }}
     <p class="detail-note">
       Nobody on file matches {{ thread.counterparty or 'this sender' }}.
       Creating a client links this conversation to them, and any other
       unmatched conversation from the same address.
     </p>
     <form method="post" action="{{ url_for('communications.convert_lead', thread_id=thread.id) }}" class="detail-form">
+      {{ notice_field('create-client') }}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       {# Prefilled with what the server would have derived anyway (see
@@ -105,6 +107,7 @@
 
   <section class="detail-orders">
     <h2>Reply</h2>
+    {{ notice_slot(notice, 'compose') }}
     {# contact_address: a reply goes to the client, not to the contact form
        that relayed their enquiry. #}
     {% with to_value = thread.contact_address,

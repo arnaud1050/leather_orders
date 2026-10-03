@@ -14,8 +14,10 @@
   keeping that document's section.
 </p>
 
+{# Shown in this section (the host's MOD8). #}
+{% from "_save_notice.html" import save_notice %}
 {% if documents_notice %}
-<p data-save-notice class="warning-note">{{ documents_notice }}</p>
+{{ save_notice(documents_notice) }}
 {% endif %}
 
 <ul class="settings-source-list" id="document-type-list">

@@ -10,18 +10,20 @@
 
   {% include "_admin_nav.html" %}
 
-  {% if notice %}
-  <p data-save-notice class="warning-note">{{ notice }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['announcement']) }}
 
   <section class="detail-orders">
     <h2>Announcement banner</h2>
+    {{ notice_slot(notice, 'announcement') }}
     <p class="detail-note">
       Shown at the top of every page on this installation — every company,
       and anyone not yet signed in. Use it for a maintenance window or
       anything else that isn't one studio's own news.
     </p>
     <form method="post" action="{{ url_for('admin.update_announcement') }}" class="detail-form">
+      {{ notice_field('announcement') }}
       <label>Message
         <textarea name="message" rows="3"
                   placeholder="e.g. Brief downtime Sunday 2-4am Pacific for maintenance.">{{ settings.announcement or '' }}</textarea>

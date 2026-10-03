@@ -10,9 +10,9 @@
 
   {% include "_settings_nav.html" %}
 
-  {% if notice %}
-  <p data-save-notice class="detail-note">{{ notice }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['replies', 'renders']) }}
 
   {% if using_derived_key %}
   <p class="warning-note">
@@ -30,6 +30,7 @@
 
   <section class="detail-orders">
     <h2>Inquiry replies</h2>
+    {{ notice_slot(notice, 'replies') }}
     <p class="detail-note">
       With an OpenAI key saved, replying to a lead or a client offers a
       <strong>Suggest response</strong> button that drafts a reply from the
@@ -48,6 +49,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('ai.delete_reply_key') }}">
+            {{ notice_field('replies') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
         </div>
@@ -56,6 +58,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('ai.save_replies') }}" class="detail-form ai-form">
+      {{ notice_field('replies') }}
       {# Always rendered blank: a saved key is never sent back to the
          browser. Submitting this section without retyping it therefore
          means "keep the key I have", not "clear it" — deleting is the
@@ -84,6 +87,7 @@
 
   <section class="detail-orders">
     <h2>Renderings</h2>
+    {{ notice_slot(notice, 'renders') }}
     <p class="detail-note">
       With a Google AI Studio key saved, any JPEG or PNG attached to an
       order offers a <strong>Render</strong> action that generates a product
@@ -101,6 +105,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('ai.delete_render_key') }}">
+            {{ notice_field('renders') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
         </div>
@@ -109,6 +114,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('ai.save_renders') }}" class="detail-form ai-form">
+      {{ notice_field('renders') }}
       <label class="ai-form__field">Google AI Studio API key
         <input type="password" name="api_key" autocomplete="off" spellcheck="false"
                placeholder="{{ 'Enter a new key to replace the saved one' if settings.has_image_key else 'AIza…' }}">

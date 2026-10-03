@@ -33,9 +33,15 @@
     </div>
   </header>
 
-  {% if notice %}
-  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
+  {# The calendar's own messages (Sync now, a saved event) sit under its
+     buttons; a refused event save reopens its dialog instead (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {% set slots = namespace(names=[]) %}
+  {% if has_calendar %}
+    {% set slots.names = ['calendar', 'event-new'] %}
+    {% for event in events_in_view %}{% set slots.names = slots.names + ['event-' ~ event.id] %}{% endfor %}
   {% endif %}
+  {{ page_notice(notice, slots.names) }}
 
   {# No event UI at all for a studio that hasn't connected a calendar — a
      button whose only possible outcome is an error isn't worth showing. #}
@@ -47,6 +53,7 @@
        too. #}
     <div class="legend__actions">
       <form method="post" action="{{ url_for('communications.sync_calendar_now') }}">
+        {{ notice_field('calendar') }}
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="return_to" value="{{ request.path }}">
         <button type="submit" class="btn-secondary">Sync now</button>
@@ -54,6 +61,7 @@
       <button type="button" class="btn-primary" data-open-modal="event-modal-new">+ New event</button>
     </div>
   </div>
+  {{ notice_slot(notice, 'calendar') }}
   {% endif %}
 
   <table class="calendar">

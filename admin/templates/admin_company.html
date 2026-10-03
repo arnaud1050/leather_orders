@@ -11,13 +11,15 @@
     </p>
   </header>
 
-  {% if notice %}
-  <p data-save-notice class="warning-note">{{ notice }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['company', 'access', 'users', 'add-user']) }}
 
   <section class="detail-orders">
     <h2>Company</h2>
+    {{ notice_slot(notice, 'company') }}
     <form method="post" action="{{ url_for('admin.update_company', company_id=company.id) }}" class="detail-form">
+      {{ notice_field('company') }}
       <label>Name<input type="text" name="name" value="{{ company.name }}" required></label>
       <label>Time zone
         <select name="timezone">
@@ -34,6 +36,7 @@
 
   <section class="detail-orders">
     <h2>Access</h2>
+    {{ notice_slot(notice, 'access') }}
     <p class="detail-note">
       {% if company.is_active %}
       Deactivating stops everyone here signing in. Nothing is deleted, no
@@ -46,6 +49,7 @@
       {% endif %}
     </p>
     <form method="post" action="{{ url_for('admin.set_company_active', company_id=company.id) }}">
+      {{ notice_field('access') }}
       <input type="hidden" name="active" value="{{ '0' if company.is_active else '1' }}">
       <button type="submit" class="btn-secondary">
         {{ 'Deactivate company' if company.is_active else 'Reactivate company' }}
@@ -55,6 +59,7 @@
 
   <section class="detail-orders">
     <h2>Users</h2>
+    {{ notice_slot(notice, 'users') }}
     <p class="detail-note">
       People who can sign in as this company. They see this studio and nothing
       else, and none of them can reach this admin area — platform admins are a
@@ -74,10 +79,12 @@
         <div class="settings-source-list__actions">
           {% if user.is_active and user.id != current_user.id %}
           <form method="post" action="{{ url_for('admin.impersonate', user_id=user.id) }}">
+            {{ notice_field('users') }}
             <button type="submit" class="btn-secondary">Sign in as</button>
           </form>
           {% endif %}
           <form method="post" action="{{ url_for('admin.set_user_active', user_id=user.id) }}">
+            {{ notice_field('users') }}
             <input type="hidden" name="active" value="{{ '0' if user.is_active else '1' }}">
             <button type="submit" class="btn-secondary">
               {{ 'Deactivate' if user.is_active else 'Reactivate' }}
@@ -94,6 +101,7 @@
          input; without it this rendered as bare, unstyled HTML. #}
       <li class="settings-source-list__item">
         <form method="post" action="{{ url_for('admin.reset_password', user_id=user.id) }}" class="detail-form settings-source-add">
+          {{ notice_field('users') }}
           <label>New password for {{ user.display_name }}
             <input type="password" name="password" autocomplete="new-password"
                    minlength="{{ min_password_length }}" required>
@@ -104,7 +112,9 @@
       {% endfor %}
     </ul>
 
+    {{ notice_slot(notice, 'add-user') }}
     <form method="post" action="{{ url_for('admin.add_user', company_id=company.id) }}" class="detail-form settings-source-add">
+      {{ notice_field('add-user') }}
       <label>Name<input type="text" name="full_name" placeholder="e.g. Studio Admin"></label>
       <label>Email<input type="email" name="email" autocomplete="off" required></label>
       <label>Initial password

@@ -174,22 +174,31 @@ def is_duplicate_document_type_label(company_id: int, label: str) -> bool:
     return label.strip().lower() in existing_labels
 
 
-def toggle_document_type(company_id: int, document_type_id: int) -> None:
+def toggle_document_type(company_id: int, document_type_id: int) -> DocumentType | None:
     document_type = DocumentType.query.filter_by(
         id=document_type_id, company_id=company_id
     ).first()
     if document_type is not None:
         document_type.is_active = not document_type.is_active
         db.session.commit()
+    return document_type
 
 
-def delete_document_type(company_id: int, document_type_id: int) -> None:
+def delete_document_type(company_id: int, document_type_id: int) -> tuple[str, bool] | None:
+    """(label, deleted) — so the caller can say which type, and whether it
+    went or still has documents filed under it. None when the id isn't
+    this company's."""
     document_type = DocumentType.query.filter_by(
         id=document_type_id, company_id=company_id
     ).first()
-    if document_type is not None and document_type.can_delete:
-        db.session.delete(document_type)
-        db.session.commit()
+    if document_type is None:
+        return None
+    label = document_type.label
+    if not document_type.can_delete:
+        return label, False
+    db.session.delete(document_type)
+    db.session.commit()
+    return label, True
 
 
 def reorder_document_types(company_id: int, ordered_ids: list[int]) -> None:

@@ -19,6 +19,17 @@ that came back — a redirect carrying the right words says nothing about what
 was written — and one test goes the whole way round through `/login` to prove
 the new password is the one that actually authenticates.
 
+**`tests/test_save_notices.py`** defends `MOD8`, a save's message in the
+section whose button was pressed. Two kinds of test. The wiring tests render
+every tenant and admin page with enough data that all its forms appear, check
+each form's `notice_section` has a matching slot on the page, then seed a
+notice into each slot in turn (and one for a slot that isn't there, which must
+land at the top). A static test reads each reporting route's source and fails
+any form posting to it without `notice_field`. The rest post each kind of save
+for real and look for the message in the right slot, in the right colour.
+Checked against three deliberate regressions: a form's field deleted, a slot
+renamed, errors drawn green.
+
 **`tests/test_admin.py`** defends the platform admin area
 (`admin/REQUIREMENTS.md` `PA1`–`PA30`): who may reach `/admin` (every mutating
 route checked individually, since the guard on a list page is easy to

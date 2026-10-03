@@ -14,9 +14,9 @@
 
   {% include "_client_nav.html" %}
 
-  {% if notice %}
-  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['threads', 'compose']) }}
 
   {% if not client.email %}
   <p class="warning-note">
@@ -29,6 +29,7 @@
 
   <section class="detail-orders">
     <h2>Conversations</h2>
+    {{ notice_slot(notice, 'threads') }}
     {# Per-thread unread counts, so the badge on the Emails tab above points
        at *which* conversation it means. #}
     {% with flag_unread = true %}{% include "_thread_list.html" %}{% endwith %}
@@ -36,6 +37,7 @@
 
   <section class="detail-orders">
     <h2>New message</h2>
+    {{ notice_slot(notice, 'compose') }}
     {% with to_value = client.email %}
       {% include "_compose_form.html" %}
     {% endwith %}

@@ -10,12 +10,13 @@
 
   {% include "_settings_nav.html" %}
 
-  {% if notice %}
-  <p data-save-notice class="{{ 'warning-note' if notice.category == 'error' else 'detail-note' }}">{{ notice.message }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['accounts', 'email-sync', 'calendar-sync', 'rules']) }}
 
   <section class="detail-orders">
     <h2>Connected accounts</h2>
+    {{ notice_slot(notice, 'accounts') }}
     <p class="detail-note">
       Connecting a mailbox lets the app show a client's email history on
       their page, send replies from the studio's own address, and read the
@@ -37,12 +38,14 @@
           {% if account.is_default %}<span class="checkbox-group__hidden-tag">(default)</span>{% endif %}
           <div class="settings-source-list__actions">
             <form method="post" action="{{ url_for('communications.update_account_flags', account_id=account.id) }}">
+              {{ notice_field('accounts') }}
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="sync_enabled" value="{{ '0' if account.sync_enabled else '1' }}">
               <button type="submit" class="btn-secondary">{{ 'Pause sync' if account.sync_enabled else 'Resume sync' }}</button>
             </form>
             {% if not account.is_default %}
             <form method="post" action="{{ url_for('communications.update_account_flags', account_id=account.id) }}">
+              {{ notice_field('accounts') }}
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="is_default" value="1">
               <button type="submit" class="btn-secondary">Make default</button>
@@ -51,6 +54,7 @@
             <form method="post" action="{{ url_for('communications.disconnect_account', account_id=account.id) }}"
                   onsubmit="return confirm('Disconnect {{ account.email_address }}? Access is revoked at Google and every synced message for this mailbox is deleted from the app.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {{ notice_field('accounts') }}
               <button type="submit" class="btn-secondary">Disconnect</button>
             </form>
           </div>
@@ -91,6 +95,7 @@
       {% if accounts %}
       <form method="post" action="{{ url_for('communications.sync_all_now') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ notice_field('accounts') }}
         <input type="hidden" name="return_to" value="{{ url_for('communications.integrations') }}">
         <button type="submit" class="btn-secondary">Sync mail and calendar now</button>
       </form>
@@ -100,6 +105,7 @@
 
   <section class="detail-orders">
     <h2>Email sync</h2>
+    {{ notice_slot(notice, 'email-sync') }}
     <p class="detail-note">
       These apply to every mailbox this company has connected. "How far back
       to read" only affects a mailbox's <em>first</em> sync — after that each
@@ -107,6 +113,7 @@
     </p>
     <form method="post" action="{{ url_for('communications.update_sync_settings') }}" class="detail-form settings-form settings-form--sync">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ notice_field('email-sync') }}
       {# Says which half of the settings this form owns. An unticked checkbox
          posts nothing, so without it the calendar form below would read every
          box here as "off" and switch them all off on save. #}
@@ -167,6 +174,7 @@
     {% if accounts %}
     <form method="post" action="{{ url_for('communications.sync_now') }}" class="detail-form settings-source-add">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ notice_field('email-sync') }}
       <input type="hidden" name="return_to" value="{{ url_for('communications.integrations') }}">
       <div>
         <button type="submit" class="btn-secondary">Sync mail now</button>
@@ -177,6 +185,7 @@
 
   <section class="detail-orders">
     <h2>Calendar sync</h2>
+    {{ notice_slot(notice, 'calendar-sync') }}
     <p class="detail-note">
       {# Its own interval, not mail's: an appointment booked in Google an hour
          ago is rarely as urgent here as an unanswered enquiry, and the two
@@ -187,6 +196,7 @@
     </p>
     <form method="post" action="{{ url_for('communications.update_sync_settings') }}" class="detail-form settings-form settings-form--sync">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ notice_field('calendar-sync') }}
       <input type="hidden" name="section" value="calendar">
       <div class="field-row field-row--sync">
         <label>Check every, in minutes
@@ -201,6 +211,7 @@
     {% if has_calendar %}
     <form method="post" action="{{ url_for('communications.sync_calendar_now') }}" class="detail-form settings-source-add">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ notice_field('calendar-sync') }}
       <input type="hidden" name="return_to" value="{{ url_for('communications.integrations') }}">
       <div>
         <button type="submit" class="btn-secondary">Sync calendar now</button>
@@ -216,6 +227,7 @@
 
   <section class="detail-orders">
     <h2>Automatic handling</h2>
+    {{ notice_slot(notice, 'rules') }}
     <p class="detail-note">
       Rules for senders whose mail never needs a decision. They apply to
       <strong>new conversations only</strong> — adding one doesn't reach back
@@ -242,6 +254,7 @@
            differently from the other. #}
         <form method="post" action="{{ url_for('communications.update_sender_rule', rule_id=rule.id) }}" class="rule-edit">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ notice_field('rules') }}
           <input type="text" name="pattern" value="{{ rule.pattern }}" class="rule-edit__pattern" required
                  aria-label="Address or domain">
           <button type="submit" class="btn-secondary">Save</button>
@@ -249,6 +262,7 @@
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {{ notice_field('rules') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
         </div>
@@ -276,12 +290,14 @@
            which is the part that takes real effort to get right. #}
         <form method="post" action="{{ url_for('communications.update_sender_rule', rule_id=rule.id) }}" class="rule-edit">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ notice_field('rules') }}
           <input type="text" name="pattern" value="{{ rule.pattern }}" class="rule-edit__pattern" required
                  aria-label="Address or domain">
           <button type="submit" class="btn-secondary">Save</button>
         </form>
         <form method="post" action="{{ url_for('communications.delete_sender_rule', rule_id=rule.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ notice_field('rules') }}
           <button type="submit" class="btn-secondary">Delete</button>
         </form>
       </div>
@@ -310,6 +326,7 @@
           <div class="settings-source-list__actions">
             <form method="post" action="{{ url_for('communications.delete_rule_field', field_id=field.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {{ notice_field('rules') }}
               <button type="submit" class="btn-secondary">Delete</button>
             </form>
           </div>
@@ -320,6 +337,7 @@
 
       <form method="post" action="{{ url_for('communications.add_rule_field', rule_id=rule.id) }}" class="detail-form settings-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ notice_field('rules') }}
         <label>Label in the email
           <input type="text" name="label" placeholder="e.g. Name" required>
         </label>
@@ -349,6 +367,7 @@
 
     <form method="post" action="{{ url_for('communications.add_sender_rule') }}" class="detail-form settings-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ notice_field('rules') }}
       <label>Address or domain
         <input type="text" name="pattern" placeholder="e.g. @squarespace.info" required>
       </label>

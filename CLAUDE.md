@@ -121,10 +121,19 @@ where it's indexed above; this is the checklist, not the reasoning.
     of a long page. `static/assets/js/stay-in-place.js` (loaded by
     `base.html`) does it for every posting form, so a new form gets it for
     free as long as you: **redirect back to the same page** (a `#fragment`
-    overrides it, so don't add one), **mark any message a save shows with
-    `data-save-notice`**, and **submit from script with `requestSubmit()`,
-    never `form.submit()`**. `tests/test_stay_in_place.py` checks the last
-    two. Hard rule 14 is the cross-page half of the same idea.
+    overrides it, so don't add one), **draw any message a save shows with
+    `templates/_save_notice.html`** (which marks it `data-save-notice`),
+    and **submit from script with `requestSubmit()`, never
+    `form.submit()`**. `tests/test_stay_in_place.py` checks the last two.
+    **The message goes in the section whose button was pressed** (MOD8):
+    the form carries `{{ notice_field('x') }}`, the route stashes
+    `{message, category, section}`, and the section renders
+    `{{ notice_slot(notice, 'x') }}` under its heading — plus the page's
+    `page_notice(notice, [its slots])` at the top as the fallback. Green for
+    done, red for refused; amber `.warning-note` is for standing conditions
+    only. `tests/test_save_notices.py` fails if a form names a slot its
+    page lacks, or a reporting form names none. Hard rule 14 is the
+    cross-page half of the same idea.
 
 ## What this is
 

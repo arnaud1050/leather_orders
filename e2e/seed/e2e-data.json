@@ -13,6 +13,23 @@
     "fullName": "E2E Fresh User",
     "note": "Created via admin.services.add_user, so must_change_password stays true (CO4h) — used by the forced-password-change test."
   },
+  "calendar": {
+    "note": "A connected Google account that granted calendar access, and one synced event today, so the calendar renders its event dialogs (CAL-4 hides them with no calendar). The account is paused and its tokens are placeholders: nothing in the suite may reach Google, and the only event saves the specs make are refused ones, which are rejected before any provider call.",
+    "account": {
+      "email": "e2e-studio@example.invalid",
+      "displayName": "E2E Studio"
+    },
+    "events": [
+      {
+        "key": "fitting",
+        "title": "E2E second fitting",
+        "location": "Studio",
+        "dayOffset": 0,
+        "startHour": 11,
+        "durationHours": 1
+      }
+    ]
+  },
   "clients": [
     {
       "key": "ada",

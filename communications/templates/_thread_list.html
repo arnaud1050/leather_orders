@@ -1,6 +1,7 @@
 {# One row per conversation. Shared by the client's Emails tab and the lead
    inbox, which show the same thing with a different heading. Callers pass
    `threads` and `return_to`. #}
+{% from "_save_notice.html" import notice_field %}
 {% if threads %}
 <ul class="thread-list">
   {% for thread in threads %}
@@ -62,6 +63,7 @@
         <span class="thread-list__meta">In Gmail's Trash — recover it there to bring it back</span>
         {% else %}
         <form method="post" action="{{ url_for('communications.restore_thread', thread_id=thread.id) }}">
+          {{ notice_field('threads') }}
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="return_to" value="{{ return_to }}">
           <button type="submit" class="btn-secondary">Restore</button>
@@ -69,6 +71,7 @@
         {% endif %}
       {% else %}
       <form method="post" action="{{ url_for('communications.dismiss_thread', thread_id=thread.id) }}">
+        {{ notice_field('threads') }}
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="return_to" value="{{ return_to }}">
         <button type="submit" class="btn-secondary">Hide</button>
@@ -76,6 +79,7 @@
       {# Confirmed, unlike Hide: this one changes the studio's real mailbox. #}
       <form method="post" action="{{ url_for('communications.trash_thread', thread_id=thread.id) }}"
             onsubmit="return confirm('Move this conversation to Gmail\'s Trash? It stays recoverable in Gmail for 30 days.');">
+        {{ notice_field('threads') }}
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="return_to" value="{{ return_to }}">
         <button type="submit" class="btn-secondary">Move to Trash</button>

@@ -30,6 +30,37 @@ export class SettingsPage extends BasePage {
     });
   }
 
+  async gotoInvoicing(): Promise<void> {
+    await step("Go to Settings > Invoicing", async () => {
+      await gotoPath(this.page, "/settings/invoicing");
+    });
+  }
+
+  /** The message slot a section's forms report into (MOD8). */
+  slot(name: string): Locator {
+    return this.page.locator(`[data-notice-slot="${name}"]`);
+  }
+
+  async addOrderType(label: string): Promise<void> {
+    await step(`Add an order type called "${label}"`, async () => {
+      const form = this.page.locator('form[action="/settings/order-types"]');
+      await form.locator('input[name="label"]').fill(label);
+      await form.getByRole("button", { name: "Add" }).click();
+    });
+  }
+
+  /** Invoice appearance's logo file input — one id whether the section
+   * shows the "Add logo" tile or a saved logo's Replace button. */
+  logoInput(): Locator {
+    return this.page.locator("#invoice-logo-input");
+  }
+
+  /** Where invoice-appearance.js reports a file it refused before any
+   * upload. Hidden until it has something to say. */
+  logoError(): Locator {
+    return this.page.locator("[data-logo-error]");
+  }
+
   sourceOptionItems(): Locator {
     return this.page.locator("#source-option-list .settings-source-list__item");
   }

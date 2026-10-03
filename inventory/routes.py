@@ -14,6 +14,8 @@ matches every other mutating route in `app.py`, relying on the app-wide
 touches a third-party account, unlike communications.
 """
 
+import re
+
 from flask import Blueprint, current_app, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
@@ -81,11 +83,18 @@ def _parse_float(raw: str | None) -> float | None:
         return None
 
 
-def _flash_settings_notice(message: str) -> None:
-    """Same session key app.py's settings pages already read via
-    `_take_settings_notice()` — reused directly rather than imported, since
-    importing app.py from here would be circular."""
-    session["settings_notice"] = message
+def _flash_settings_notice(message: str, category: str = "error") -> None:
+    """Same session key, and the same {message, category, section} shape,
+    that app.py's settings pages already read via `_take_settings_notice()`
+    — reused directly rather than imported, since importing app.py from here
+    would be circular. Shown in the section the form names in
+    `notice_section` (the host's MOD8); `category` "error" for a refusal,
+    "success" otherwise."""
+    raw = request.form.get("notice_section") or ""
+    session["settings_notice"] = {
+        "message": message, "category": category,
+        "section": raw if re.fullmatch(r"[a-z0-9-]{1,40}", raw) else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -229,21 +238,38 @@ def delete_item(item_id: int):
 @login_required
 def add_unit():
     key = request.form.get("key", "")
-    services.add_unit(current_user.company_id, key)
+    unit = services.add_unit(current_user.company_id, key)
+    if unit is not None:
+        _flash_settings_notice(f'"{unit.label}" added.', "success")
+    elif key:
+        _flash_settings_notice("That unit is already in the list.")
     return redirect(url_for("settings_inventory"))
 
 
 @bp.route("/settings/inventory-units/<int:unit_id>/toggle", methods=["POST"])
 @login_required
 def toggle_unit(unit_id: int):
-    services.toggle_unit(current_user.company_id, unit_id)
+    unit = services.toggle_unit(current_user.company_id, unit_id)
+    if unit is not None:
+        _flash_settings_notice(
+            f'"{unit.label}" is offered again for new items.' if unit.is_active
+            else f'"{unit.label}" hidden. It\'s no longer offered for new items; '
+                 "items measured in it keep it.",
+            "success")
     return redirect(url_for("settings_inventory"))
 
 
 @bp.route("/settings/inventory-units/<int:unit_id>/delete", methods=["POST"])
 @login_required
 def delete_unit(unit_id: int):
-    services.delete_unit(current_user.company_id, unit_id)
+    result = services.delete_unit(current_user.company_id, unit_id)
+    if result is not None:
+        label, deleted = result
+        if deleted:
+            _flash_settings_notice(f'"{label}" deleted.', "success")
+        else:
+            _flash_settings_notice(
+                f'"{label}" can\'t be deleted because items are measured in it. Hide it instead.')
     return redirect(url_for("settings_inventory"))
 
 
@@ -270,7 +296,11 @@ def reorder_units():
 @bp.route("/settings/inventory-columns/<key>/toggle", methods=["POST"])
 @login_required
 def toggle_column(key: str):
-    services.toggle_column(current_user.company_id, key)
+    column = services.toggle_column(current_user.company_id, key)
+    if column is not None:
+        _flash_settings_notice(
+            f'The {column["label"]} column is now {"shown" if column["visible"] else "hidden"} '
+            "on the Inventory list.", "success")
     return redirect(url_for("settings_inventory"))
 
 
@@ -295,20 +325,35 @@ def add_type():
     inventory_type = services.add_type(current_user.company_id, label)
     if inventory_type is None and label.strip():
         _flash_settings_notice(f'An inventory type called "{label.strip()}" already exists.')
+    elif inventory_type is not None:
+        _flash_settings_notice(f'Inventory type "{inventory_type.label}" added.', "success")
     return redirect(url_for("settings_inventory"))
 
 
 @bp.route("/settings/inventory-types/<int:inventory_type_id>/toggle", methods=["POST"])
 @login_required
 def toggle_type(inventory_type_id: int):
-    services.toggle_type(current_user.company_id, inventory_type_id)
+    inventory_type = services.toggle_type(current_user.company_id, inventory_type_id)
+    if inventory_type is not None:
+        _flash_settings_notice(
+            f'"{inventory_type.label}" is offered again for new items.' if inventory_type.is_active
+            else f'"{inventory_type.label}" hidden. It\'s no longer offered for new items; '
+                 "items already tagged with it keep it.",
+            "success")
     return redirect(url_for("settings_inventory"))
 
 
 @bp.route("/settings/inventory-types/<int:inventory_type_id>/delete", methods=["POST"])
 @login_required
 def delete_type(inventory_type_id: int):
-    services.delete_type(current_user.company_id, inventory_type_id)
+    result = services.delete_type(current_user.company_id, inventory_type_id)
+    if result is not None:
+        label, deleted = result
+        if deleted:
+            _flash_settings_notice(f'"{label}" deleted.', "success")
+        else:
+            _flash_settings_notice(
+                f'"{label}" can\'t be deleted because items are tagged with it. Hide it instead.')
     return redirect(url_for("settings_inventory"))
 
 

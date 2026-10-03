@@ -10,9 +10,9 @@
 
   {% include "_admin_nav.html" %}
 
-  {% if notice %}
-  <p data-save-notice class="warning-note">{{ notice }}</p>
-  {% endif %}
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['add-company']) }}
 
   <section class="detail-orders">
     <h2>Companies</h2>
@@ -47,6 +47,7 @@
 
   <section class="detail-orders">
     <h2>Add a company</h2>
+    {{ notice_slot(notice, 'add-company') }}
     <p class="detail-note">
       Creates the tenant and its first user in one step. The new company gets
       the same starting point a fresh installation does — the default source
@@ -54,6 +55,7 @@
       orders or sample data.
     </p>
     <form method="post" action="{{ url_for('admin.create_company') }}" class="detail-form">
+      {{ notice_field('add-company') }}
       <label>Company name<input type="text" name="name" required></label>
       <label>Time zone
         <select name="timezone">

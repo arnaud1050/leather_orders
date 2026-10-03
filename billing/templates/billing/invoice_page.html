@@ -13,6 +13,10 @@
 
   <a class="back-link no-print" href="{{ return_to }}">&larr; {{ back_label }}</a>
 
+  {# Invoice settings shows what its Save did (the host's MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  <div class="no-print">{{ page_notice(notice, ['invoice-settings']) }}</div>
+
   {# Everything inside .invoice-doc is what prints; the controls below it
      are marked .no-print so "Print" produces the document alone. #}
   <article class="invoice-doc">
@@ -137,7 +141,9 @@
     {% endif %}
 
     <h2>Invoice settings</h2>
+    {{ notice_slot(notice, 'invoice-settings') }}
     <form method="post" action="{{ url_for('billing.set_status', invoice_id=invoice.id) }}" class="detail-form">
+      {{ notice_field('invoice-settings') }}
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <label>Status
         <select name="status">

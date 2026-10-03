@@ -90,8 +90,10 @@
 </div>
 {% endmacro %}
 
+{# Shown in this section (the host's MOD8). #}
+{% from "_save_notice.html" import save_notice %}
 {% if documents_notice %}
-<p data-save-notice class="warning-note">{{ documents_notice }}</p>
+{{ save_notice(documents_notice) }}
 {% endif %}
 
 {% if has_document_types %}

@@ -29,6 +29,11 @@
   {% include "_client_nav.html" %}
 
   {% if section == 'info' %}
+  {# Where "Create a client" on a lead conversation lands (MOD8). #}
+  {% from "_save_notice.html" import notice_slot, page_notice %}
+  {{ page_notice(notice, ['client']) }}
+  {{ notice_slot(notice, 'client') }}
+
 
   <form method="post" action="{{ url_for('edit_client', client_id=client.id) }}" class="detail-form settings-form">
     <input type="hidden" name="return_to" value="{{ return_to }}">

@@ -329,7 +329,10 @@ Email/Calendar → AI**:
 page: when the page comes back, it reopens where you were, or on the message the
 save left (`data-save-notice`). It's one script, `static/assets/js/stay-in-place.js`,
 loaded by `base.html` — routes just redirect back to the same page, with no
-`#fragment`.
+`#fragment`. **The message itself sits in the section whose button was
+pressed** (`MOD8`) — `templates/_save_notice.html`'s `notice_field` in the
+form, `notice_slot` under the section's heading, `page_notice` at the top
+for anything else.
 
 - **`/settings/invoicing`** (`settings_invoicing()`) — **Company details**
   (`update_company_details()` — name, structured address with a province dropdown,

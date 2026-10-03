@@ -4,7 +4,10 @@
    Callers pass: send_account, return_to, and optionally `thread`,
    `client`, `to_value`, `subject_value`, `heading`. #}
 {% if send_account %}
+{% from "_save_notice.html" import notice_field %}
 <form method="post" action="{{ url_for('communications.send_message') }}" class="detail-form compose-form">
+  {# The section around this form shows what sending did (MOD8). #}
+  {{ notice_field('compose') }}
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="return_to" value="{{ return_to }}">
   {% if thread %}<input type="hidden" name="thread_id" value="{{ thread.id }}">{% endif %}

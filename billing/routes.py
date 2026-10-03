@@ -12,10 +12,11 @@ the back link. Everything else the templates need arrives on the
 """
 
 import io
+import re
 from datetime import date
 
 from flask import (
-    Blueprint, abort, redirect, render_template, request, send_file, url_for,
+    Blueprint, abort, redirect, render_template, request, send_file, session, url_for,
 )
 from flask_login import current_user, login_required
 
@@ -89,6 +90,17 @@ def invoice_list():
     )
 
 
+def _flash(message: str, category: str = "success") -> None:
+    """One-shot message for the next render of the invoice page, in the
+    section the form names in `notice_section` (the host's MOD8). Its own
+    session key, like every module's: the app has no flash convention."""
+    raw = request.form.get("notice_section") or ""
+    session["billing_notice"] = {
+        "message": message, "category": category,
+        "section": raw if re.fullmatch(r"[a-z0-9-]{1,40}", raw) else None,
+    }
+
+
 @bp.route("/invoices/<int:invoice_id>")
 @login_required
 def invoice_page(invoice_id: int):
@@ -112,6 +124,7 @@ def invoice_page(invoice_id: int):
         settable_statuses=config.SETTABLE_STATUSES,
         notes_max_length=config.NOTES_MAX_LENGTH,
         pdf_available=pdf.available(),
+        notice=session.pop("billing_notice", None),
         active_view=None,
     )
 
@@ -216,6 +229,7 @@ def set_status(invoice_id: int):
     if invoice is None:
         abort(404)
     due_date_str = request.form.get("due_date")
+    was = invoice.status
     invoicing.set_status(
         company_id, invoice,
         status=request.form.get("status"),
@@ -225,6 +239,14 @@ def set_status(invoice_id: int):
         display_name=_seller_name(company_id),
     )
     db.session.commit()
+    if invoice.status != was:
+        message = f"Invoice marked {config.STATUS_LABELS[invoice.status].lower()}."
+        if was == "draft":
+            # The one save here that can't be taken back (frozen at issue).
+            message += " What it says is now frozen."
+        _flash(message)
+    else:
+        _flash("Invoice saved.")
     return_to = request.form.get("return_to") or url_for(
         "billing.invoice_page", invoice_id=invoice.id)
     return redirect(return_to)

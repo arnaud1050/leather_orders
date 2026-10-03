@@ -10,19 +10,29 @@
 
   {% include "_settings_nav.html" %}
 
-  {% if notice %}
-  <p data-save-notice class="warning-note">{{ notice }}</p>
+  {% if password_required %}
+  <p class="warning-note">You need to set a new password before continuing.</p>
   {% endif %}
+
+  {# Each section shows the messages its own buttons leave (MOD8). #}
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice, save_notice %}
+  {% set slots = {'general': ['timezone'], 'account': ['password', 'signature'],
+                  'orders': ['order-types', 'order-columns'], 'clients': ['sources'],
+                  'inventory': ['units', 'inventory-types', 'inventory-columns'],
+                  'invoicing': ['company-details', 'invoicing', 'appearance']} %}
+  {{ page_notice(notice, slots.get(section, [])) }}
 
   {% if section == 'general' %}
 
   <section class="detail-orders">
     <h2>Time zone</h2>
+    {{ notice_slot(notice, 'timezone') }}
     <p class="detail-note">
       Times are stored in UTC and shown in this zone. Changing it re-labels
       what's already on file rather than moving anything.
     </p>
     <form method="post" action="{{ url_for('update_preferences') }}" class="detail-form">
+      {{ notice_field('timezone') }}
       <label>Time zone
         <select name="timezone">
           {% for value, label in time_zones %}
@@ -40,11 +50,13 @@
 
   <section class="detail-orders">
     <h2>Password</h2>
+    {{ notice_slot(notice, 'password') }}
     <p class="detail-note">
       Changes the password for <strong>{{ current_user.display_name }}</strong>,
       the account you're signed in as. Your current password is required.
     </p>
     <form method="post" action="{{ url_for('change_password') }}" class="detail-form">
+      {{ notice_field('password') }}
       <label>Current password
         <input type="password" name="current_password" autocomplete="current-password" required>
       </label>
@@ -60,20 +72,17 @@
       <div>
         <button type="submit" class="btn-primary">Change password</button>
       </div>
-      {% if password_status %}
-      <p data-save-notice class="password-status {{ 'password-status--error' if not password_status.ok }}">
-        {{ password_status.message }}
-      </p>
-      {% endif %}
     </form>
   </section>
 
   <section class="detail-orders">
     <h2>Email signature</h2>
+    {{ notice_slot(notice, 'signature') }}
     <p class="detail-note">
       How <strong>{{ current_user.display_name }}</strong> signs off an email.
     </p>
     <form method="post" action="{{ url_for('update_signature') }}" class="detail-form ai-form">
+      {{ notice_field('signature') }}
       <label>Signature
         <textarea name="signature" rows="5" placeholder="John Smith&#10;My Awesome Studio">{{ current_user.signature or '' }}</textarea>
       </label>
@@ -81,9 +90,6 @@
       <div>
         <button type="submit" class="btn-primary">Save signature</button>
       </div>
-      {% if signature_saved %}
-      <p data-save-notice class="password-status">Signature saved.</p>
-      {% endif %}
     </form>
   </section>
 
@@ -91,6 +97,7 @@
 
   <section class="detail-orders">
     <h2>Order types</h2>
+    {{ notice_slot(notice, 'order-types') }}
     <p class="detail-note">
       Optional categories for an order (e.g. Custom Order, White Label,
       Consulting/Sampling) — shown as a dropdown on the order page, a pill
@@ -110,10 +117,12 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('toggle_order_type', order_type_id=order_type.id) }}">
+            {{ notice_field('order-types') }}
             <button type="submit" class="btn-secondary">{{ 'Unhide' if not order_type.is_active else 'Hide' }}</button>
           </form>
           {% if order_type.can_delete %}
           <form method="post" action="{{ url_for('delete_order_type', order_type_id=order_type.id) }}">
+            {{ notice_field('order-types') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
           {% endif %}
@@ -123,6 +132,7 @@
     </ul>
 
     <form method="post" action="{{ url_for('add_order_type') }}" class="detail-form settings-source-add">
+      {{ notice_field('order-types') }}
       <label>Add a new type<input type="text" name="label" placeholder="e.g. Custom Order" required></label>
       <div>
         <button type="submit" class="btn-primary">Add</button>
@@ -132,6 +142,7 @@
 
   <section class="detail-orders">
     <h2>Orders list columns</h2>
+    {{ notice_slot(notice, 'order-columns') }}
     <p class="detail-note">
       Reorder and hide/show the columns shown on the
       <a href="{{ url_for('orders_list') }}">Orders</a> list. Drag a row by
@@ -158,6 +169,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('toggle_order_column', key=col.key) }}">
+            {{ notice_field('order-columns') }}
             <button type="submit" class="btn-secondary">{{ 'Show' if not col.visible else 'Hide' }}</button>
           </form>
         </div>
@@ -188,6 +200,7 @@
 
   <section class="detail-orders">
     <h2>How did you hear about us?</h2>
+    {{ notice_slot(notice, 'sources') }}
     <p class="detail-note">
       These are the options shown as checkboxes on a client's page. An option
       can't be deleted once a client has been tagged with it — hide it
@@ -219,13 +232,16 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('set_other_source_option', source_option_id=option.id) }}">
+            {{ notice_field('sources') }}
             <button type="submit" class="btn-secondary">{{ 'Remove text box' if option.is_other else 'Add a text box' }}</button>
           </form>
           <form method="post" action="{{ url_for('toggle_source_option', source_option_id=option.id) }}">
+            {{ notice_field('sources') }}
             <button type="submit" class="btn-secondary">{{ 'Unhide' if not option.is_active else 'Hide' }}</button>
           </form>
           {% if option.can_delete %}
           <form method="post" action="{{ url_for('delete_source_option', source_option_id=option.id) }}">
+            {{ notice_field('sources') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
           {% endif %}
@@ -235,6 +251,7 @@
     </ul>
 
     <form method="post" action="{{ url_for('add_source_option') }}" class="detail-form settings-source-add">
+      {{ notice_field('sources') }}
       <label>Add a new option<input type="text" name="label" placeholder="e.g. Word of Mouth" required></label>
       <div>
         <button type="submit" class="btn-primary">Add</button>
@@ -290,6 +307,7 @@
 
   <section class="detail-orders">
     <h2>Company details</h2>
+    {{ notice_slot(notice, 'company-details') }}
     <p class="detail-note">
       Printed at the top of every invoice. Editing these doesn't change
       invoices already issued — each one keeps the details it was issued
@@ -297,6 +315,7 @@
       do pick up changes.
     </p>
     <form method="post" action="{{ url_for('update_company_details') }}" class="detail-form settings-form">
+      {{ notice_field('company-details') }}
       <label>Company name<input type="text" name="name" value="{{ company.name }}" required></label>
       <label>Street address<input type="text" name="street" value="{{ profile.street or '' }}" placeholder="543 Cambie Street, Studio 3"></label>
       <div class="field-row">
@@ -323,6 +342,7 @@
 
   <section class="detail-orders">
     <h2>Invoicing</h2>
+    {{ notice_slot(notice, 'invoicing') }}
     <p class="detail-note">
       Every invoice this company issues is numbered from one sequence, no
       matter how it gets paid. Changing the prefix starts a new run — it
@@ -330,6 +350,7 @@
       {{ next_number }}
     </p>
     <form method="post" action="{{ url_for('update_invoicing_settings') }}" class="detail-form settings-form">
+      {{ notice_field('invoicing') }}
       <label>Invoice prefix<input type="text" name="invoice_prefix" value="{{ profile.invoice_prefix }}" maxlength="10" required></label>
       <label>Payment instructions<textarea name="payment_instructions" rows="6" placeholder="Where to send an e-transfer, who to make a cheque out to…">{{ profile.payment_instructions or '' }}</textarea></label>
       <div>
@@ -378,15 +399,15 @@
            style="--look-primary: {{ branding.primary }}; --look-on-primary: {{ branding.on_primary }}; --look-footer-bg: {{ branding.footer_bg }}; --look-footer-fg: {{ branding.footer_fg }};"
            data-invoice-look>
     <h2>Invoice appearance</h2>
+    {# The routes name this slot themselves (MOD8). The empty box below it is
+       where invoice-appearance.js reports a file it refused before
+       uploading. #}
+    {{ notice_slot(notice, 'appearance') }}
+    <p class="save-notice save-notice--error" role="alert" data-logo-error hidden></p>
     <p class="detail-note">
       How your invoices look when you download them as a PDF. A change here
       applies to every invoice straight away, including ones already sent.
     </p>
-
-    {% if appearance_notice %}
-    <p data-save-notice class="warning-note" role="alert">{{ appearance_notice }}</p>
-    {% endif %}
-    <p class="warning-note" role="alert" data-logo-error hidden></p>
 
     <h3 class="settings-subheading">Logo</h3>
     {% if profile.has_logo %}
@@ -399,11 +420,13 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('upload_invoice_logo') }}" enctype="multipart/form-data" class="invoice-look__upload" data-logo-upload>
+            {{ notice_field('appearance') }}
             <label class="btn-secondary" for="invoice-logo-input">Replace</label>
             <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="invoice-logo-input" class="invoice-look__file" data-max-bytes="{{ logo_max_bytes }}">
             <button type="submit" class="btn-secondary invoice-look__no-js">Upload</button>
           </form>
           <form method="post" action="{{ url_for('delete_invoice_logo') }}">
+            {{ notice_field('appearance') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
         </div>
@@ -411,6 +434,7 @@
     </ul>
     {% else %}
     <form method="post" action="{{ url_for('upload_invoice_logo') }}" enctype="multipart/form-data" class="invoice-look__upload invoice-look__add" data-logo-upload data-logo-drop>
+      {{ notice_field('appearance') }}
       {# Same tile as an order's "Add file": the label opens the picker, and
          choosing a file uploads it — no separate button once JS is on. #}
       <label class="doc-explorer__add-trigger" for="invoice-logo-input">
@@ -432,6 +456,7 @@
     </p>
 
     <form method="post" action="{{ url_for('update_invoice_appearance') }}" class="invoice-look__form">
+      {{ notice_field('appearance') }}
       <fieldset class="invoice-look__fieldset">
         <legend class="settings-subheading">Layout</legend>
         <div class="layout-options">

@@ -13,6 +13,7 @@ because it sends mail and disconnects Google accounts; nothing here is
 outward-facing in that way.
 """
 
+import re
 from functools import wraps
 
 from flask import (
@@ -53,14 +54,30 @@ def platform_admin_required(view):
     return wrapped
 
 
-def _flash(message: str) -> None:
+def _flash(message: str, category: str = "error", section: str | None = None) -> None:
     """One-shot message for the next render.
 
     Session key owned by this blueprint, same arrangement as
     `documents.routes._flash`: the app has no flash-message convention and
     this isn't the change that should introduce one app-wide.
+
+    Shown in the section whose form posted it — the form's `notice_section`
+    field, unless the route names another because it lands somewhere else
+    (the host's MOD8).
     """
-    session["admin_notice"] = message
+    raw = section or request.form.get("notice_section") or ""
+    session["admin_notice"] = {
+        "message": message, "category": category,
+        "section": raw if re.fullmatch(r"[a-z0-9-]{1,40}", raw) else None,
+    }
+
+
+def _report(error: str | None, success: str) -> None:
+    """A service's refusal if it gave one, otherwise the success message."""
+    if error is not None:
+        _flash(error)
+    else:
+        _flash(success, "success")
 
 
 @bp.app_context_processor
@@ -161,8 +178,10 @@ def create_company():
         _flash(error)
         return redirect(url_for("admin.companies"))
     # Straight to the new tenant's page: the next thing anyone wants after
-    # creating a studio is to look at it or add a second user to it.
-    _flash(f"{company.name} created.")
+    # creating a studio is to look at it or add a second user to it. The
+    # message goes in that page's Company section, there being no "Add a
+    # company" form on it.
+    _flash(f"{company.name} created.", "success", section="company")
     return redirect(url_for("admin.company", company_id=company.id))
 
 
@@ -200,7 +219,7 @@ def update_company(company_id: int):
         row, request.form.get("name", ""),
         request.form.get("timezone", row.timezone),
     )
-    _flash(error or "Company saved.")
+    _report(error, "Company saved.")
     return redirect(url_for("admin.company", company_id=row.id))
 
 
@@ -210,8 +229,8 @@ def set_company_active(company_id: int):
     row = _company_or_404(company_id)
     active = request.form.get("active") == "1"
     error = services.set_company_active(row, active)
-    _flash(error or (f"{row.name} reactivated." if active
-                     else f"{row.name} deactivated — nobody there can sign in."))
+    _report(error, f"{row.name} reactivated." if active
+            else f"{row.name} deactivated — nobody there can sign in.")
     return redirect(url_for("admin.company", company_id=row.id))
 
 
@@ -250,8 +269,8 @@ def add_user(company_id: int):
         request.form.get("password", ""),
         request.form.get("full_name", ""),
     )
-    _flash(error or "User added. Give them their password directly — "
-                    "the app doesn't send one.")
+    _report(error, "User added. Give them their password directly — "
+                   "the app doesn't send one.")
     return redirect(url_for("admin.company", company_id=row.id))
 
 
@@ -260,7 +279,7 @@ def add_user(company_id: int):
 def reset_password(user_id: int):
     user = _user_or_404(user_id)
     error = services.reset_password(user, request.form.get("password", ""))
-    _flash(error or f"Password reset for {user.display_name}.")
+    _report(error, f"Password reset for {user.display_name}.")
     return redirect(_back_to(user))
 
 
@@ -270,8 +289,8 @@ def set_user_active(user_id: int):
     user = _user_or_404(user_id)
     active = request.form.get("active") == "1"
     error = services.set_user_active(user, active)
-    _flash(error or (f"{user.display_name} reactivated." if active
-                     else f"{user.display_name} deactivated."))
+    _report(error, f"{user.display_name} reactivated." if active
+            else f"{user.display_name} deactivated.")
     return redirect(_back_to(user))
 
 
@@ -283,8 +302,8 @@ def add_platform_admin():
         request.form.get("password", ""),
         request.form.get("full_name", ""),
     )
-    _flash(error or "Platform admin added. Give them their password directly — "
-                    "the app doesn't send one.")
+    _report(error, "Platform admin added. Give them their password directly — "
+                   "the app doesn't send one.")
     return redirect(url_for("admin.platform_admins"))
 
 
@@ -311,7 +330,7 @@ def update_announcement():
         request.form.get("message", ""),
         request.form.get("active") == "1",
     )
-    _flash(error or "Announcement saved.")
+    _report(error, "Announcement saved.")
     return redirect(url_for("admin.settings"))
 
 

@@ -93,11 +93,24 @@ def _inject_availability():
     return {"ai_reply_available": ai_reply_available, "ai_can_render": ai_can_render}
 
 
-def _flash(message: str) -> None:
+def _flash(message: str, category: str = "success") -> None:
     """One-shot message for the next page render. Same reasoning as
     documents' and communications' `_flash`: the app has no flash
-    convention, so this stays scoped to a session key this module owns."""
-    session["ai_notice"] = message
+    convention, so this stays scoped to a session key this module owns.
+
+    Shown in the section whose form posted it, named by the form's
+    `notice_section` field (the host's MOD8)."""
+    raw = request.form.get("notice_section") or ""
+    # Checked by hand rather than with `re`: this module's imports are
+    # held to a short list (tests/test_ai_boundary.py).
+    well_formed = 0 < len(raw) <= 40 and all(c in _SECTION_CHARS for c in raw)
+    session["ai_notice"] = {
+        "message": message, "category": category,
+        "section": raw if well_formed else None,
+    }
+
+
+_SECTION_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-")
 
 
 @bp.route("/ai/suggest-reply", methods=["POST"])

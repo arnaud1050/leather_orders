@@ -4,7 +4,9 @@
    section on the "orders" settings page — no drag-reorder, unlike
    documents' DocumentType list. #}
 
+{% from "_save_notice.html" import notice_field, notice_slot %}
 <h2>Inventory types</h2>
+{{ notice_slot(notice, 'inventory-types') }}
 <p class="detail-note">
   Categories for a material (e.g. Leather, Lining, Hardware) — shown as a
   dropdown when adding or editing an inventory item, and used to group the
@@ -22,10 +24,12 @@
     </span>
     <div class="settings-source-list__actions">
       <form method="post" action="{{ url_for('inventory.toggle_type', inventory_type_id=inventory_type.id) }}">
+        {{ notice_field('inventory-types') }}
         <button type="submit" class="btn-secondary">{{ 'Unhide' if not inventory_type.is_active else 'Hide' }}</button>
       </form>
       {% if inventory_type.can_delete %}
       <form method="post" action="{{ url_for('inventory.delete_type', inventory_type_id=inventory_type.id) }}">
+        {{ notice_field('inventory-types') }}
         <button type="submit" class="btn-secondary">Delete</button>
       </form>
       {% endif %}
@@ -35,6 +39,7 @@
 </ul>
 
 <form method="post" action="{{ url_for('inventory.add_type') }}" class="detail-form settings-source-add">
+  {{ notice_field('inventory-types') }}
   <label>Add a new type<input type="text" name="label" placeholder="e.g. Leather" required></label>
   <div>
     <button type="submit" class="btn-primary">Add</button>
