@@ -30,3 +30,9 @@ pdf2image>=1.17
 # 500ing. `cryptography` above is shared (see crypto.py).
 openai>=1.40          # reply suggestions
 google-genai>=1.0     # image rendering ("nano banana"), a Google AI Studio key
+
+# Invoice PDFs (see billing/pdf.py). Lazy import, same as the libraries
+# above: it needs the Pango system library (see Dockerfile), and where that
+# is missing — a stock Windows machine — the app boots and the invoice page
+# falls back to the browser's print dialog.
+weasyprint>=70.0

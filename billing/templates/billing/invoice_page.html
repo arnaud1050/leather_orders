@@ -150,7 +150,14 @@
       <label>Notes<textarea name="notes" rows="2" placeholder="Shown on the invoice">{{ doc.notes or '' }}</textarea></label>
       <div class="invoice-admin__buttons">
         <button type="submit" class="btn-primary">Save</button>
+        {# The server-rendered PDF is the export. The browser's print dialog
+           is only the fallback for an environment without the renderer
+           (see billing/pdf.py). #}
+        {% if pdf_available %}
+        <a class="btn-secondary" href="{{ url_for('billing.invoice_pdf', invoice_id=invoice.id) }}">Download PDF</a>
+        {% else %}
         <button type="button" class="btn-secondary" id="print-invoice">Print / save as PDF</button>
+        {% endif %}
       </div>
     </form>
     <p class="detail-note">
@@ -163,9 +170,11 @@
 
 </div>
 
+{% if not pdf_available %}
 <script>
   document.getElementById('print-invoice').addEventListener('click', function () {
     window.print();
   });
 </script>
+{% endif %}
 {% endblock %}

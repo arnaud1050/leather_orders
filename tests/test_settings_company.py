@@ -1,7 +1,8 @@
 """
-The two Settings POST routes that write the invoice letterhead:
-`/settings/company` (name, address, GST/PST/QST/NEQ) and
-`/settings/invoicing` (prefix, payment instructions).
+The Settings POST routes that write the billing profile:
+`/settings/company` (name, address, GST/PST/QST/NEQ),
+`/settings/invoicing` (prefix, payment instructions) and
+`/settings/invoicing/appearance` (PDF layout and colours).
 
 These feed tax gating and invoice numbering yet had no route test — the
 gap billing/REQUIREMENTS.md P10 names ("host-side form validation of
@@ -131,3 +132,129 @@ def test_update_invoicing_requires_a_login(app):
 
     assert response.status_code == 302
     assert "/login" in response.headers["Location"]
+
+
+# --- /settings/invoicing/appearance ----------------------------------------
+
+APPEARANCE = "/settings/invoicing/appearance"
+
+
+def test_update_appearance_saves_the_layout_and_both_colours(logged_in, company):
+    response = logged_in.post(APPEARANCE, data={
+        "invoice_template": "banded",
+        "primary_color": "#1F4E79",
+        "secondary_color": "#8a6d3b",
+    })
+
+    assert response.status_code == 302
+    profile = _profile(company)
+    assert profile.invoice_template == "banded"
+    assert profile.primary_color == "#1f4e79"   # normalised to lower case
+    assert profile.secondary_color == "#8a6d3b"
+
+
+def test_update_appearance_refuses_a_colour_that_is_not_plain_hex(logged_in, company):
+    """These end up in a stylesheet, so nothing but #rrggbb is stored."""
+    logged_in.post(APPEARANCE, data={"primary_color": "#1f4e79"})
+
+    response = logged_in.post(APPEARANCE, data={
+        "primary_color": "red;} body{display:none",
+        "secondary_color": "#8a6d3b",
+    }, follow_redirects=True)
+
+    profile = _profile(company)
+    assert profile.primary_color == "#1f4e79"    # left as it was
+    assert profile.secondary_color == "#8a6d3b"  # the valid one still saved
+    body = response.get_data(as_text=True)
+    assert "Not saved" in body
+    assert "primary colour" in body
+
+
+def test_update_appearance_refuses_an_unknown_layout(logged_in, company):
+    logged_in.post(APPEARANCE, data={"invoice_template": "banded"})
+
+    response = logged_in.post(
+        APPEARANCE, data={"invoice_template": "fancy"}, follow_redirects=True)
+
+    assert _profile(company).invoice_template == "banded"
+    assert "Not saved" in response.get_data(as_text=True)
+
+
+def test_update_appearance_leaves_alone_what_the_form_did_not_send(logged_in, company):
+    logged_in.post(APPEARANCE, data={
+        "invoice_template": "banded",
+        "primary_color": "#1f4e79",
+        "secondary_color": "#8a6d3b",
+    })
+
+    logged_in.post(APPEARANCE, data={"secondary_color": "#222222"})
+
+    profile = _profile(company)
+    assert profile.invoice_template == "banded"
+    assert profile.primary_color == "#1f4e79"
+    assert profile.secondary_color == "#222222"
+
+
+def test_update_appearance_does_not_touch_the_letterhead(logged_in, company):
+    logged_in.post(APPEARANCE, data={"invoice_template": "banded"})
+
+    profile = _profile(company)
+    assert profile.invoice_prefix == "BM"
+    assert profile.gst_number == "123 RT0001"
+    assert db.session.get(Company, company.id).name == "By Monsieur"
+
+
+def test_update_appearance_is_per_company(logged_in, company, other_company):
+    logged_in.post(APPEARANCE, data={
+        "invoice_template": "banded", "primary_color": "#1f4e79",
+    })
+
+    theirs = _profile(other_company)
+    assert theirs.invoice_template is None
+    assert theirs.primary_color is None
+
+
+def test_update_appearance_requires_a_login(app):
+    response = app.test_client().post(APPEARANCE, data={"invoice_template": "banded"})
+
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_the_settings_page_shows_the_saved_appearance(logged_in, company):
+    logged_in.post(APPEARANCE, data={
+        "invoice_template": "banded",
+        "primary_color": "#1f4e79",
+        "secondary_color": "#8a6d3b",
+    })
+
+    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
+
+    assert "Invoice appearance" in body
+    assert '<option value="banded" selected>' in body
+    assert 'name="primary_color" value="#1f4e79"' in body
+    assert 'name="secondary_color" value="#8a6d3b"' in body
+
+
+def test_the_settings_page_shows_the_defaults_before_anything_is_chosen(
+    logged_in, company
+):
+    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
+
+    assert '<option value="classic" selected>' in body
+    assert 'name="primary_color" value="#1c1a17"' in body
+    assert 'name="secondary_color" value="#7e7a78"' in body
+
+
+def test_the_preview_link_appears_only_where_a_pdf_can_be_rendered(
+    logged_in, company, monkeypatch
+):
+    from billing import pdf
+
+    monkeypatch.setattr(pdf, "available", lambda: True)
+    assert "/invoices/preview.pdf" in logged_in.get(
+        "/settings/invoicing").get_data(as_text=True)
+
+    monkeypatch.setattr(pdf, "available", lambda: False)
+    assert "/invoices/preview.pdf" not in logged_in.get(
+        "/settings/invoicing").get_data(as_text=True)

@@ -16,12 +16,78 @@ Nothing here touches the database.
 from dataclasses import dataclass, field
 from datetime import date
 
+from billing import config
 from billing.tax import TaxLine
 
 __all__ = [
-    "Billable", "InvoiceDocument", "IssuerDetails", "LineItem",
-    "PartyDetails", "PaymentRecord", "format_address",
+    "Billable", "Branding", "InvoiceDocument", "IssuerDetails", "LineItem",
+    "PartyDetails", "PaymentRecord", "clean_color", "format_address",
 ]
+
+_HEX_DIGITS = frozenset("0123456789abcdef")
+
+
+def clean_color(value) -> str | None:
+    """`#rrggbb`, lower-cased — or None for anything else.
+
+    Deliberately narrow: this is the only tenant-typed value that is ever
+    written into a stylesheet, so nothing but seven known characters gets
+    through. No names, no `rgb()`, no three-digit shorthand.
+    """
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    if len(value) == 7 and value[0] == "#" and set(value[1:]) <= _HEX_DIGITS:
+        return value
+    return None
+
+
+@dataclass(frozen=True)
+class Branding:
+    """How a tenant's invoices look: which layout, its two colours, and
+    the logo.
+
+    Read live at render time, never frozen onto an invoice — the freeze
+    contract covers what a document says, not how it's dressed.
+
+    The fields hold whatever was stored; the properties are what a template
+    may use. A value that isn't a known layout or a clean colour resolves to
+    the default, so a bad row can't break an export or reach the CSS.
+    """
+
+    template: str | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    # The logo, already as a `data:` URI — built by the service from bytes
+    # this module re-encoded itself (billing/logos.py), so a template can
+    # put it straight into an <img> and the renderer has nothing to fetch.
+    logo_data_uri: str | None = None
+
+    @property
+    def template_key(self) -> str:
+        if self.template in config.INVOICE_TEMPLATES:
+            return self.template
+        return config.DEFAULT_INVOICE_TEMPLATE
+
+    @property
+    def primary(self) -> str:
+        return clean_color(self.primary_color) or config.DEFAULT_PRIMARY_COLOR
+
+    @property
+    def secondary(self) -> str:
+        return clean_color(self.secondary_color) or config.DEFAULT_SECONDARY_COLOR
+
+    @property
+    def on_primary(self) -> str:
+        """Text colour that stays readable on the primary: white on a dark
+        band, near-black on a pale one (WCAG relative luminance)."""
+        def channel(offset: int) -> float:
+            c = int(self.primary[offset:offset + 2], 16) / 255
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+        luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+        # 0.179 is where contrast against white and against black is equal.
+        return "#1c1a17" if luminance > 0.179 else "#ffffff"
 
 
 def format_address(street, city, province, postal_code) -> str | None:

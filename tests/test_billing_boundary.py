@@ -113,6 +113,7 @@ def test_services_are_the_public_surface():
         invoicing.get_invoice, invoicing.list_invoices, invoicing.create_invoice,
         invoicing.invoice_for_subject, invoicing.invoiced_subject_ids,
         invoicing.tax_collected, invoicing.documents_for,
+        invoicing.branding_for,
     ]
     for function in scoped:
         first = list(inspect.signature(function).parameters)[0]

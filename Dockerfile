@@ -5,7 +5,11 @@ WORKDIR /app
 # su-exec: lets the entrypoint start as root (to fix bind-mount ownership)
 # and then drop to appuser before running the app.
 # poppler-utils: pdftoppm, for PDF/.ai document thumbnails (see documents/thumbnails.py).
-RUN apk add --no-cache su-exec poppler-utils
+# pango + harfbuzz-subset: what WeasyPrint lays text out and embeds fonts
+# with, for invoice PDFs (see billing/pdf.py).
+# font-inter: the font those PDFs are set in — the image has no fonts of its
+# own, and the renderer fetches nothing from the network.
+RUN apk add --no-cache su-exec poppler-utils pango harfbuzz-subset font-inter
 
 # Install dependencies first so this layer is cached unless requirements.txt changes
 COPY requirements.txt .

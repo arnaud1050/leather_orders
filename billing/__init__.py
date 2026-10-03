@@ -17,8 +17,11 @@ Layers, and what each is for:
   `InvoiceTaxLine`.
 - **`services/`** — the public API. Every function takes `company_id`
   first and filters on it.
-- **`routes.py`** — an optional blueprint with the invoice list and the
-  printable invoice page. A host that wants its own UI can ignore it and
+- **`pdf.py`** — the invoice as a PDF, rendered on the server. Optional at
+  runtime: without WeasyPrint the page falls back to the browser's print.
+- **`logos.py`** — the tenant's invoice logo: validation, and bytes on disk.
+- **`routes.py`** — an optional blueprint with the invoice list, the
+  invoice page and its PDF. A host that wants its own UI can ignore it and
   use the services directly.
 
 The one rule that keeps it modular: the rest of the application talks to

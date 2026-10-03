@@ -29,7 +29,14 @@ allocated to another container on the host.
   `sqlite3.IntegrityError: UNIQUE constraint failed`. `--preload` loads the app once
   in the master process before forking workers, so seeding runs exactly once.
 - **`Dockerfile`** / **`Dockerfile.demo`**: alpine-based, install `requirements.txt` +
-  gunicorn + `su-exec`, copy the repo to `/app`, `chmod +x /app/entrypoint.sh`. Only
+  gunicorn + `su-exec`, copy the repo to `/app`, `chmod +x /app/entrypoint.sh`. The
+  `apk add` line also carries what invoice PDFs need (`billing/pdf.py`): `pango` and
+  `harfbuzz-subset` for WeasyPrint, and `font-inter` because the image has no fonts
+  of its own and the renderer fetches none. Drop one and the app still boots — the
+  invoice page just falls back to the browser's print dialog, or prints in a
+  fallback font. Invoice logos are files under `data/billing_logos/` (the
+  same bind-mounted volume as the database, so they survive a rebuild and
+  belong in the same backup). Only
   real difference between the two: bound port (5013 vs 5555, in both `EXPOSE` and the
   gunicorn `--bind` in `CMD`). If you rename the Flask instance variable in `app.py`
   (currently `app`), update the `CMD` line in both to match.

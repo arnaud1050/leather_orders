@@ -1,5 +1,5 @@
 """
-The module's own blueprint: the invoice list and the printable invoice.
+The module's own blueprint: the invoice list, the invoice page and its PDF.
 
 A host that wants its own UI can skip `register()` entirely and drive
 `billing.services.invoicing` directly — these routes are a convenience,
@@ -11,14 +11,17 @@ the back link. Everything else the templates need arrives on the
 `InvoiceDocument`, including the host URLs for the buyer and the subject.
 """
 
+import io
 from datetime import date
 
-from flask import Blueprint, abort, redirect, render_template, request, url_for
+from flask import (
+    Blueprint, abort, redirect, render_template, request, send_file, url_for,
+)
 from flask_login import current_user, login_required
 
 from models import db
 
-from billing import config
+from billing import config, pdf
 from billing.services import invoicing
 
 bp = Blueprint("billing", __name__, template_folder="templates")
@@ -55,6 +58,13 @@ def _seller_name(company_id: int) -> str:
 
 def _label_for(path: str) -> str:
     return _back_label(path) if _back_label else "Back"
+
+
+@bp.app_context_processor
+def _inject_pdf_availability():
+    """Lets any template — the host's settings page included — ask whether
+    a PDF can be rendered here, without the host importing `billing.pdf`."""
+    return {"invoice_pdf_available": pdf.available}
 
 
 @bp.route("/invoices")
@@ -100,8 +110,77 @@ def invoice_page(invoice_id: int):
         status_labels=config.STATUS_LABELS,
         payment_method_labels=config.PAYMENT_METHOD_LABELS,
         settable_statuses=config.SETTABLE_STATUSES,
+        pdf_available=pdf.available(),
         active_view=None,
     )
+
+
+@bp.route("/invoices/<int:invoice_id>/pdf")
+@login_required
+def invoice_pdf(invoice_id: int):
+    """The invoice as a downloadable PDF.
+
+    Built from the same `InvoiceDocument` as the page, so the frozen-vs-live
+    decision is made once, in `document_for`, and the two can't disagree.
+    """
+    company_id = current_user.company_id
+    invoice = invoicing.get_invoice(company_id, invoice_id)
+    if invoice is None:
+        abort(404)
+    document = invoicing.document_for(
+        company_id, invoice, _resolve_billable(company_id)(invoice.subject_id),
+        _seller_name(company_id),
+    )
+    try:
+        data = pdf.render_pdf(document, invoicing.branding_for(company_id))
+    except pdf.PdfUnavailable:
+        # The page doesn't link here when the renderer is missing, so this
+        # is a hand-typed or stale URL — send it somewhere that works.
+        return redirect(url_for("billing.invoice_page", invoice_id=invoice.id))
+    return send_file(
+        io.BytesIO(data), mimetype="application/pdf",
+        as_attachment=True, download_name=pdf.filename_for(document),
+    )
+
+
+@bp.route("/invoices/preview.pdf")
+@login_required
+def preview_pdf():
+    """A sample invoice in this tenant's saved look, shown in the browser.
+
+    For the settings page: what the layout and colours actually produce,
+    without having to open a real invoice. Stores nothing and uses up no
+    number.
+    """
+    company_id = current_user.company_id
+    name = _seller_name(company_id)
+    profile = invoicing.profile_for(company_id, name)
+    document = pdf.sample_document(
+        profile.issuer, invoicing.next_number(company_id, name),
+        tax_province=profile.province,
+    )
+    try:
+        data = pdf.render_pdf(document, invoicing.branding_for(company_id))
+    except pdf.PdfUnavailable:
+        return redirect(url_for("billing.invoice_list"))
+    return send_file(
+        io.BytesIO(data), mimetype="application/pdf",
+        as_attachment=False, download_name="invoice-preview.pdf",
+    )
+
+
+@bp.route("/invoices/logo.png")
+@login_required
+def logo():
+    """The signed-in tenant's own logo, for the settings page to show.
+
+    No id in the URL: whose logo it is comes from the session, so there is
+    nothing to guess at. Never cached — a replaced logo has to show at once.
+    """
+    path = invoicing.logo_path(current_user.company_id)
+    if path is None:
+        abort(404)
+    return send_file(path, mimetype="image/png", max_age=0)
 
 
 @bp.route("/subjects/<int:subject_id>/invoice", methods=["POST"])

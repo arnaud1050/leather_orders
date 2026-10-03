@@ -125,6 +125,19 @@ The four money files, and the single rule each exists to defend:
   "self-contained" is an intention rather than a property: one `from models
   import Order` added for convenience would go unnoticed by every other test.
 
+- **`tests/test_invoice_pdf.py`** — the server-rendered invoice PDF. Most rules
+  are pinned against the HTML half, which runs anywhere; the two tests that
+  produce real PDF bytes are **skipped where WeasyPrint can't load** (this
+  Windows machine) and only run inside the Docker image — mount `tests/` into
+  it and install pytest to exercise them. The route tests swap the renderer
+  out, so the tenant boundary and the print fallback are checked everywhere.
+- **`tests/test_invoice_logo.py`** — the invoice logo. The rule it defends:
+  *what is stored is never the upload* — the image is re-encoded, so nothing
+  but pixels survives. Also the per-tenant storage and its path checks, the
+  settings routes, and that every layout prints it. Logos are written to a
+  temp directory set through `BILLING_LOGO_DIR` in `conftest.py`, **before
+  `app` is imported**, for the same reason `DATABASE_URL` is.
+
 - **`tests/test_mail_attachments.py`** — attaching an order document to an
   outgoing email, which spans three parts none of which may import the
   others: `documents/` owns the bytes, `communications/` owns the sending,

@@ -15,7 +15,7 @@ from datetime import date
 from models import db
 
 from billing import config
-from billing.documents import IssuerDetails, format_address
+from billing.documents import Branding, IssuerDetails, format_address
 from billing.tax import TaxLine
 
 __all__ = ["BillingProfile", "Invoice", "InvoiceTaxLine", "next_invoice_number"]
@@ -66,6 +66,28 @@ class BillingProfile(db.Model):
     # migration, say — read it as "" and stamped a nameless invoice.
     # Kept in step with the host's tenant name by profile_for/update_profile.
     display_name = db.Column(db.String(120), nullable=False, default="")
+
+    # How the PDF looks. Null means "not chosen", which Branding resolves to
+    # the defaults in config — so a default can change without a migration.
+    invoice_template = db.Column(db.String(20))
+    primary_color = db.Column(db.String(7))    # "#rrggbb"
+    secondary_color = db.Column(db.String(7))
+    # Opaque name of the logo file; only billing/logos.py knows it's a path.
+    logo_filename = db.Column(db.String(80))
+
+    @property
+    def has_logo(self) -> bool:
+        return bool(self.logo_filename)
+
+    @property
+    def branding(self) -> Branding:
+        """Layout and colours. The logo isn't on it: that needs the file
+        read, which is `services.invoicing.branding_for`'s job."""
+        return Branding(
+            template=self.invoice_template,
+            primary_color=self.primary_color,
+            secondary_color=self.secondary_color,
+        )
 
     @property
     def formatted_address(self) -> str | None:

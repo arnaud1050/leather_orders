@@ -265,8 +265,17 @@ balance, status pill) with an **Outstanding** figure at the top, followed by a
 to-do the page exists for. Client names and order names are links on both lists,
 carrying `return_to` like everything else. `invoice_page()` renders one invoice: everything inside
 `.invoice-doc` is the printable document, and the controls below it are marked
-`.no-print`, so the "Print / save as PDF" button (`window.print()`) produces the
-document alone — see the `@media print` block at the bottom of `style.css`. The
+`.no-print`. The export is the **"Download PDF"** button — a real PDF rendered on
+the server by `billing/pdf.py` from its own standalone template, not this page.
+Its layout and colours are the company's choice, under **Settings → Invoicing →
+Invoice appearance** (`update_invoice_appearance()`; a "Preview saved look" link
+there opens a sample at `/invoices/preview.pdf`), along with a logo
+(`upload_invoice_logo()` / `delete_invoice_logo()`, shown on the page on the
+company's primary colour, as the Banded layout prints it) — and that choice applies to
+every invoice, issued or not, since only what an invoice says is frozen.
+Where that renderer can't load (a Windows dev machine), the button is instead
+"Print / save as PDF" (`window.print()`), which produces the document alone via
+the `@media print` block at the bottom of `style.css`. The
 client's `address` is rendered with `white-space: pre-line` rather than converting
 newlines to `<br>`, which keeps the line breaks without needing `|safe` on
 user-entered text. Creating an invoice is a POST to `/orders/<id>/invoice`
@@ -321,7 +330,12 @@ Email/Calendar → AI**:
   GST/HST, PST/RST, QST, NEQ; the invoice letterhead. City/province/postal share a
   line via `.field-row`, which wraps rather than squeezing) and **Invoicing**
   (`update_invoicing_settings()` — number prefix, which also shows what the next
-  number will be, plus payment instructions). Grouped together because both feed
+  number will be, plus payment instructions), and **Invoice appearance**
+  (`update_invoice_appearance()` — PDF layout and two colours, with a "Preview
+  saved look" link; then a **Logo** sub-section, `upload_invoice_logo()` /
+  `delete_invoice_logo()`). The first two are frozen onto an invoice when it's
+  issued; appearance never is, and the page says so. Grouped together because all
+  of it feeds
   the invoice letterhead — company info without invoicing context (or vice versa)
   didn't make sense as separate categories. Last in the nav since it's the
   category touched least often, once initially filled in.

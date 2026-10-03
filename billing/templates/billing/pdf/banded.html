@@ -1,0 +1,325 @@
+{# The "banded" invoice PDF: a full-width coloured header band, an accent
+   table header and a large invoice total. Ported from the layout Arnaud's
+   own consulting invoices use (the standalone `billing` project), with what
+   that one hardcoded — issuer, bank details, a fixed PST row — replaced by
+   what `doc` carries, and its bottom-pinned blocks put back in the flow so
+   a long invoice runs onto further pages instead of printing over them.
+
+   Same rules as classic.html: standalone, stylesheet inline, nothing
+   fetched, host links not rendered, everything read from `doc`.
+
+   The three `branding.*` values written into the stylesheet are the only
+   tenant-chosen text that ever lands in CSS, and each is a `#rrggbb` that
+   Branding has already checked (billing/documents.py) — never the stored
+   string as typed. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invoice {{ doc.number }}</title>
+<style>
+  /* No side margins, so the band can run edge to edge; the content carries
+     its own 18mm gutters instead. The first page drops its top margin for
+     the same reason — later pages keep theirs. */
+  @page {
+    size: letter portrait;
+    margin: 16mm 0 18mm;
+    @bottom-center {
+      content: string(invoice-number) "  ·  Page " counter(page) " of " counter(pages);
+      font-family: Inter, "DejaVu Sans", sans-serif;
+      font-size: 8pt;
+      color: {{ branding.secondary }};
+    }
+  }
+  @page :first { margin-top: 0; }
+
+  body {
+    margin: 0;
+    font-family: Inter, "DejaVu Sans", sans-serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1c1a17;
+  }
+
+  p { margin: 0; }
+
+  .label {
+    display: block;
+    margin-bottom: 2pt;
+    font-size: 9pt;
+    color: {{ branding.secondary }};
+  }
+
+  .columns {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .columns td {
+    padding: 0;
+    vertical-align: top;
+  }
+  .columns td.right { text-align: right; }
+
+  .band {
+    padding: 13mm 18mm;
+    background: {{ branding.primary }};
+    color: {{ branding.on_primary }};
+  }
+  .band td { vertical-align: middle; }
+  .company {
+    margin: 0;
+    font-size: 19pt;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .logo {
+    display: block;
+    max-width: 62mm;
+    max-height: 18mm;
+  }
+  .issuer-name {
+    font-size: 10.5pt;
+    font-weight: 600;
+  }
+  .issuer-address {
+    font-size: 9.5pt;
+    white-space: pre-line;
+  }
+  .issuer-reg {
+    margin-top: 4pt;
+    font-size: 8pt;
+    opacity: 0.85;
+  }
+  .issuer-reg span { margin-left: 10pt; }
+
+  .content { padding: 0 18mm; }
+
+  .info { margin: 9mm 0 10mm; }
+  .info td { width: 33.3%; }
+  .info .item { margin-bottom: 10pt; }
+  .info .party { white-space: pre-line; }
+  .number { string-set: invoice-number content(); }
+  .grand-total {
+    font-size: 19pt;
+    font-weight: 600;
+    line-height: 1.2;
+    color: {{ branding.primary }};
+  }
+  .status {
+    display: inline-block;
+    margin-top: 3pt;
+    padding: 1pt 7pt;
+    border: 0.75pt solid {{ branding.secondary }};
+    border-radius: 8pt;
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: {{ branding.secondary }};
+  }
+  .status--void {
+    border-color: #b3261e;
+    color: #b3261e;
+  }
+
+  .lines {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .lines thead { display: table-header-group; }
+  .lines th {
+    padding: 8pt 8pt 8pt 0;
+    border-top: 2.25pt solid {{ branding.primary }};
+    font-size: 10pt;
+    font-weight: 600;
+    text-align: left;
+    color: {{ branding.primary }};
+  }
+  .lines td {
+    padding: 8pt 8pt 8pt 0;
+    border-bottom: 0.5pt solid #dddddd;
+    vertical-align: top;
+  }
+  .lines tr { break-inside: avoid; }
+  .lines .numeric {
+    padding: 8pt 0 8pt 14pt;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .lines .empty { color: {{ branding.secondary }}; }
+
+  .totals {
+    width: 46%;
+    margin: 14pt 0 0 auto;
+    border-collapse: collapse;
+    break-inside: avoid;
+  }
+  .totals td {
+    padding: 3pt 0;
+    text-align: right;
+    color: {{ branding.primary }};
+  }
+  .totals td.amount {
+    width: 40%;
+    color: #1c1a17;
+    white-space: nowrap;
+  }
+  .totals tr.total td,
+  .totals tr.balance td { font-weight: 600; }
+  .totals tr.balance td {
+    padding-top: 6pt;
+    border-top: 0.75pt solid {{ branding.primary }};
+  }
+  .totals tr.spaced td { padding-bottom: 6pt; }
+
+  .block {
+    margin-top: 22pt;
+    break-inside: avoid;
+  }
+  .pay p { white-space: pre-line; }
+  .payments {
+    width: 62%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+  .payments td { padding: 2pt 0; }
+  .payments td.amount { text-align: right; }
+  .notes {
+    margin-top: 18pt;
+    padding-top: 12pt;
+    border-top: 0.75pt solid #dddddd;
+    font-size: 9pt;
+    white-space: pre-line;
+    break-inside: avoid;
+  }
+</style>
+</head>
+<body>
+
+  <div class="band">
+    <table class="columns">
+      <tr>
+        {# With a logo, it takes the name's place on the left and the name
+           moves to the head of the address block — the seller is always
+           named in words, whatever the logo does or doesn't spell out. #}
+        {% if branding.logo_data_uri %}
+        <td><img class="logo" src="{{ branding.logo_data_uri }}" alt=""></td>
+        <td class="right">
+          <p class="issuer-name">{{ doc.issuer.name }}</p>
+        {% else %}
+        <td><h1 class="company">{{ doc.issuer.name }}</h1></td>
+        <td class="right">
+        {% endif %}
+          {% if doc.issuer.address %}<p class="issuer-address">{{ doc.issuer.address }}</p>{% endif %}
+          {% if doc.issuer.registrations %}
+          <p class="issuer-reg">
+            {% for label, value in doc.issuer.registrations %}<span>{{ label }} {{ value }}</span>{% endfor %}
+          </p>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="content">
+
+    <table class="columns info">
+      <tr>
+        <td>
+          <span class="label">Billed to</span>
+          <p class="party">{{ doc.payer.name }}
+            {%- for entry in doc.payer.contact_lines %}
+{{ entry }}
+            {%- endfor -%}
+          </p>
+        </td>
+        <td>
+          <div class="item">
+            <span class="label">Invoice number</span>
+            <p class="number">{{ doc.number }}</p>
+            {# Same rule as classic.html: "Sent" isn't the client's business. #}
+            {% if doc.display_status != 'sent' %}
+            <span class="status status--{{ doc.display_status }}">{{ status_labels[doc.display_status] }}</span>
+            {% endif %}
+          </div>
+          <div class="item">
+            <span class="label">Date of issue</span>
+            <p>{{ doc.issued_date.strftime('%Y-%m-%d') }}</p>
+          </div>
+        </td>
+        <td class="right">
+          <div class="item">
+            <span class="label">Invoice total</span>
+            <p class="grand-total">${{ '%.2f'|format(doc.total) }}</p>
+          </div>
+          <div class="item">
+            <span class="label">Payment due</span>
+            <p>{{ doc.due_date.strftime('%Y-%m-%d') if doc.due_date else '—' }}</p>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="lines">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="numeric">Unit price</th>
+          <th class="numeric">Quantity</th>
+          <th class="numeric">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in doc.lines %}
+        <tr>
+          <td>{{ line.description }}</td>
+          <td class="numeric">${{ '%.2f'|format(line.unit_price) }}</td>
+          <td class="numeric">{{ line.quantity }}</td>
+          <td class="numeric">${{ '%.2f'|format(line.total) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">Nothing itemised on this invoice.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <table class="totals">
+      <tr><td>Subtotal</td><td class="amount">${{ '%.2f'|format(doc.subtotal) }}</td></tr>
+      {% for tax in doc.tax_lines %}
+      <tr><td>{{ tax.label }} ({{ tax.rate_percent }}%)</td><td class="amount">${{ '%.2f'|format(tax.amount) }}</td></tr>
+      {% endfor %}
+      <tr class="total spaced"><td>Total</td><td class="amount">${{ '%.2f'|format(doc.total) }}</td></tr>
+      <tr class="spaced"><td>Paid</td><td class="amount">&minus;${{ '%.2f'|format(doc.amount_paid) }}</td></tr>
+      <tr class="balance"><td>Balance due</td><td class="amount">${{ '%.2f'|format(doc.balance_due) }}</td></tr>
+    </table>
+
+    {% if doc.shows_payment_instructions %}
+    <div class="block pay">
+      <span class="label">How to pay</span>
+      <p>{{ doc.issuer.payment_instructions }}</p>
+    </div>
+    {% endif %}
+
+    {% if doc.payments %}
+    <div class="block">
+      <span class="label">Payments received</span>
+      <table class="payments">
+        {% for payment in doc.payments %}
+        <tr>
+          <td>{{ payment.paid_date.strftime('%Y-%m-%d') }}</td>
+          <td>{{ payment_method_labels.get(payment.method, payment.method) }}{% if payment.reference %} ({{ payment.reference }}){% endif %}</td>
+          <td class="amount">${{ '%.2f'|format(payment.amount) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+
+    {% if doc.notes %}
+    <p class="notes">{{ doc.notes }}</p>
+    {% endif %}
+
+  </div>
+
+</body>
+</html>

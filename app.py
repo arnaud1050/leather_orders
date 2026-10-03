@@ -61,6 +61,7 @@ import billing.migrations as billing_migrations  # noqa: E402
 import billing.routes as billing_routes  # noqa: E402
 import billing_adapter  # noqa: E402
 from billing import config as billing_config  # noqa: E402
+from billing.documents import clean_color  # noqa: E402
 from billing.services import invoicing  # noqa: E402
 from billing.tax import PROVINCES  # noqa: E402
 # Self-contained module: its own models, services, templates and blueprint
@@ -2266,6 +2267,10 @@ def settings_invoicing():
         profile=profile,
         provinces=PROVINCES,
         next_number=invoicing.next_number(company.id, company.name),
+        invoice_templates=billing_config.INVOICE_TEMPLATES,
+        branding=profile.branding,
+        logo_max_bytes=billing_config.LOGO_MAX_BYTES,
+        notice=_take_settings_notice(),
         active_view="settings",
     )
 
@@ -2594,6 +2599,75 @@ def update_invoicing_settings():
     if prefix:
         fields["invoice_prefix"] = prefix[:10]
     invoicing.update_profile(company.id, company.name, **fields)
+    db.session.commit()
+    return redirect(url_for("settings_invoicing"))
+
+
+@app.route("/settings/invoicing/appearance", methods=["POST"])
+@login_required
+def update_invoice_appearance():
+    """Which PDF layout the company's invoices use, and its two colours.
+
+    Applies to every invoice from the next download on, issued or not: the
+    look is read live, only what an invoice *says* is frozen. Anything that
+    isn't a known layout or a plain `#rrggbb` colour is refused here and
+    the stored value left alone — the colours end up in a stylesheet.
+    """
+    company = db.session.get(Company, current_user.company_id)
+    fields, rejected = {}, []
+    if "invoice_template" in request.form:
+        template = request.form["invoice_template"]
+        if template in billing_config.INVOICE_TEMPLATES:
+            fields["invoice_template"] = template
+        else:
+            rejected.append("layout")
+    for field, label in (("primary_color", "primary colour"),
+                         ("secondary_color", "secondary colour")):
+        if field in request.form:
+            color = clean_color(request.form[field])
+            if color:
+                fields[field] = color
+            else:
+                rejected.append(label)
+    invoicing.update_profile(company.id, company.name, **fields)
+    db.session.commit()
+    if rejected:
+        _flash_settings_notice(
+            "Not saved: the " + " and ".join(rejected) + " wasn't recognised. "
+            "Colours need to look like #1c1a17."
+        )
+    return redirect(url_for("settings_invoicing"))
+
+
+@app.route("/settings/invoicing/logo", methods=["POST"])
+@login_required
+def upload_invoice_logo():
+    """Set or replace the logo printed on the company's invoice PDFs.
+
+    The billing module decides what counts as a usable image and stores its
+    own re-encoded copy; a refusal comes back as a message for the notice,
+    with the existing logo untouched.
+    """
+    company = db.session.get(Company, current_user.company_id)
+    upload = request.files.get("logo")
+    # One byte past the cap is enough to know it's over, without reading a
+    # 200MB body (the app-wide limit) into memory to find out.
+    data = upload.read(billing_config.LOGO_MAX_BYTES + 1) if upload else b""
+    try:
+        invoicing.set_logo(company.id, data, company.name)
+    except invoicing.LogoError as error:
+        # Nothing to roll back: the image is checked before anything is
+        # written, so a refusal has touched neither the row nor the disk.
+        _flash_settings_notice(str(error))
+    else:
+        db.session.commit()
+    return redirect(url_for("settings_invoicing"))
+
+
+@app.route("/settings/invoicing/logo/delete", methods=["POST"])
+@login_required
+def delete_invoice_logo():
+    invoicing.remove_logo(current_user.company_id)
     db.session.commit()
     return redirect(url_for("settings_invoicing"))
 

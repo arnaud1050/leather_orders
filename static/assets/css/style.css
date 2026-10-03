@@ -1174,6 +1174,14 @@ dialog.modal::backdrop {
   background: var(--paper-deep);
 }
 
+/* A link dressed as a button (Download PDF, Preview saved look) should read
+   exactly like the <button> beside it — no underline, same box. */
+a.btn-primary,
+a.btn-secondary {
+  display: inline-block;
+  text-decoration: none;
+}
+
 /* ---------------------------------------------------------------------
    Customer / order detail pages
    --------------------------------------------------------------------- */
@@ -1354,6 +1362,15 @@ dialog.modal::backdrop {
   border-radius: var(--radius);
   background: var(--paper);
   resize: vertical;
+}
+
+/* A colour picker is a swatch, not a text box: the text inputs' padding
+   would leave a sliver of colour in the middle of a large empty field. */
+.detail-form input[type="color"] {
+  width: 100%;
+  height: 42px;
+  padding: 4px;
+  cursor: pointer;
 }
 
 .detail-form input:focus,
@@ -2477,6 +2494,22 @@ dialog.modal::backdrop {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* The current invoice logo, in a settings row. The swatch behind it is the
+   company's primary colour (set inline), so the logo is seen as the Banded
+   layout will print it. */
+.settings-logo {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+}
+
+.settings-logo img {
+  display: block;
+  max-width: 200px;
+  max-height: 48px;
 }
 
 /* Drag handle — document types only, currently the sole draggable list in

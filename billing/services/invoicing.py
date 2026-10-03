@@ -11,17 +11,20 @@ them.
 Nothing here imports a host model.
 """
 
-from dataclasses import dataclass
+import base64
+from dataclasses import dataclass, replace
 from datetime import date
 
 from models import db
 
-from billing import config, tax
-from billing.documents import Billable, InvoiceDocument, IssuerDetails
+from billing import config, logos, tax
+from billing.documents import Billable, Branding, InvoiceDocument, IssuerDetails
+from billing.logos import LogoError
 from billing.models import BillingProfile, Invoice, InvoiceTaxLine, next_invoice_number
 
 __all__ = [
-    "Amounts", "amounts_for", "create_invoice", "document_for", "documents_for",
+    "Amounts", "LogoError", "amounts_for", "branding_for", "create_invoice",
+    "document_for", "documents_for", "logo_path", "remove_logo", "set_logo",
     "get_invoice", "invoice_for_subject", "list_invoices", "next_number",
     "profile_for", "set_status", "update_profile",
 ]
@@ -84,6 +87,7 @@ def update_profile(company_id: int, display_name: str = "", **fields) -> Billing
     editable = {
         "invoice_prefix", "street", "city", "province", "postal_code",
         "gst_number", "pst_number", "qst_number", "neq", "payment_instructions",
+        "invoice_template", "primary_color", "secondary_color",
     }
     for key, value in fields.items():
         if key in editable:
@@ -91,6 +95,54 @@ def update_profile(company_id: int, display_name: str = "", **fields) -> Billing
     if not profile.invoice_prefix:
         profile.invoice_prefix = "INV"
     return profile
+
+
+def branding_for(company_id: int) -> Branding:
+    """How this tenant's invoices look — always the live setting, for every
+    invoice however long ago it was issued.
+
+    Includes the logo, embedded. A logo whose file has gone missing is
+    simply left off: an invoice without its logo is still an invoice.
+    """
+    profile = profile_for(company_id)
+    branding = profile.branding
+    png = logos.read(company_id, profile.logo_filename)
+    if png is None:
+        return branding
+    encoded = base64.b64encode(png).decode("ascii")
+    return replace(branding, logo_data_uri=f"data:image/png;base64,{encoded}")
+
+
+def set_logo(company_id: int, data: bytes, display_name: str = "") -> BillingProfile:
+    """Replace this tenant's logo with an uploaded image.
+
+    Raises `LogoError` — with a message meant for the person uploading — if
+    the bytes aren't a usable PNG or JPEG, and in that case leaves the
+    existing logo exactly as it was.
+    """
+    png = logos.normalise(data)
+    profile = profile_for(company_id, display_name)
+    previous = profile.logo_filename
+    profile.logo_filename = logos.save(company_id, png)
+    db.session.flush()
+    logos.delete(company_id, previous)
+    return profile
+
+
+def remove_logo(company_id: int) -> BillingProfile:
+    """Take the logo off. A real delete, not a hide: the look is live, so
+    no invoice holds a reference to the old file."""
+    profile = profile_for(company_id)
+    previous = profile.logo_filename
+    profile.logo_filename = None
+    db.session.flush()
+    logos.delete(company_id, previous)
+    return profile
+
+
+def logo_path(company_id: int) -> str | None:
+    """Where this tenant's logo file is, for serving it — or None."""
+    return logos.path_for(company_id, profile_for(company_id).logo_filename)
 
 
 def next_number(company_id: int, display_name: str = "", today: date | None = None) -> str:

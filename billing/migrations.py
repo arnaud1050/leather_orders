@@ -30,6 +30,10 @@ ADDED_COLUMNS = [
     ("invoices", "issuer_neq", "VARCHAR(40)"),
     ("invoices", "issuer_payment_instructions", "TEXT"),
     ("invoices", "issued_subtotal", "FLOAT"),
+    ("billing_profiles", "invoice_template", "VARCHAR(20)"),
+    ("billing_profiles", "primary_color", "VARCHAR(7)"),
+    ("billing_profiles", "secondary_color", "VARCHAR(7)"),
+    ("billing_profiles", "logo_filename", "VARCHAR(80)"),
 ]
 
 # Letterhead fields that used to live on the host's `companies` table,

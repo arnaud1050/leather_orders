@@ -58,10 +58,12 @@ accounting period closes.
 ## 1. What this module owns
 
 - **W1.** Three tables: `billing_profiles` (the seller's letterhead, one
-  row per tenant), `invoices`, `invoice_tax_lines`.
+  row per tenant), `invoices`, `invoice_tax_lines` — and one directory of
+  files, the tenants' invoice logos (§14).
 - **W2.** Invoice numbering (§4), issuing and freezing (§5), tax
   calculation (§2–§3), and the derived money on a document (§6).
 - **W3.** An optional blueprint (`/invoices`, `/invoices/<id>`,
+  `/invoices/<id>/pdf`, `/invoices/preview.pdf`, `/invoices/logo.png`,
   `POST /subjects/<id>/invoice`, `POST /invoices/<id>/status`) the host opts
   into via `routes.register()`. A host wanting its own UI ignores it and
   drives the services directly.
@@ -147,7 +149,8 @@ accounting period closes.
 - **P5.** `update_profile()` ignores unknown keys rather than raising, so a
   host form can post whatever it renders. The editable set is exactly:
   `invoice_prefix`, `street`, `city`, `province`, `postal_code`,
-  `gst_number`, `pst_number`, `qst_number`, `neq`, `payment_instructions`.
+  `gst_number`, `pst_number`, `qst_number`, `neq`, `payment_instructions`,
+  `invoice_template`, `primary_color`, `secondary_color`.
 - **P6.** `invoice_prefix` falls back to `"INV"` whenever it would
   otherwise be empty.
 - **P7.** `has_letterhead` is true once **anything beyond the name** is set.
@@ -158,8 +161,14 @@ accounting period closes.
   NEQ** — tax accounts first, NEQ last since it identifies the enterprise
   rather than a tax account. Unset ones are omitted entirely.
 - **P10.** Validation of what a *person* may type (province must be a real
-  code, prefix uppercased and capped at 10 characters) is the **host's**
-  job, in its settings form. The module stores what it's given.
+  code, prefix uppercased and capped at 10 characters, layout must be a
+  known one, colours must be `#rrggbb`) is the **host's** job, in its
+  settings form. The module stores what it's given — and, for the look,
+  re-checks it on the way out (BR3), because those values reach a
+  stylesheet.
+- **P11.** The three appearance columns are **nullable, and null means "not
+  chosen"**, resolved to the defaults in `config` at read time — so a
+  default can change without a migration.
 
 ## 5. Invoice numbering
 
@@ -349,10 +358,12 @@ reason being that a stored copy can disagree with the rows it describes.
 ## 11. UI behavior
 
 - **U1.** Everything inside `.invoice-doc` is the printable document; the
-  controls below it are `.no-print`, so "Print / save as PDF" produces the
+  controls below it are `.no-print`, so the print fallback (U2) produces the
   document alone.
-- **U2.** Printing is `window.print()` — the browser's own PDF export, not
-  server-side rendering (Z7).
+- **U2.** The invoice page's export button is **"Download PDF"**, linking to
+  the server-rendered PDF (§12). `window.print()` survives only as the
+  fallback where the renderer can't load (PD2), under its old label
+  "Print / save as PDF" — the page shows exactly one of the two.
 - **U3.** The "no tax on this invoice" warning appears **only on a draft**
   and only when `tax_status != "ok"`, wording the specific reason (C5), and
   says the figures freeze the moment it's marked sent. Past draft the
@@ -377,7 +388,138 @@ reason being that a stored copy can disagree with the rows it describes.
 - **U11.** Templates read **only** from `doc` (an `InvoiceDocument`) and
   never reach for a host model — this is what lets the module move.
 
-## 12. Explicit non-requirements
+## 12. The PDF (`billing/pdf.py`)
+
+- **PD1 — The document alone.** `GET /invoices/<id>/pdf` returns the invoice
+  as a PDF rendered on the server from a standalone template: nothing of the
+  host's `base.html` (nav, footer, scripts, forms) is in it.
+- **PD2 — The renderer is optional.** WeasyPrint is imported lazily. Where
+  it, or the Pango library under it, is missing, `available()` is false, the
+  app still boots, the page falls back to printing (U2), and the PDF URL
+  redirects to the invoice page instead of erroring.
+- **PD3 — One document, two renderings.** The PDF is built from the same
+  `InvoiceDocument` (`document_for`) as the page, so frozen-vs-live (F14) is
+  decided once and the two cannot disagree. PDF templates read only from
+  `doc`, as U11 requires of the page.
+- **PD4 — Nothing is fetched.** The stylesheet is inline, the font is one
+  installed on the system, the logo is embedded in the document as a base64
+  PNG, and the renderer is handed a URL fetcher that answers **only** that
+  embedded-PNG form — decoding it itself — and refuses every other URL
+  (`http`, `file`, any other `data:` type). Nothing typed into an invoice
+  can make the server request a resource. A refused reference is left out
+  and the invoice still renders.
+- **PD5 — No typed text inside CSS.** Everything a person typed is
+  HTML-escaped, and the invoice number reaches the page footer through CSS
+  `string-set`, never by being templated into the stylesheet. The one
+  exception is the tenant's colours, and only as `Branding` hands them out
+  (BR3).
+- **PD6 — Host links are not rendered.** `doc.payer.url` and
+  `doc.subject_url` are for the app's own page; the PDF prints names as text.
+- **PD7 — Status on paper.** "Draft", "Void" and "Paid" are printed beside
+  the number; "Sent" is not — it is the app's bookkeeping, not something the
+  client needs to read.
+- **PD8.** Payment instructions follow U5 exactly: printed only while money
+  is owed and the invoice isn't void.
+- **PD9.** The file downloads as an attachment named `<number>.pdf`, the
+  number reduced to letters, digits, `_` and `-` (the prefix is
+  tenant-typed), falling back to `invoice.pdf`.
+- **PD10 — It flows.** Letter portrait. A long invoice runs onto as many
+  pages as it needs, repeating the table header, with the invoice number and
+  "Page n of m" in the page footer; the totals, payment and notes blocks are
+  never split across a page break.
+- **PD11.** An unknown template name falls back to the default (`classic`)
+  rather than raising — a stale stored value must not block an export.
+- **PD12 — Presentation is live; content is frozen.** The freeze contract
+  (§6) covers what an invoice *says*. How it *looks* — layout, colours and
+  logo — is read from the profile at render time, for every
+  invoice however long ago it was issued. A reprint after a rebrand carries
+  the same seller details and figures in the new look.
+- **PD13.** The PDF route is login-protected and tenant-scoped like the page
+  (A1, A2): another tenant's invoice id is a 404.
+
+## 13. Branding (`Branding`, Settings → Invoicing → Invoice appearance)
+
+- **BR1 — Two layouts.** `config.INVOICE_TEMPLATES` lists them: `classic`
+  (plain, black on white — the default) and `banded` (a full-width coloured
+  header band, accent table header, large invoice total). Every layout
+  listed there has a template in `pdf.TEMPLATES`, and vice versa.
+- **BR2 — Two colours, used by `banded` only.** *Primary*: the band, the
+  table header and its rule, the totals labels, the invoice total.
+  *Secondary*: the small section labels, the status pill and the page
+  footer. `classic` ignores both.
+- **BR3 — Only a checked `#rrggbb` reaches the stylesheet.** `clean_color`
+  accepts exactly a `#` and six hex digits (lower-cased), nothing else — no
+  names, no shorthand, no functions. `Branding.primary` / `.secondary`
+  return the cleaned value or the default, so a bad stored value can
+  neither break a render nor inject CSS. Templates use those properties,
+  never the stored strings.
+- **BR4 — Defaults.** With nothing chosen: `classic`, primary `#1c1a17`,
+  secondary `#7e7a78` — the app's own ink and soft grey.
+- **BR5 — The band stays readable.** Text on the band is white on a dark
+  primary and near-black on a pale one, chosen by relative luminance rather
+  than left to the tenant.
+- **BR6 — Everything `classic` prints, `banded` prints**: letterhead and
+  registrations, buyer, dates, lines, every tax line, paid and balance,
+  payment instructions (PD8), payments received, notes, and the status
+  (PD7). The whole of PD1–PD10 holds for both.
+- **BR7 — The settings form** (the host's, `POST
+  /settings/invoicing/appearance`) refuses an unknown layout or a malformed
+  colour, **leaves the stored value as it was**, says so in a notice, and
+  still saves the fields that were valid. A field the form didn't send is
+  left alone.
+- **BR8 — The preview.** `GET /invoices/preview.pdf` renders a sample
+  invoice — the tenant's real letterhead and next number, an invented
+  buyer — in the **saved** look, inline in the browser. It stores nothing
+  and consumes no invoice number. The settings page links to it only where
+  a PDF can be rendered (PD2).
+- **BR9.** Branding is per tenant: one company's choice never shows on
+  another's invoices.
+
+## 14. The logo (`billing/logos.py`)
+
+- **L1 — PNG or JPEG, decided by the bytes.** An upload is a logo only if
+  it decodes as a PNG or JPEG image. The filename and the browser's content
+  type are ignored. GIF, WebP, BMP, TIFF and **SVG** are refused.
+- **L2 — What is stored is never the upload.** The image is decoded and
+  written back out as a PNG of this module's making, so metadata and
+  anything appended to the file are left behind. This is why SVG is out:
+  it can't be made inert without rasterising it.
+- **L3 — Capped three ways.** The upload may be at most
+  `config.LOGO_MAX_BYTES` (2 MB by default, `BILLING_LOGO_MAX_BYTES`); an
+  image declaring more than 40 megapixels is refused before it is decoded;
+  the stored copy is scaled down so its longest edge is at most 1200px,
+  keeping its proportions and its transparency, and never scaled up.
+- **L3a — Transparent margins are trimmed.** Fully transparent space around
+  the mark is cropped away before storing, so a logo exported with padding
+  doesn't print smaller than one without. An entirely transparent image is
+  left as it is.
+- **L4 — A refusal changes nothing.** `set_logo` raises `LogoError`, whose
+  message is written for the person uploading, and the existing logo —
+  row and file — is left exactly as it was.
+- **L5 — One logo per tenant, in a per-tenant directory**
+  (`<LOGO_DIR>/<company_id>/`), named by the module (a fresh random name per
+  upload), never from the upload. A stored name is re-checked for path
+  containment before any file is opened, so one tenant's filename opens
+  nothing in another's directory and a tampered row opens nothing at all.
+- **L6 — Replacing or removing deletes the old file.** A real delete, not a
+  hide: the look is live (PD12), so no invoice references an old logo.
+- **L7 — It reaches the PDF embedded.** `branding_for()` returns the logo as
+  a `data:image/png;base64,…` URI on `Branding`; `profile.branding` alone
+  does not carry it. A logo whose file has gone missing is simply left off
+  — it must not stop an export.
+- **L8 — Both layouts print it, and still name the seller in words.**
+  `classic` puts it above the company name; `banded` puts it in the band in
+  place of the name, which moves to the head of the address block.
+- **L9 — Served only to its own company.** `GET /invoices/logo.png` takes no
+  id: it serves the signed-in tenant's logo or a 404, requires a login, and
+  is never cached.
+- **L10 — The settings form** (the host's, `POST /settings/invoicing/logo`
+  and `…/logo/delete`) reads at most one byte past the cap, shows a refusal
+  as a notice, touches nothing else on the profile, and offers removal as a
+  button reading **"Delete"** in a `.settings-source-list` — the app's
+  convention, never "Remove".
+
+## 15. Explicit non-requirements
 
 These are deliberate omissions, not oversights — listed so nobody "fixes"
 them without checking first. See `docs/roadmap.md` for reasoning.
@@ -405,8 +547,9 @@ them without checking first. See `docs/roadmap.md` for reasoning.
   host's own mutating routes (relies on `SESSION_COOKIE_SAMESITE=Lax`),
   unlike `communications/`, which has its own. Add it here too if the app
   ever gains `CSRFProtect`.
-- **Z7.** **No server-side PDF generation** — the browser's print dialog is
-  the export path.
+- **Z7.** **No stored PDFs.** The PDF is rendered on request and never kept:
+  the printed document changes after issue anyway (payments received, balance
+  due), so a stored copy would be a copy that can disagree (PD12).
 - **Z8.** **No credit notes, refunds or partial voids.** Void is
   all-or-nothing.
 - **Z9.** **Single currency.** Nothing carries a currency code; CAD is
@@ -423,8 +566,9 @@ currently believed true, but nothing in the suite would catch a regression
 of it; that's a to-do, not a shrug.
 
 Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
-`tests/test_invoice_routes.py`, `tests/test_addresses.py`,
-`tests/test_billing_boundary.py`.
+`tests/test_invoice_routes.py`, `tests/test_invoice_pdf.py`,
+`tests/test_invoice_logo.py`,
+`tests/test_addresses.py`, `tests/test_billing_boundary.py`.
 
 | Rule | Test(s) |
 | --- | --- |
@@ -533,7 +677,7 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | A5 | `test_profiles_are_per_tenant` |
 | A6 | `test_tax_collected_is_scoped_to_the_tenant`, `test_invoiced_subject_ids` — gap: `POST /invoices/<id>/status` against another tenant's invoice has no 404 test |
 | U1 | — gap — *(print/no-print markup; manually verified in the browser only)* |
-| U2 | — gap — *(client-side)* |
+| U2 | `test_the_page_offers_the_pdf_when_it_can_be_rendered`, `test_the_page_falls_back_to_printing_when_it_cannot` |
 | U3 | `test_the_order_page_warns_when_tax_cannot_be_calculated` (host's order page) — gap: the invoice page's own draft-only warning is untested |
 | U4 | `test_paid_cannot_be_set_by_hand` |
 | U5 | — gap — |
@@ -543,6 +687,40 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | U9 | — gap — *(CSS)* |
 | U10 | — gap — |
 | U11 | — gap — *(would need a template scan like `test_billing_boundary.py` does for Python)* |
+| PD1 | `test_the_html_is_the_document_alone`, `test_the_html_carries_the_whole_invoice`, `test_it_renders_a_real_pdf` *(skipped without WeasyPrint — runs in the Docker image)* |
+| PD2 | `test_rendering_without_weasyprint_says_so`, `test_without_a_renderer_the_pdf_url_returns_to_the_page`, `test_the_page_falls_back_to_printing_when_it_cannot` |
+| PD3 | `test_the_pdf_is_built_from_the_same_document_as_the_page` |
+| PD4 | `test_the_html_needs_nothing_from_the_network`, `test_the_renderer_fetches_nothing`, `test_the_renderer_accepts_only_an_embedded_png`, `test_a_malformed_embedded_image_is_refused`, `test_the_logo_is_the_only_thing_a_document_references`; and through WeasyPrint itself *(skipped without it)*: `test_the_fetcher_handed_to_weasyprint_refuses_too`, `test_an_external_image_in_a_document_is_left_out_not_fetched` |
+| PD5 | `test_typed_text_is_escaped`, `test_the_number_is_never_templated_into_the_stylesheet` |
+| PD6 | `test_host_links_are_not_rendered` |
+| PD7 | `test_a_status_that_changes_the_meaning_is_printed`, `test_sent_is_not_printed` |
+| PD8 | `test_payment_instructions_follow_the_same_rule_as_the_page` |
+| PD9 | `test_the_pdf_downloads_under_the_invoice_number`, `test_the_filename_is_the_number_made_safe` |
+| PD10 | `test_a_long_invoice_renders_without_error` *(skipped without WeasyPrint)* — gap: that blocks stay whole and the header repeats was checked by eye on a rendered 4-page invoice, not asserted |
+| PD11 | `test_an_unknown_template_falls_back_to_the_default` |
+| PD12 | `test_an_issued_invoice_follows_a_rebrand_but_keeps_what_it_said`, `test_the_pdf_wears_the_companys_saved_look` |
+| PD13 | `test_the_pdf_requires_a_login`, `test_another_tenants_invoice_pdf_404s`, `test_a_missing_invoice_pdf_404s` |
+| P11 | `test_branding_with_nothing_chosen_is_the_default_look`, `test_the_settings_page_shows_the_defaults_before_anything_is_chosen` |
+| BR1 | `test_every_layout_offered_in_settings_has_a_template_behind_it` |
+| BR2 | `test_the_banded_layout_wears_the_chosen_colours`, `test_the_classic_layout_ignores_the_colours` — gap: *which* element takes which colour was checked by eye on rendered PDFs, not asserted |
+| BR3 | `test_only_a_plain_hex_colour_counts_as_a_colour`, `test_a_bad_stored_colour_never_reaches_the_stylesheet` |
+| BR4 | `test_branding_with_nothing_chosen_is_the_default_look` |
+| BR5 | `test_text_on_the_band_stays_readable` |
+| BR6 | every document test in `test_invoice_pdf.py` runs once per layout (the `look` fixture) |
+| BR7 | `test_update_appearance_saves_the_layout_and_both_colours`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_the_settings_page_shows_the_saved_appearance` (all in `tests/test_settings_company.py`) |
+| BR8 | `test_the_preview_shows_a_sample_in_the_saved_look`, `test_the_preview_uses_up_no_invoice_number`, `test_the_preview_requires_a_login`, `test_without_a_renderer_the_preview_goes_somewhere_that_works`, `test_the_sample_is_the_sellers_own_document`, `test_a_sample_from_an_unregistered_seller_charges_no_tax`, `test_the_preview_link_appears_only_where_a_pdf_can_be_rendered` |
+| BR9 | `test_update_appearance_is_per_company` |
+| L1 | `test_a_png_is_accepted`, `test_a_jpeg_is_accepted_and_stored_as_png`, `test_other_image_formats_are_refused`, `test_anything_that_is_not_a_readable_png_or_jpeg_is_refused`, `test_the_file_name_does_not_make_it_an_image` |
+| L2 | `test_what_is_stored_is_a_fresh_encoding_not_the_upload` |
+| L3 | `test_an_upload_over_the_size_cap_is_refused`, `test_an_image_with_enormous_dimensions_is_refused_before_decoding`, `test_a_large_image_is_scaled_down_keeping_its_shape`, `test_a_small_image_is_not_scaled_up`, `test_transparency_survives` |
+| L3a | `test_transparent_margins_are_trimmed`, `test_an_opaque_image_is_not_cropped`, `test_a_fully_transparent_image_is_left_alone` |
+| L4 | `test_a_refused_upload_leaves_the_existing_logo_alone`, `test_a_refused_upload_keeps_the_logo_already_there` |
+| L5 | `test_setting_a_logo_stores_a_file_for_that_company`, `test_the_stored_name_is_generated_never_taken_from_anyone`, `test_logos_are_per_company`, `test_one_companys_filename_does_not_open_anothers_file`, `test_a_stored_name_that_points_elsewhere_opens_nothing` |
+| L6 | `test_replacing_a_logo_removes_the_old_file`, `test_removing_a_logo_deletes_the_file`, `test_removing_a_logo_that_is_not_there_is_harmless` |
+| L7 | `test_branding_carries_the_logo_embedded`, `test_branding_without_a_logo_has_none`, `test_a_logo_whose_file_has_gone_is_simply_left_off`, `test_the_logo_keeps_the_layout_and_colours_beside_it`, `test_a_real_pdf_renders_with_a_logo` *(skipped without WeasyPrint)* |
+| L8 | `test_every_layout_prints_the_logo`, `test_the_seller_is_still_named_in_words_beside_a_logo`, `test_no_logo_no_image` |
+| L9 | `test_the_logo_is_served_to_its_own_company`, `test_no_logo_is_a_404`, `test_another_companys_logo_is_never_served`, `test_the_logo_requires_a_login` |
+| L10 | `test_uploading_a_logo_saves_it`, `test_uploading_something_else_says_why_and_saves_nothing`, `test_uploading_nothing_says_so`, `test_an_oversized_upload_is_refused`, `test_deleting_the_logo`, `test_uploading_does_not_touch_the_rest_of_the_look`, `test_the_logo_routes_require_a_login`, `test_the_settings_page_offers_an_upload_when_there_is_no_logo`, `test_the_settings_page_shows_the_logo_with_a_delete_button` |
 | Z1–Z10 | *(non-requirements — nothing to test)* |
 
 ### The tax-collected report

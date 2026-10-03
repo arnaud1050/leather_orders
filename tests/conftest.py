@@ -41,6 +41,9 @@ os.environ["AI_ENCRYPTION_KEY"] = "pQ3vN8xR1sT6yU9wA2dF5gH0jK4lZ7mB1nC8vX3zQ5E="
 # developer's .env containing RUN_SCHEDULER=1 would otherwise start a real
 # scheduler inside the test suite.
 os.environ["RUN_SCHEDULER"] = "0"
+# billing/config.py reads this at import, so it has to be set here too:
+# otherwise a test that uploads an invoice logo writes into the real data/.
+os.environ["BILLING_LOGO_DIR"] = tempfile.mkdtemp(prefix="atelier-test-logos-")
 os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GOOGLE_REDIRECT_URI"] = "http://localhost:5000/integrations/google/callback"
