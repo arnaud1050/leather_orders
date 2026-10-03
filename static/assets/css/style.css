@@ -3152,13 +3152,17 @@ a.btn-secondary {
   background: #1c1a17;
 }
 
-/* The footer band, shown only while the footer is switched on. */
+/* The footer band, shown only while the footer is switched on. Drawn as
+   the PDF prints it: flush with the bottom of the page and across its
+   full width in both layouts, 14mm of 279mm tall (about 5% of the page),
+   with the text on the left and the page number on the right. */
 .layout-thumb__footer {
   display: none;
+  flex-shrink: 0;
   align-items: center;
-  height: 12px;
+  justify-content: space-between;
+  height: 5%;
   margin-top: auto;
-  margin-bottom: 6px;
   padding: 0 12px;
   background: var(--look-footer-bg);
 }
@@ -3167,17 +3171,13 @@ a.btn-secondary {
   display: flex;
 }
 
-.layout-thumb--classic .layout-thumb__footer {
-  margin-left: 12px;
-  margin-right: 12px;
-  padding: 0 4px;
-}
-
 .layout-thumb .layout-thumb__footer i {
-  width: 50px;
-  height: 3px;
+  height: 2px;
   background: var(--look-footer-fg);
 }
+
+.layout-thumb .layout-thumb__footer i:first-child { width: 48px; }
+.layout-thumb .layout-thumb__footer i:last-child { width: 22px; }
 
 .layout-thumb--banded .layout-thumb__totals b {
   background: var(--look-primary);
