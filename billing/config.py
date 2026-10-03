@@ -45,6 +45,16 @@ DEFAULT_INVOICE_TEMPLATE = "classic"
 # else's taste.
 DEFAULT_PRIMARY_COLOR = "#1c1a17"
 
+# The optional page footer: a band along the bottom of every page with a
+# line of the tenant's text and the page number. Off until switched on;
+# these are its colours until chosen — the light grey band and grey text
+# of the invoice it was modelled on (the standalone `billing` project).
+DEFAULT_FOOTER_BACKGROUND = "#e4e4e3"
+DEFAULT_FOOTER_TEXT_COLOR = "#666666"
+# One line, or two at most once it wraps: the band lives in the page's
+# bottom margin, which has a fixed height.
+FOOTER_TEXT_MAX_LENGTH = 200
+
 # Where invoice logos are kept (see billing/logos.py). The same data/
 # directory as the SQLite file and the order documents — the bind-mounted
 # volume in both Docker deployments, so a logo survives a rebuild.

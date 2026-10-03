@@ -345,8 +345,37 @@
      turns those into the upload tile, the live thumbnails and the colour
      picker. Branding hands out only checked #rrggbb values, so the inline
      colours below can't carry anything else. #}
-  <section class="detail-orders invoice-look" id="invoice-appearance"
-           style="--look-primary: {{ branding.primary }}; --look-on-primary: {{ branding.on_primary }};"
+  {# One colour picker: a swatch that opens a saturation/brightness area
+     and a hue bar, beside the hex box that's actually submitted (and works
+     on its own without JavaScript). `css_var` is the section variable the
+     script keeps in step, so the thumbnails follow the picker live. The
+     inline colours are Branding's checked #rrggbb values. #}
+  {% macro colour_picker(name, value, panel_id, css_var, what, label='', contrast_var='') %}
+  <div class="color-picker" data-color-picker data-css-var="{{ css_var }}"{% if contrast_var %} data-contrast-var="{{ contrast_var }}"{% endif %}>
+    {% if label %}<span class="color-picker__label">{{ label }}</span>{% endif %}
+    <div class="color-picker__field">
+      <button type="button" class="color-picker__current" data-color-toggle
+              aria-expanded="false" aria-controls="{{ panel_id }}"
+              aria-label="Choose the {{ what }}" style="background: {{ value }}"></button>
+      <input type="text" name="{{ name }}" value="{{ value }}" maxlength="7"
+             pattern="#[0-9a-fA-F]{6}" spellcheck="false" autocomplete="off"
+             aria-label="{{ what|capitalize }} as a hex code" data-color-hex>
+    </div>
+    <div class="color-picker__panel" id="{{ panel_id }}" data-color-panel hidden>
+      <div class="color-picker__area" data-color-area tabindex="0" role="slider"
+           aria-label="Saturation and brightness" aria-valuetext="">
+        <span class="color-picker__area-handle"></span>
+      </div>
+      <div class="color-picker__hue" data-color-hue tabindex="0" role="slider"
+           aria-label="Hue" aria-valuemin="0" aria-valuemax="360" aria-valuenow="0">
+        <span class="color-picker__hue-handle"></span>
+      </div>
+    </div>
+  </div>
+  {% endmacro %}
+
+  <section class="detail-orders invoice-look{{ ' has-footer' if branding.has_footer }}" id="invoice-appearance"
+           style="--look-primary: {{ branding.primary }}; --look-on-primary: {{ branding.on_primary }}; --look-footer-bg: {{ branding.footer_bg }}; --look-footer-fg: {{ branding.footer_fg }};"
            data-invoice-look>
     <h2>Invoice appearance</h2>
     <p class="detail-note">
@@ -433,6 +462,7 @@
                 <span class="layout-thumb__row"><i></i><i></i></span>
                 <span class="layout-thumb__totals"><i></i><i></i><b></b></span>
               </span>
+              <span class="layout-thumb__footer"><i></i></span>
             </span>
             <span class="layout-option__name">{{ label }}</span>
             <span class="layout-option__note">{{ layout_notes.get(key, '') }}</span>
@@ -444,26 +474,32 @@
       <div class="invoice-look__colour" data-colour-section>
         <h3 class="settings-subheading">Accent colour</h3>
         <p class="detail-note">Used by Banded for the band, the table headings and the total.</p>
-        <div class="color-picker" data-color-picker>
-          <div class="color-picker__field">
-            {# The swatch opens the picker; the hex box beside it is what's
-               submitted, and works on its own without JavaScript. #}
-            <button type="button" class="color-picker__current" data-color-toggle
-                    aria-expanded="false" aria-controls="invoice-colour-panel"
-                    aria-label="Choose the accent colour"></button>
-            <input type="text" name="primary_color" value="{{ branding.primary }}" maxlength="7"
-                   pattern="#[0-9a-fA-F]{6}" spellcheck="false" autocomplete="off"
-                   aria-label="Accent colour as a hex code" data-color-hex>
-          </div>
-          <div class="color-picker__panel" id="invoice-colour-panel" data-color-panel hidden>
-            <div class="color-picker__area" data-color-area tabindex="0" role="slider"
-                 aria-label="Saturation and brightness" aria-valuetext="">
-              <span class="color-picker__area-handle"></span>
-            </div>
-            <div class="color-picker__hue" data-color-hue tabindex="0" role="slider"
-                 aria-label="Hue" aria-valuemin="0" aria-valuemax="360" aria-valuenow="0">
-              <span class="color-picker__hue-handle"></span>
-            </div>
+        {{ colour_picker('primary_color', branding.primary, 'invoice-colour-panel',
+                         '--look-primary', 'accent colour', contrast_var='--look-on-primary') }}
+      </div>
+
+      <div class="invoice-look__footer">
+        <h3 class="settings-subheading">Footer</h3>
+        {# Says the footer fields were on the form, so an unticked box (which
+           sends nothing) can mean "off" rather than "leave alone". #}
+        <input type="hidden" name="footer_form" value="1">
+        <label class="invoice-look__check">
+          <input type="checkbox" name="footer_enabled" value="1" data-footer-toggle
+                 {% if branding.has_footer %}checked{% endif %}>
+          Add a footer to every page
+        </label>
+        <div class="invoice-look__footer-fields" data-footer-fields>
+          <p class="detail-note">A band along the bottom of every page, in either layout, with your text on the left and the page number on the right.</p>
+          <label class="invoice-look__text">
+            <span class="color-picker__label">Footer text</span>
+            <input type="text" name="footer_text" value="{{ branding.footer_text or '' }}"
+                   maxlength="{{ footer_text_max }}" placeholder="{{ company.name }} · your website · your email">
+          </label>
+          <div class="invoice-look__pickers">
+            {{ colour_picker('footer_background', branding.footer_bg, 'invoice-footer-bg-panel',
+                             '--look-footer-bg', 'footer background colour', label='Background') }}
+            {{ colour_picker('footer_text_color', branding.footer_fg, 'invoice-footer-fg-panel',
+                             '--look-footer-fg', 'footer text colour', label='Text') }}
           </div>
         </div>
       </div>

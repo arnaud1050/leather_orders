@@ -17,7 +17,18 @@
 <style>
   @page {
     size: letter portrait;
-    margin: 18mm 18mm 20mm;
+    margin: 18mm 18mm {{ '28mm' if branding.has_footer else '20mm' }};
+    @footnote { margin-top: 14pt; }
+    {% if branding.has_footer %}
+    /* The footer band, 8mm clear of the paper's edge: inside what any
+       printer can print, unlike the very bottom of the sheet. */
+    @bottom-center {
+      content: element(pagefoot);
+      width: 100%;
+      vertical-align: bottom;
+      padding-bottom: 8mm;
+    }
+    {% else %}
     @bottom-left {
       /* Taken from the page via string-set (see .number) rather than
          templated into this stylesheet: no tenant-typed text ever lands
@@ -33,6 +44,7 @@
       font-size: 8pt;
       color: #7e7a78;
     }
+    {% endif %}
   }
 
   body {
@@ -184,10 +196,6 @@
     margin-top: 22pt;
     break-inside: avoid;
   }
-  .pay p {
-    margin-top: 4pt;
-    white-space: pre-line;
-  }
   .payments {
     width: 62%;
     margin-top: 4pt;
@@ -200,18 +208,57 @@
     text-align: right;
     color: #1c1a17;
   }
-  .notes {
-    margin-top: 18pt;
-    padding-top: 12pt;
-    border-top: 0.75pt solid #83898d;
-    font-size: 9pt;
-    color: #7e7a78;
+  .notes p {
+    margin-top: 4pt;
     white-space: pre-line;
-    break-inside: avoid;
+  }
+
+  /* Payment instructions sit at the bottom left of the last page, as on
+     the invoice this layout comes from — but in WeasyPrint's footnote area
+     rather than pinned there, so the items above can never run underneath
+     them. If they don't fit under the last line, they move to the next
+     page instead. The call and marker a footnote normally prints are off. */
+  .pay {
+    float: footnote;
+    footnote-display: block;
+  }
+  .pay::footnote-call { content: none; }
+  .pay::footnote-marker { content: none; }
+  .pay p {
+    margin-top: 2pt;
+    white-space: pre-line;
+  }
+
+  .page-footer {
+    position: running(pagefoot);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12pt;
+    padding: 5pt 8pt;
+    background: {{ branding.footer_bg }};
+    color: {{ branding.footer_fg }};
+    font-size: 8pt;
+    line-height: 1.4;
+  }
+  .page-footer__page::after {
+    content: string(invoice-number) "  ·  Page " counter(page) " of " counter(pages);
+    white-space: nowrap;
   }
 </style>
 </head>
 <body>
+
+  {# The optional page footer. Built as a running element and shown in the
+     page's bottom margin, so it repeats on every page and can never sit on
+     top of the invoice; the tenant's text stays HTML (escaped) and never
+     enters the stylesheet. The page number lives in it while it's on. #}
+  {% if branding.has_footer %}
+  <div class="page-footer">
+    <span class="page-footer__text">{{ branding.footer_text or '' }}</span>
+    <span class="page-footer__page"></span>
+  </div>
+  {% endif %}
 
   <table class="columns header">
     <tr>
@@ -289,13 +336,6 @@
     <tr class="balance"><td>Balance due</td><td class="amount">${{ '%.2f'|format(doc.balance_due) }}</td></tr>
   </table>
 
-  {% if doc.shows_payment_instructions %}
-  <div class="block pay">
-    <span class="label">How to pay</span>
-    <p>{{ doc.issuer.payment_instructions }}</p>
-  </div>
-  {% endif %}
-
   {% if doc.payments %}
   <div class="block">
     <span class="label">Payments received</span>
@@ -312,7 +352,17 @@
   {% endif %}
 
   {% if doc.notes %}
-  <p class="notes">{{ doc.notes }}</p>
+  <div class="block notes">
+    <span class="label">Notes</span>
+    <p>{{ doc.notes }}</p>
+  </div>
+  {% endif %}
+
+  {% if doc.shows_payment_instructions %}
+  {# No whitespace between the tags in here: inside WeasyPrint's footnote
+     area each gap becomes an empty line ~27px tall, which made the block
+     measure twice its height and pushed it onto a page of its own. #}
+  <div class="pay"><span class="label">Payment instructions</span><p>{{ doc.issuer.payment_instructions }}</p></div>
   {% endif %}
 
 </body>

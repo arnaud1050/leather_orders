@@ -2270,6 +2270,7 @@ def settings_invoicing():
         invoice_templates=billing_config.INVOICE_TEMPLATES,
         branding=profile.branding,
         logo_max_bytes=billing_config.LOGO_MAX_BYTES,
+        footer_text_max=billing_config.FOOTER_TEXT_MAX_LENGTH,
         appearance_notice=session.pop("appearance_notice", None),
         notice=_take_settings_notice(),
         active_view="settings",
@@ -2622,12 +2623,25 @@ def update_invoice_appearance():
             fields["invoice_template"] = template
         else:
             rejected.append("layout")
-    if "primary_color" in request.form:
-        color = clean_color(request.form["primary_color"])
-        if color:
-            fields["primary_color"] = color
-        else:
-            rejected.append("colour")
+    for field, label in (("primary_color", "accent colour"),
+                         ("footer_background", "footer background colour"),
+                         ("footer_text_color", "footer text colour")):
+        if field in request.form:
+            color = clean_color(request.form[field])
+            if color:
+                fields[field] = color
+            else:
+                rejected.append(label)
+    # An unticked checkbox sends nothing, which would read as "leave it
+    # alone" (hard rule 9) — so the form says it rendered the footer
+    # fields, and only then does a missing tick mean "off".
+    if "footer_form" in request.form:
+        fields["footer_enabled"] = "footer_enabled" in request.form
+    if "footer_text" in request.form:
+        # One line: newlines and runs of spaces collapse, and it's capped
+        # to what the column (and the page's bottom margin) can hold.
+        text = " ".join(request.form["footer_text"].split())
+        fields["footer_text"] = text[:billing_config.FOOTER_TEXT_MAX_LENGTH] or None
     invoicing.update_profile(company.id, company.name, **fields)
     db.session.commit()
     if rejected:

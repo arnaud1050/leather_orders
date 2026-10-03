@@ -56,7 +56,7 @@ class BillingProfile(db.Model):
     qst_number = db.Column(db.String(40))
     neq = db.Column(db.String(40))
 
-    # Free text printed under "How to pay". It exists because cash and
+    # Free text printed under "Payment instructions". It exists because cash and
     # e-transfer have no hosted payment page to send anyone to.
     payment_instructions = db.Column(db.Text)
 
@@ -75,6 +75,11 @@ class BillingProfile(db.Model):
     primary_color = db.Column(db.String(7))    # "#rrggbb"
     # Opaque name of the logo file; only billing/logos.py knows it's a path.
     logo_filename = db.Column(db.String(80))
+    # The optional page footer (see config.DEFAULT_FOOTER_*).
+    footer_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    footer_background = db.Column(db.String(7))
+    footer_text_color = db.Column(db.String(7))
+    footer_text = db.Column(db.String(config.FOOTER_TEXT_MAX_LENGTH))
 
     @property
     def has_logo(self) -> bool:
@@ -87,6 +92,10 @@ class BillingProfile(db.Model):
         return Branding(
             template=self.invoice_template,
             primary_color=self.primary_color,
+            footer_enabled=bool(self.footer_enabled),
+            footer_background=self.footer_background,
+            footer_text_color=self.footer_text_color,
+            footer_text=self.footer_text,
         )
 
     @property

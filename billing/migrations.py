@@ -33,6 +33,10 @@ ADDED_COLUMNS = [
     ("billing_profiles", "invoice_template", "VARCHAR(20)"),
     ("billing_profiles", "primary_color", "VARCHAR(7)"),
     ("billing_profiles", "logo_filename", "VARCHAR(80)"),
+    ("billing_profiles", "footer_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("billing_profiles", "footer_background", "VARCHAR(7)"),
+    ("billing_profiles", "footer_text_color", "VARCHAR(7)"),
+    ("billing_profiles", "footer_text", "VARCHAR(200)"),
 ]
 
 # Letterhead fields that used to live on the host's `companies` table,

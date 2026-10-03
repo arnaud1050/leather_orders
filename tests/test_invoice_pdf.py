@@ -10,6 +10,8 @@ The route tests replace the renderer rather than depend on it, so the
 tenant boundary and the fallback are checked on every machine.
 """
 
+import shutil
+import subprocess
 from dataclasses import replace
 from datetime import date
 
@@ -153,15 +155,191 @@ def test_payment_instructions_follow_the_same_rule_as_the_page(app, doc, look):
     void = pdf.render_html(replace(doc, status="void", display_status="void"), look)
     settled = pdf.render_html(replace(doc, amount_paid=1102.5), look)
 
-    assert "How to pay" in pdf.render_html(doc, look)
-    assert "How to pay" not in void
-    assert "How to pay" not in settled
+    assert ">Payment instructions<" in pdf.render_html(doc, look)
+    assert ">Payment instructions<" not in void
+    assert ">Payment instructions<" not in settled
+
+
+def test_notes_have_a_heading_and_come_before_the_payment_instructions(app, doc, look):
+    html = pdf.render_html(replace(doc, notes="Rush order."), look)
+    body = html.split("<body>")[1]
+
+    assert ">Notes<" in body
+    assert body.index(">Notes<") < body.index("Rush order.") < body.index(">Payment instructions<")
+
+
+def test_payment_instructions_sit_at_the_foot_of_the_last_page(app, doc, look):
+    """In WeasyPrint's footnote area: bottom left of the page they land on,
+    and pushed to the next page rather than printed over the items."""
+    html = pdf.render_html(doc, look)
+
+    assert '<div class="pay">' in html
+    stylesheet = html.split("<style>")[1].split("</style>")[0]
+    assert "float: footnote" in stylesheet
+    assert ".pay::footnote-call { content: none; }" in stylesheet
+    # Not absolutely positioned, which is what let the original layout
+    # print items underneath them.
+    assert "position: absolute" not in stylesheet
+
+
+def test_the_payment_block_has_no_whitespace_between_its_tags(app, doc, look):
+    """Inside WeasyPrint's footnote area each gap between tags becomes an
+    empty ~27px line: the block measured twice its height and was pushed
+    onto a page of its own even with room to spare."""
+    html = pdf.render_html(doc, look)
+    block = html.split('<div class="pay">')[1].split("</div>")[0]
+
+    assert block == ('<span class="label">Payment instructions</span>'
+                     '<p>E-transfer to pay@example.com</p>')
+
+
+@needs_renderer
+def test_a_short_invoice_with_everything_on_it_stays_on_one_page(app, doc, look):
+    """The case that found the whitespace bug: logo, notes, payments and the
+    footer together, with plenty of room left on the page."""
+    import weasyprint
+
+    full = Branding(template=look.template, footer_enabled=True, footer_text="Footer",
+                    logo_data_uri="data:image/png;base64," + _tiny_png())
+    html = pdf.render_html(replace(doc, notes="Rush order."), full)
+    rendered = weasyprint.HTML(string=html, url_fetcher=pdf._fetcher(weasyprint)).render()
+
+    assert len(rendered.pages) == 1
+
+
+def _tiny_png() -> str:
+    import base64
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (600, 180), (31, 78, 121)).save(out, "PNG")
+    return base64.b64encode(out.getvalue()).decode()
 
 
 def test_an_invoice_with_no_lines_says_so(app, doc, look):
     html = pdf.render_html(replace(doc, lines=[], subtotal=0.0, tax_lines=[]), look)
 
     assert "Nothing itemised on this invoice." in html
+
+
+# --- The footer -----------------------------------------------------------
+
+def footer_look(template, **footer):
+    return Branding(template=template, footer_enabled=True, **footer)
+
+
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_there_is_no_footer_until_it_is_switched_on(app, doc, template):
+    html = pdf.render_html(doc, Branding(template=template, footer_text="Hidden text"))
+
+    assert 'class="page-footer"' not in html
+    assert "Hidden text" not in html
+    assert "element(pagefoot)" not in html
+
+
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_the_footer_prints_its_text_and_the_page_number(app, doc, template):
+    html = pdf.render_html(doc, footer_look(
+        template, footer_text="By Monsieur · bymonsieur.ca",
+        footer_background="#1f4e79", footer_text_color="#ffffff"))
+    stylesheet = html.split("<style>")[1].split("</style>")[0]
+
+    assert '<span class="page-footer__text">By Monsieur · bymonsieur.ca</span>' in html
+    assert "content: element(pagefoot);" in stylesheet
+    assert "background: #1f4e79;" in stylesheet
+    assert "color: #ffffff;" in stylesheet
+    # The page number moves into the band instead of printing beside it.
+    assert 'counter(page) " of " counter(pages);\n    white-space: nowrap;' in stylesheet
+    assert "@bottom-right" not in stylesheet
+    assert "@bottom-left" not in stylesheet
+
+
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_the_footer_text_is_escaped_and_never_enters_the_stylesheet(app, doc, template):
+    nasty = '"; } body { display: none } <script>x</script>'
+    html = pdf.render_html(doc, footer_look(template, footer_text=nasty))
+    stylesheet = html.split("<style>")[1].split("</style>")[0]
+
+    assert "display: none" not in stylesheet
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_bad_footer_colours_fall_back_to_the_defaults(app, doc, template):
+    html = pdf.render_html(doc, footer_look(
+        template, footer_background="red;}", footer_text_color="url(x)"))
+    stylesheet = html.split("<style>")[1].split("</style>")[0]
+
+    assert f"background: {config.DEFAULT_FOOTER_BACKGROUND};" in stylesheet
+    assert f"color: {config.DEFAULT_FOOTER_TEXT_COLOR};" in stylesheet
+    assert "red;}" not in stylesheet
+    assert "url(x)" not in stylesheet
+
+
+def test_the_footer_is_off_with_grey_defaults_until_chosen():
+    branding = Branding()
+
+    assert branding.has_footer is False
+    assert branding.footer_bg == config.DEFAULT_FOOTER_BACKGROUND
+    assert branding.footer_fg == config.DEFAULT_FOOTER_TEXT_COLOR
+
+
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_the_footer_keeps_clear_of_the_paper_edge(app, doc, template):
+    """8mm up from the bottom: inside what any printer can print."""
+    stylesheet = pdf.render_html(doc, footer_look(template)).split("<style>")[1]
+
+    assert "padding-bottom: 8mm;" in stylesheet
+
+
+needs_pdftotext = pytest.mark.skipif(
+    not pdf.available() or shutil.which("pdftotext") is None,
+    reason="needs WeasyPrint and poppler's pdftotext (both in the Docker image)",
+)
+
+
+def pdf_text(data: bytes) -> list[str]:
+    """The text of each page, as poppler reads it."""
+    result = subprocess.run(["pdftotext", "-layout", "-", "-"], input=data,
+                            capture_output=True, check=True)
+    return result.stdout.decode("utf-8").split("\f")[:-1]
+
+
+@needs_pdftotext
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_the_rendered_footer_is_on_every_page(app, doc, template):
+    lines = [LineItem(f"Item {i}", 1, 10.0) for i in range(70)]
+    data = pdf.render_pdf(replace(doc, lines=lines), footer_look(
+        template, footer_text="By Monsieur · bymonsieur.ca"))
+
+    pages = pdf_text(data)
+    assert len(pages) >= 2
+    for number, text in enumerate(pages, start=1):
+        assert "By Monsieur · bymonsieur.ca" in text
+        assert f"Page {number} of {len(pages)}" in text
+        assert "BM-2026-0007" in text
+
+
+@needs_pdftotext
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_rendered_payment_instructions_close_the_last_page_after_the_notes(app, doc, template):
+    lines = [LineItem(f"Item {i}", 1, 10.0) for i in range(70)]
+    data = pdf.render_pdf(replace(doc, lines=lines, notes="Rush order."),
+                          Branding(template=template))
+
+    pages = pdf_text(data)
+    last = pages[-1]
+    assert "Payment instructions" in last
+    assert all("Payment instructions" not in page for page in pages[:-1])
+    if "Rush order." in last:
+        assert last.index("Rush order.") < last.index("Payment instructions")
+    # Nothing of the invoice is printed after them on that page except the
+    # page number line.
+    tail = last[last.index("E-transfer to pay@example.com"):]
+    assert "Item" not in tail
 
 
 def test_an_unknown_template_falls_back_to_the_default(app, doc):

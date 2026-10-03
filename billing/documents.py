@@ -61,6 +61,12 @@ class Branding:
     # this module re-encoded itself (billing/logos.py), so a template can
     # put it straight into an <img> and the renderer has nothing to fetch.
     logo_data_uri: str | None = None
+    # The optional page footer. The text is printed as HTML (escaped),
+    # never written into the stylesheet, so it needs no cleaning here.
+    footer_enabled: bool = False
+    footer_background: str | None = None
+    footer_text_color: str | None = None
+    footer_text: str | None = None
 
     @property
     def template_key(self) -> str:
@@ -72,6 +78,18 @@ class Branding:
     def primary(self) -> str:
         return clean_color(self.primary_color) or config.DEFAULT_PRIMARY_COLOR
 
+
+    @property
+    def has_footer(self) -> bool:
+        return bool(self.footer_enabled)
+
+    @property
+    def footer_bg(self) -> str:
+        return clean_color(self.footer_background) or config.DEFAULT_FOOTER_BACKGROUND
+
+    @property
+    def footer_fg(self) -> str:
+        return clean_color(self.footer_text_color) or config.DEFAULT_FOOTER_TEXT_COLOR
 
     @property
     def on_primary(self) -> str:

@@ -3152,6 +3152,33 @@ a.btn-secondary {
   background: #1c1a17;
 }
 
+/* The footer band, shown only while the footer is switched on. */
+.layout-thumb__footer {
+  display: none;
+  align-items: center;
+  height: 12px;
+  margin-top: auto;
+  margin-bottom: 6px;
+  padding: 0 12px;
+  background: var(--look-footer-bg);
+}
+
+.invoice-look.has-footer .layout-thumb__footer {
+  display: flex;
+}
+
+.layout-thumb--classic .layout-thumb__footer {
+  margin-left: 12px;
+  margin-right: 12px;
+  padding: 0 4px;
+}
+
+.layout-thumb .layout-thumb__footer i {
+  width: 50px;
+  height: 3px;
+  background: var(--look-footer-fg);
+}
+
 .layout-thumb--banded .layout-thumb__totals b {
   background: var(--look-primary);
 }
@@ -3238,6 +3265,7 @@ a.btn-secondary {
   gap: 10px;
 }
 
+/* Its colour is set inline and kept in step by the script. */
 .color-picker__current {
   flex-shrink: 0;
   width: 38px;
@@ -3245,8 +3273,62 @@ a.btn-secondary {
   padding: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
-  background: var(--look-primary);
   cursor: pointer;
+}
+
+.color-picker__label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* Footer settings */
+.invoice-look__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.invoice-look__footer-fields[hidden] {
+  display: none;
+}
+
+.invoice-look__text {
+  display: block;
+  max-width: 480px;
+  margin-top: 12px;
+}
+
+.invoice-look__text input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+.invoice-look__text input:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.invoice-look__pickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 32px;
+  margin-top: 4px;
 }
 
 .color-picker__current:hover,

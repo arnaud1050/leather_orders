@@ -370,7 +370,7 @@ reason being that a stored copy can disagree with the rows it describes.
   warning is gone, because the number is settled.
 - **U4.** The status dropdown offers only `SETTABLE_STATUSES` — "paid" is
   never selectable (D6), and the page says so in as many words.
-- **U5.** Payment instructions print under "How to pay" **only** when money
+- **U5.** Payment instructions print under "Payment instructions" **only** when money
   is still owed and the invoice isn't void.
 - **U6.** The buyer's name and the subject link are rendered from
   `doc.payer.url` / `doc.subject_url`; a host that supplies neither gets
@@ -410,23 +410,38 @@ reason being that a stored copy can disagree with the rows it describes.
   and the invoice still renders.
 - **PD5 — No typed text inside CSS.** Everything a person typed is
   HTML-escaped, and the invoice number reaches the page footer through CSS
-  `string-set`, never by being templated into the stylesheet. The one
-  exception is the tenant's colour, and only as `Branding` hands it out
-  (BR3).
+  `string-set`, never by being templated into the stylesheet; the footer
+  text is HTML in a running element (FT3), never a CSS string. The only
+  tenant choices that do enter the stylesheet are colours, and only as
+  `Branding` hands them out (BR3, FT4).
 - **PD6 — Host links are not rendered.** `doc.payer.url` and
   `doc.subject_url` are for the app's own page; the PDF prints names as text.
 - **PD7 — Status on paper.** "Draft", "Void" and "Paid" are printed beside
   the number; "Sent" is not — it is the app's bookkeeping, not something the
   client needs to read.
 - **PD8.** Payment instructions follow U5 exactly: printed only while money
-  is owed and the invoice isn't void.
+  is owed and the invoice isn't void, under the heading **"Payment
+  instructions"**.
+- **PD8a — At the bottom left of the last page.** They sit in WeasyPrint's
+  footnote area (`float: footnote`, with no call or marker printed), so
+  they close the page they land on, at its foot and on the left, as in the
+  invoice the Banded layout was ported from. Unlike that invoice they are
+  **never absolutely positioned**: when they don't fit under the last
+  line, they move to the next page instead of being printed over items.
+  The block's markup has **no whitespace between its tags** — inside the
+  footnote area each gap becomes an empty ~27px line, which made it
+  measure twice its height and moved it to a page of its own with room to
+  spare.
+- **PD8b — Notes have a "Notes" heading** and come after the payments
+  received and before the payment instructions.
 - **PD9.** The file downloads as an attachment named `<number>.pdf`, the
   number reduced to letters, digits, `_` and `-` (the prefix is
   tenant-typed), falling back to `invoice.pdf`.
 - **PD10 — It flows.** Letter portrait. A long invoice runs onto as many
   pages as it needs, repeating the table header, with the invoice number and
-  "Page n of m" in the page footer; the totals, payment and notes blocks are
-  never split across a page break.
+  "Page n of m" in the page footer (inside the footer band when there is
+  one, FT2); the totals, payments and notes blocks are never split across a
+  page break.
 - **PD11.** An unknown template name falls back to the default (`classic`)
   rather than raising — a stale stored value must not block an export.
 - **PD12 — Presentation is live; content is frozen.** The freeze contract
@@ -478,7 +493,7 @@ reason being that a stored copy can disagree with the rows it describes.
 - **BR9.** Branding is per tenant: one company's choice never shows on
   another's invoices.
 - **BR10 — The settings section, top to bottom: logo, layout, accent
-  colour**, under a two-sentence introduction. The layouts are radio
+  colour, footer** (FT6), under a two-sentence introduction. The layouts are radio
   buttons drawn as cards, each with a miniature of the invoice; no
   dropdown. The **accent colour** is a swatch beside a `#rrggbb` text box:
   clicking the swatch opens a picker the page draws itself (a
@@ -489,6 +504,36 @@ reason being that a stored copy can disagree with the rows it describes.
   (`static/assets/js/invoice-appearance.js`) only adds the picker, shows
   the accent colour only while Banded is selected, and makes the
   miniatures and the logo tile follow the colour live.
+
+### The footer
+
+- **FT1 — Off until switched on.** `footer_enabled` defaults to false, and
+  with it off neither layout prints a footer band or any footer text, even
+  if text and colours are stored.
+- **FT2 — A band on every page.** Switched on, both layouts print a band in
+  the page's bottom margin: the footer text on the left and the invoice
+  number with "Page n of m" on the right, which then print nowhere else.
+  Banded runs it edge to edge, like its header; Classic keeps it within
+  the page's side margins.
+- **FT3 — It can't cover or break the invoice.** The band is a running
+  element shown in a margin box, so it is never on top of the content, and
+  it sits 8mm clear of the paper's bottom edge, inside what any printer
+  can print. The text is printed as escaped HTML, never written into the
+  stylesheet.
+- **FT4 — Colours and text.** A background and a text colour, each a
+  checked `#rrggbb` through `Branding.footer_bg` / `footer_fg`, defaulting
+  to `#e4e4e3` and `#666666` (the grey band of the invoice it's modelled
+  on). The text is one line, whitespace collapsed, at most
+  `config.FOOTER_TEXT_MAX_LENGTH` (200) characters; blank is stored as
+  null, and a footer with no text still prints its band and page number.
+- **FT5 — Like the rest of the look, it's live** (PD12): switching it on,
+  off or changing it applies to every invoice, issued or not.
+- **FT6 — The settings form** has a checkbox, and below it — shown only
+  while ticked — the text box and two colour pickers like the accent
+  colour's. A hidden `footer_form` marker tells an unticked box ("off")
+  from a form that didn't show the footer ("leave alone", hard rule 9).
+  Switching off keeps the stored text and colours. The layout miniatures
+  show the band, in its colours, while it's on.
 
 ## 14. The logo (`billing/logos.py`)
 
@@ -724,9 +769,17 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | PD6 | `test_host_links_are_not_rendered` |
 | PD7 | `test_a_status_that_changes_the_meaning_is_printed`, `test_sent_is_not_printed` |
 | PD8 | `test_payment_instructions_follow_the_same_rule_as_the_page` |
+| PD8a | `test_payment_instructions_sit_at_the_foot_of_the_last_page`, `test_the_payment_block_has_no_whitespace_between_its_tags`, `test_a_short_invoice_with_everything_on_it_stays_on_one_page` *(skipped without WeasyPrint)*, `test_rendered_payment_instructions_close_the_last_page_after_the_notes` *(needs WeasyPrint and pdftotext — runs in the Docker image)* |
+| PD8b | `test_notes_have_a_heading_and_come_before_the_payment_instructions` |
 | PD9 | `test_the_pdf_downloads_under_the_invoice_number`, `test_the_filename_is_the_number_made_safe` |
 | PD10 | `test_a_long_invoice_renders_without_error` *(skipped without WeasyPrint)* — gap: that blocks stay whole and the header repeats was checked by eye on a rendered 4-page invoice, not asserted |
 | PD11 | `test_an_unknown_template_falls_back_to_the_default` |
+| FT1 | `test_there_is_no_footer_until_it_is_switched_on`, `test_the_footer_is_off_with_grey_defaults_until_chosen`, `test_the_page_shows_the_footer_switched_off_by_default` |
+| FT2 | `test_the_footer_prints_its_text_and_the_page_number`, `test_the_rendered_footer_is_on_every_page` *(needs WeasyPrint and pdftotext)* |
+| FT3 | `test_the_footer_text_is_escaped_and_never_enters_the_stylesheet`, `test_the_footer_keeps_clear_of_the_paper_edge` — gap: that the band never overlaps content was checked by eye on rendered PDFs |
+| FT4 | `test_bad_footer_colours_fall_back_to_the_defaults`, `test_the_footer_text_is_one_line_and_capped`, `test_a_bad_footer_colour_is_refused` |
+| FT5 | *(by construction — the footer is on `Branding`, read live like the rest; see PD12)* |
+| FT6 | `test_switching_the_footer_on_saves_it_with_its_text_and_colours`, `test_unticking_the_box_switches_the_footer_off`, `test_a_form_without_the_footer_fields_leaves_the_footer_alone`, `test_switching_the_footer_off_keeps_its_text_and_colours`, `test_the_page_shows_a_saved_footer`, `test_each_colour_has_its_own_picker` — gap: showing the fields only while ticked, and the miniatures following the colours live, are script behaviour checked by hand in a browser |
 | PD12 | `test_an_issued_invoice_follows_a_rebrand_but_keeps_what_it_said`, `test_the_pdf_wears_the_companys_saved_look` |
 | PD13 | `test_the_pdf_requires_a_login`, `test_another_tenants_invoice_pdf_404s`, `test_a_missing_invoice_pdf_404s` |
 | P11 | `test_branding_with_nothing_chosen_is_the_default_look`, `test_the_settings_page_shows_the_defaults_before_anything_is_chosen` |

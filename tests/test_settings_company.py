@@ -13,6 +13,8 @@ through that module rather than off the tenant row.
 
 import re
 
+import pytest
+
 from billing.services import invoicing
 from models import Company, db
 
@@ -175,7 +177,7 @@ def test_update_appearance_refuses_a_colour_that_is_not_plain_hex(logged_in, com
     assert profile.primary_color == "#1f4e79"     # left as it was
     assert profile.invoice_template == "banded"   # the valid field still saved
     body = response.get_data(as_text=True)
-    assert "Not saved: the colour" in body
+    assert "Not saved: the accent colour" in body
 
 
 def test_a_refusal_is_shown_inside_the_appearance_section(logged_in, company):
@@ -318,10 +320,124 @@ def test_the_introduction_is_short(logged_in, company):
         "applies to every invoice straight away, including ones already sent.")
 
 
+# --- The footer -----------------------------------------------------------
+
+def test_switching_the_footer_on_saves_it_with_its_text_and_colours(logged_in, company):
+    logged_in.post(APPEARANCE, data={
+        "footer_form": "1", "footer_enabled": "1",
+        "footer_text": "By Monsieur · bymonsieur.ca",
+        "footer_background": "#1F4E79", "footer_text_color": "#ffffff",
+    })
+
+    profile = _profile(company)
+    assert profile.footer_enabled is True
+    assert profile.footer_text == "By Monsieur · bymonsieur.ca"
+    assert profile.footer_background == "#1f4e79"
+    assert profile.footer_text_color == "#ffffff"
+
+
+def test_unticking_the_box_switches_the_footer_off(logged_in, company):
+    logged_in.post(APPEARANCE, data={"footer_form": "1", "footer_enabled": "1"})
+
+    logged_in.post(APPEARANCE, data={"footer_form": "1"})
+
+    assert _profile(company).footer_enabled is False
+
+
+def test_a_form_without_the_footer_fields_leaves_the_footer_alone(logged_in, company):
+    """Hard rule 9: an unticked box and a box that wasn't on the form both
+    send nothing — only the marker tells them apart."""
+    logged_in.post(APPEARANCE, data={"footer_form": "1", "footer_enabled": "1"})
+
+    logged_in.post(APPEARANCE, data={"invoice_template": "banded"})
+
+    assert _profile(company).footer_enabled is True
+
+
+def test_switching_the_footer_off_keeps_its_text_and_colours(logged_in, company):
+    logged_in.post(APPEARANCE, data={
+        "footer_form": "1", "footer_enabled": "1", "footer_text": "Kept",
+        "footer_background": "#1f4e79",
+    })
+
+    logged_in.post(APPEARANCE, data={"footer_form": "1", "footer_text": "Kept",
+                                     "footer_background": "#1f4e79"})
+
+    profile = _profile(company)
+    assert profile.footer_enabled is False
+    assert profile.footer_text == "Kept"
+    assert profile.footer_background == "#1f4e79"
+
+
+def test_the_footer_text_is_one_line_and_capped(logged_in, company):
+    from billing import config
+
+    logged_in.post(APPEARANCE, data={"footer_text": "  By   Monsieur\n bymonsieur.ca  "})
+    assert _profile(company).footer_text == "By Monsieur bymonsieur.ca"
+
+    logged_in.post(APPEARANCE, data={"footer_text": "x" * 500})
+    assert len(_profile(company).footer_text) == config.FOOTER_TEXT_MAX_LENGTH
+
+    logged_in.post(APPEARANCE, data={"footer_text": "   "})
+    assert _profile(company).footer_text is None
+
+
+@pytest.mark.parametrize("field, label", [
+    ("footer_background", "footer background colour"),
+    ("footer_text_color", "footer text colour"),
+])
+def test_a_bad_footer_colour_is_refused(logged_in, company, field, label):
+    logged_in.post(APPEARANCE, data={field: "#123456"})
+
+    response = logged_in.post(APPEARANCE, data={field: "red;}"}, follow_redirects=True)
+
+    assert getattr(_profile(company), field) == "#123456"
+    assert f"Not saved: the {label}" in response.get_data(as_text=True)
+
+
+def test_the_page_shows_the_footer_switched_off_by_default(logged_in, company):
+    section = _section(logged_in)
+
+    assert ">Footer<" in section
+    assert 'name="footer_form" value="1"' in section
+    assert re.search(r'name="footer_enabled" value="1" data-footer-toggle\s*>', section)
+    assert 'name="footer_background" value="#e4e4e3"' in section
+    assert 'name="footer_text_color" value="#666666"' in section
+    assert "has-footer" not in logged_in.get("/settings/invoicing").get_data(as_text=True)
+
+
+def test_the_page_shows_a_saved_footer(logged_in, company):
+    logged_in.post(APPEARANCE, data={
+        "footer_form": "1", "footer_enabled": "1", "footer_text": "Hello & co",
+        "footer_background": "#1f4e79", "footer_text_color": "#ffffff",
+    })
+
+    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
+    section = _section(logged_in)
+
+    assert re.search(r'data-footer-toggle\s+checked', section)
+    assert 'name="footer_text" value="Hello &amp; co"' in section
+    assert 'name="footer_background" value="#1f4e79"' in section
+    assert 'name="footer_text_color" value="#ffffff"' in section
+    # The thumbnails show the band, in its colours.
+    assert "invoice-look has-footer" in body
+    assert "--look-footer-bg: #1f4e79" in body
+    assert section.count('class="layout-thumb__footer"') == 2
+
+
+def test_each_colour_has_its_own_picker(logged_in, company):
+    section = _section(logged_in)
+
+    for panel in ("invoice-colour-panel", "invoice-footer-bg-panel", "invoice-footer-fg-panel"):
+        assert f'aria-controls="{panel}"' in section
+        assert f'id="{panel}" data-color-panel hidden' in section
+
+
 def test_the_logo_comes_before_the_layout(logged_in, company):
     section = _section(logged_in)
 
-    assert section.index(">Logo<") < section.index(">Layout<") < section.index(">Accent colour<")
+    assert (section.index(">Logo<") < section.index(">Layout<")
+            < section.index(">Accent colour<") < section.index(">Footer<"))
 
 
 def test_the_preview_link_appears_only_where_a_pdf_can_be_rendered(

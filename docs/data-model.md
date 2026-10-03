@@ -464,7 +464,7 @@ than a tax account). `pst_number` is one field covering BC PST, Saskatchewan PST
 Manitoba RST — a seller is realistically registered in at most one of them, and Quebec
 sellers use QST instead. If someone ever needs two at once, that's the signal to move
 registrations to a label/value list rather than adding `pst_number_2`. `payment_instructions` is
-free text printed under **How to pay**, and only when there's still a balance owing
+free text printed under **Payment instructions**, and only when there's still a balance owing
 and the invoice isn't void — it exists because cash and e-transfer have no hosted
 payment page to send anyone to.
 
