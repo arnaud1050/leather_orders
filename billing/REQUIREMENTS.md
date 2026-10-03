@@ -477,18 +477,18 @@ reason being that a stored copy can disagree with the rows it describes.
   a PDF can be rendered (PD2).
 - **BR9.** Branding is per tenant: one company's choice never shows on
   another's invoices.
-- **BR10 — The settings section, top to bottom: logo, layout, colour.**
-  The layouts are radio buttons drawn as cards, each with a miniature of
-  the invoice; no dropdown. The colour is chosen from
-  `config.SUGGESTED_PRIMARY_COLORS` or any colour, through a picker the
-  page draws itself (a saturation/brightness area and a hue bar, usable by
-  pointer and keyboard) — never the browser's native colour input. The
-  submitted field is a plain `#rrggbb` text box, so the page works without
-  JavaScript; the script (`static/assets/js/invoice-appearance.js`) only
-  adds the picker, shows the colour section only while Banded is selected,
-  and makes the miniatures and the logo tile follow the colour live.
-- **BR11 — Every suggested colour is clean and dark enough for white
-  text**, so a white logo stays readable on the band whichever is picked.
+- **BR10 — The settings section, top to bottom: logo, layout, accent
+  colour**, under a two-sentence introduction. The layouts are radio
+  buttons drawn as cards, each with a miniature of the invoice; no
+  dropdown. The **accent colour** is a swatch beside a `#rrggbb` text box:
+  clicking the swatch opens a picker the page draws itself (a
+  saturation/brightness area and a hue bar, usable by pointer and
+  keyboard) that closes on a click elsewhere or Escape. No preset colours,
+  and never the browser's native colour input. The text box is what's
+  submitted, so the page works without JavaScript; the script
+  (`static/assets/js/invoice-appearance.js`) only adds the picker, shows
+  the accent colour only while Banded is selected, and makes the
+  miniatures and the logo tile follow the colour live.
 
 ## 14. The logo (`billing/logos.py`)
 
@@ -739,8 +739,7 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | BR7 | `test_update_appearance_saves_the_layout_and_the_colour`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_a_refusal_is_shown_inside_the_appearance_section`, `test_saving_returns_to_the_appearance_section`, `test_the_logo_routes_return_to_the_appearance_section` (settings tests in `tests/test_settings_company.py`) |
 | BR8 | `test_the_preview_shows_a_sample_in_the_saved_look`, `test_the_preview_uses_up_no_invoice_number`, `test_the_preview_requires_a_login`, `test_without_a_renderer_the_preview_goes_somewhere_that_works`, `test_the_sample_is_the_sellers_own_document`, `test_a_sample_from_an_unregistered_seller_charges_no_tax`, `test_the_preview_link_appears_only_where_a_pdf_can_be_rendered` |
 | BR9 | `test_update_appearance_is_per_company` |
-| BR10 | `test_the_logo_comes_before_the_layout`, `test_the_layouts_are_radio_buttons_named_classic_and_banded`, `test_each_layout_has_a_thumbnail`, `test_the_saved_layout_is_the_checked_one`, `test_the_page_shows_the_saved_colour`, `test_the_page_shows_the_defaults_before_anything_is_chosen`, `test_the_colour_picker_offers_the_suggested_colours`, `test_the_suggested_colour_in_use_is_marked` — gap: the picker's dragging, keyboard control, live thumbnails and the Banded-only colour section are script behaviour, checked by hand in a browser (desktop and phone width), not by the suite |
-| BR11 | `test_the_suggested_colours_are_all_clean_and_carry_white_text` |
+| BR10 | `test_the_logo_comes_before_the_layout`, `test_the_introduction_is_short`, `test_the_layouts_are_radio_buttons_named_classic_and_banded`, `test_each_layout_has_a_thumbnail`, `test_the_saved_layout_is_the_checked_one`, `test_the_page_shows_the_saved_colour`, `test_the_page_shows_the_defaults_before_anything_is_chosen`, `test_the_accent_colour_is_a_swatch_that_opens_a_picker` — gap: opening and closing the picker, dragging, keyboard control, the live miniatures and the Banded-only accent colour are script behaviour, checked by hand in a browser (desktop and phone width), not by the suite |
 | L1 | `test_a_png_is_accepted`, `test_a_jpeg_is_accepted_and_stored_as_png`, `test_other_image_formats_are_refused`, `test_anything_that_is_not_a_readable_png_or_jpeg_is_refused`, `test_the_file_name_does_not_make_it_an_image`, `test_a_phone_jpeg_is_accepted` |
 | L2 | `test_what_is_stored_is_a_fresh_encoding_not_the_upload` |
 | L3 | `test_an_upload_over_the_size_cap_is_refused`, `test_an_image_with_enormous_dimensions_is_refused_before_decoding`, `test_a_large_image_is_scaled_down_keeping_its_shape`, `test_a_small_image_is_not_scaled_up`, `test_transparency_survives`, `test_a_photo_sized_jpeg_is_accepted`, `test_the_upload_cap_matches_what_nginx_lets_through` |

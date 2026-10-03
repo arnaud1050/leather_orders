@@ -334,8 +334,8 @@ Email/Calendar → AI**:
   (top to bottom: a **Logo** tile, `upload_invoice_logo()` /
   `delete_invoice_logo()`, uploading on choose or drop like an order's "Add
   file"; the **Layout** as two radio cards, Classic and Banded, each with a
-  miniature invoice; and the **Colour**, shown only for Banded, from
-  suggestions or a picker the page draws itself — saved by
+  miniature invoice; and the **Accent colour**, shown only for Banded: a
+  swatch that opens a picker the page draws itself, beside a hex box — saved by
   `update_invoice_appearance()`, with a "Preview saved look" link. The
   script is `static/assets/js/invoice-appearance.js`; the miniatures and the
   logo tile follow the colour live through `--look-primary`. Every route

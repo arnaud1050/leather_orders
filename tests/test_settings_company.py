@@ -297,29 +297,31 @@ def test_the_page_shows_the_defaults_before_anything_is_chosen(logged_in, compan
     assert 'name="primary_color" value="#1c1a17"' in section
 
 
-def test_the_colour_picker_offers_the_suggested_colours(logged_in, company):
-    from billing import config
-
+def test_the_accent_colour_is_a_swatch_that_opens_a_picker(logged_in, company):
     section = _section(logged_in)
 
-    for color in config.SUGGESTED_PRIMARY_COLORS:
-        assert f'data-color="{color}"' in section
-    # No browser-native picker: the page draws its own.
+    assert ">Accent colour<" in section
+    assert re.search(r'<button type="button" class="color-picker__current" data-color-toggle\s+'
+                     r'aria-expanded="false" aria-controls="invoice-colour-panel"', section)
+    assert 'id="invoice-colour-panel" data-color-panel hidden' in section
+    # No preset swatches, and no browser-native picker: the page draws its own.
+    assert "data-color=" not in section
     assert 'type="color"' not in section
 
 
-def test_the_suggested_colour_in_use_is_marked(logged_in, company):
-    logged_in.post(APPEARANCE, data={"primary_color": "#1f3a5f"})
-
+def test_the_introduction_is_short(logged_in, company):
     section = _section(logged_in)
+    intro = section.split('<p class="detail-note">')[1].split("</p>")[0]
 
-    assert re.search(r'data-color="#1f3a5f"\s+aria-label="Use #1f3a5f" aria-pressed="true"', section)
+    assert " ".join(intro.split()) == (
+        "How your invoices look when you download them as a PDF. A change here "
+        "applies to every invoice straight away, including ones already sent.")
 
 
 def test_the_logo_comes_before_the_layout(logged_in, company):
     section = _section(logged_in)
 
-    assert section.index(">Logo<") < section.index(">Layout<") < section.index(">Colour<")
+    assert section.index(">Logo<") < section.index(">Layout<") < section.index(">Accent colour<")
 
 
 def test_the_preview_link_appears_only_where_a_pdf_can_be_rendered(

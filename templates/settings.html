@@ -351,9 +351,7 @@
     <h2>Invoice appearance</h2>
     <p class="detail-note">
       How your invoices look when you download them as a PDF. A change here
-      applies to every invoice straight away, including ones already sent:
-      what an invoice says stays as it was sent, only its look follows your
-      choice.
+      applies to every invoice straight away, including ones already sent.
     </p>
 
     {% if appearance_notice %}
@@ -444,16 +442,18 @@
       </fieldset>
 
       <div class="invoice-look__colour" data-colour-section>
-        <h3 class="settings-subheading">Colour</h3>
+        <h3 class="settings-subheading">Accent colour</h3>
         <p class="detail-note">Used by Banded for the band, the table headings and the total.</p>
         <div class="color-picker" data-color-picker>
-          <div class="color-picker__swatches" role="group" aria-label="Suggested colours">
-            {% for color in suggested_colors %}
-            <button type="button" class="color-picker__swatch" style="background: {{ color }}" data-color="{{ color }}"
-                    aria-label="Use {{ color }}" aria-pressed="{{ 'true' if color == branding.primary else 'false' }}"></button>
-            {% endfor %}
-            <button type="button" class="color-picker__swatch color-picker__swatch--custom" data-color-toggle
-                    aria-expanded="false" aria-controls="invoice-colour-panel" aria-label="Choose any colour" hidden></button>
+          <div class="color-picker__field">
+            {# The swatch opens the picker; the hex box beside it is what's
+               submitted, and works on its own without JavaScript. #}
+            <button type="button" class="color-picker__current" data-color-toggle
+                    aria-expanded="false" aria-controls="invoice-colour-panel"
+                    aria-label="Choose the accent colour"></button>
+            <input type="text" name="primary_color" value="{{ branding.primary }}" maxlength="7"
+                   pattern="#[0-9a-fA-F]{6}" spellcheck="false" autocomplete="off"
+                   aria-label="Accent colour as a hex code" data-color-hex>
           </div>
           <div class="color-picker__panel" id="invoice-colour-panel" data-color-panel hidden>
             <div class="color-picker__area" data-color-area tabindex="0" role="slider"
@@ -465,12 +465,6 @@
               <span class="color-picker__hue-handle"></span>
             </div>
           </div>
-          <label class="color-picker__field">
-            <span class="color-picker__current" aria-hidden="true"></span>
-            <input type="text" name="primary_color" value="{{ branding.primary }}" maxlength="7"
-                   pattern="#[0-9a-fA-F]{6}" spellcheck="false" autocomplete="off"
-                   aria-label="Colour as a hex code" data-color-hex>
-          </label>
         </div>
       </div>
 

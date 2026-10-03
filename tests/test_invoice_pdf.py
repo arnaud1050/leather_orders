@@ -223,14 +223,6 @@ def test_the_banded_layout_wears_the_chosen_colour(app, doc):
     assert "color: #7e7a78" in html          # labels stay a quiet grey
 
 
-def test_the_suggested_colours_are_all_clean_and_carry_white_text():
-    """Offered as suggestions in settings, so each must survive the CSS
-    check and keep a white logo readable on the band."""
-    for color in config.SUGGESTED_PRIMARY_COLORS:
-        assert clean_color(color) == color
-        assert Branding(primary_color=color).on_primary == "#ffffff", color
-
-
 def test_a_bad_stored_colour_never_reaches_the_stylesheet(app, doc):
     """The row is data. Whatever is in it, only a checked #rrggbb is ever
     written into CSS."""

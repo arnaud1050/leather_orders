@@ -9,8 +9,9 @@
  *    beside the tile instead of after a round trip;
  *  - the layout cards' thumbnails and the logo tile follow the colour as
  *    it changes, through the section's --look-primary / --look-on-primary;
- *  - the colour is chosen with suggestion swatches, or a saturation /
- *    brightness area and a hue bar, both usable by pointer and keyboard.
+ *  - clicking the colour swatch opens a picker — a saturation /
+ *    brightness area and a hue bar, both usable by pointer and keyboard —
+ *    beside the hex box, which stays typeable.
  *
  * Only the hex field is ever submitted, and the server checks it again —
  * nothing here is trusted.
@@ -164,7 +165,6 @@
   var hueHandle = hueBar.querySelector('span');
   var panel = picker.querySelector('[data-color-panel]');
   var toggle = picker.querySelector('[data-color-toggle]');
-  var swatches = picker.querySelectorAll('[data-color]');
 
   var current = HEX.test(field.value.toLowerCase()) ? field.value.toLowerCase() : '#1c1a17';
   var state = rgbToHsv(hexToRgb(current));
@@ -181,12 +181,9 @@
     area.setAttribute('aria-valuetext', 'Saturation ' + Math.round(state.s * 100)
       + '%, brightness ' + Math.round(state.v * 100) + '%');
     hueBar.setAttribute('aria-valuenow', String(Math.round(state.h)));
-    swatches.forEach(function (swatch) {
-      swatch.setAttribute('aria-pressed', swatch.dataset.color === current ? 'true' : 'false');
-    });
   }
 
-  // Set from an exact hex (a swatch, the text field): that hex is what's
+  // Set from an exact hex (the text field): that hex is what's
   // kept, rather than a round trip through HSV that could shift it a unit.
   function setHex(hex, keepFieldText) {
     current = hex;
@@ -200,14 +197,25 @@
     paint(false);
   }
 
-  swatches.forEach(function (swatch) {
-    swatch.addEventListener('click', function () { setHex(swatch.dataset.color); });
-  });
+  function openPanel(open) {
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
 
-  toggle.hidden = false;
   toggle.addEventListener('click', function () {
-    panel.hidden = !panel.hidden;
-    toggle.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+    openPanel(panel.hidden);
+    if (!panel.hidden) area.focus();
+  });
+  // Closes like a menu: a click anywhere else, or Escape (which hands
+  // focus back to the swatch, so the keyboard isn't left stranded).
+  document.addEventListener('pointerdown', function (event) {
+    if (!panel.hidden && !picker.contains(event.target)) openPanel(false);
+  });
+  picker.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !panel.hidden) {
+      openPanel(false);
+      toggle.focus();
+    }
   });
 
   field.addEventListener('input', function () {

@@ -3161,52 +3161,25 @@ a.btn-secondary {
   display: none;
 }
 
-/* Wide enough for the ten suggestions and the wheel on one row. */
+/* The picker opens in place under the swatch and pushes Save down. It
+   was a floating menu at first, but this section ends the page, so a menu
+   covered Save and ran off the bottom. */
 .color-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 400px;
   margin: 10px 0 0;
 }
 
-.color-picker__swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.color-picker__swatch {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid rgba(28, 26, 23, 0.2);
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.color-picker__swatch[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
-}
-
-.color-picker__swatch:focus-visible {
-  outline: 2px solid var(--status-progress);
-  outline-offset: 3px;
-}
-
-/* "Any colour" — a wheel, so it reads as "more than these". */
-.color-picker__swatch--custom {
-  background: conic-gradient(#e53935, #fdd835, #43a047, #1e88e5, #8e24aa, #e53935);
-}
-
-.color-picker__swatch--custom[aria-expanded="true"] {
-  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
-}
-
 .color-picker__panel {
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 260px;
+  max-width: calc(100vw - 40px);
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: 0 6px 20px rgba(28, 26, 23, 0.18);
 }
 
 .color-picker__panel[hidden] {
@@ -3269,9 +3242,21 @@ a.btn-secondary {
   flex-shrink: 0;
   width: 38px;
   height: 38px;
+  padding: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   background: var(--look-primary);
+  cursor: pointer;
+}
+
+.color-picker__current:hover,
+.color-picker__current[aria-expanded="true"] {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--ink);
+}
+
+.color-picker__current:focus-visible {
+  outline: 2px solid var(--status-progress);
+  outline-offset: 3px;
 }
 
 .color-picker__field input {

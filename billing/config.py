@@ -45,15 +45,6 @@ DEFAULT_INVOICE_TEMPLATE = "classic"
 # else's taste.
 DEFAULT_PRIMARY_COLOR = "#1c1a17"
 
-# Suggestions offered beside the colour picker in settings. Dark enough
-# that white text and a white logo stay readable on the band, and spread
-# across the wheel so most brands find a neighbour. Not a restriction:
-# any #rrggbb can be chosen.
-SUGGESTED_PRIMARY_COLORS = (
-    "#1c1a17", "#3b3b3b", "#1f3a5f", "#2c5d8a", "#2f4f3a",
-    "#3d6b5a", "#6b1f2a", "#8c2f39", "#4a2c4a", "#8c6d1f",
-)
-
 # Where invoice logos are kept (see billing/logos.py). The same data/
 # directory as the SQLite file and the order documents — the bind-mounted
 # volume in both Docker deployments, so a logo survives a rebuild.

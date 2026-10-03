@@ -2268,7 +2268,6 @@ def settings_invoicing():
         provinces=PROVINCES,
         next_number=invoicing.next_number(company.id, company.name),
         invoice_templates=billing_config.INVOICE_TEMPLATES,
-        suggested_colors=billing_config.SUGGESTED_PRIMARY_COLORS,
         branding=profile.branding,
         logo_max_bytes=billing_config.LOGO_MAX_BYTES,
         appearance_notice=session.pop("appearance_notice", None),
