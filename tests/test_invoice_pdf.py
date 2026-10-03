@@ -30,6 +30,10 @@ from models import Client, Order, OrderLine, db
 needs_renderer = pytest.mark.skipif(
     not pdf.available(), reason="WeasyPrint/Pango isn't installed here",
 )
+needs_pdftotext = pytest.mark.skipif(
+    not pdf.available() or shutil.which("pdftotext") is None,
+    reason="needs WeasyPrint and poppler's pdftotext (both in the Docker image)",
+)
 
 
 @pytest.fixture(params=sorted(config.INVOICE_TEMPLATES))
@@ -350,8 +354,10 @@ def test_the_footer_band_fills_the_bottom_margin(app, doc, template):
     assert " 14mm;\n    @footnote" in stylesheet      # the page's bottom margin
     assert "height: 14mm;" in stylesheet              # the band
     if template == "classic":
-        # Classic keeps its side margins, so the corners carry the colour.
-        assert "@bottom-left-corner" in stylesheet and "@bottom-right-corner" in stylesheet
+        # Classic keeps its side margins; the band reaches out through them
+        # as one box (coloured corner boxes left seams where they met).
+        assert "margin: 0 -18mm;" in stylesheet
+        assert "corner" not in stylesheet
 
 
 @needs_renderer
@@ -361,6 +367,27 @@ def test_the_rendered_footer_band_touches_the_bottom_edge(app, doc, template):
     y, height = found["page-footer"]
 
     assert abs((y + height) - page_height) < 1
+
+
+@needs_pdftotext
+@pytest.mark.parametrize("template", sorted(config.INVOICE_TEMPLATES))
+def test_the_rendered_band_spans_the_sheet_in_one_colour(app, doc, template, tmp_path):
+    """Looked at as pixels: the bottom row is the band's colour from the
+    left edge to the right, and it's 14mm tall at both edges and the middle."""
+    data = pdf.render_pdf(doc, footer_look(template, footer_background="#1f4e79"))
+    (tmp_path / "page.pdf").write_bytes(data)
+    subprocess.run(["pdftoppm", "-r", "50", "-png", "-singlefile",
+                    str(tmp_path / "page.pdf"), str(tmp_path / "page")], check=True)
+    from PIL import Image
+
+    image = Image.open(tmp_path / "page.png").convert("RGB")
+    width, height = image.size
+    band = (31, 78, 121)
+    for x in (1, width // 2, width - 2):
+        column = [image.getpixel((x, y)) for y in range(height)]
+        assert column[-1] == band, x
+        tall = next(i for i, y in enumerate(range(height - 1, 0, -1)) if column[y] != band)
+        assert abs(tall / height * 279.4 - 14) < 1.5, (x, tall)
 
 
 @needs_renderer
@@ -374,11 +401,6 @@ def test_with_a_footer_the_payment_instructions_sit_well_above_it(app, doc, temp
     gap_mm = (band_y - (pay_y + pay_height)) * 25.4 / 96
     assert 9 <= gap_mm <= 14, gap_mm
 
-
-needs_pdftotext = pytest.mark.skipif(
-    not pdf.available() or shutil.which("pdftotext") is None,
-    reason="needs WeasyPrint and poppler's pdftotext (both in the Docker image)",
-)
 
 
 def pdf_text(data: bytes) -> list[str]:

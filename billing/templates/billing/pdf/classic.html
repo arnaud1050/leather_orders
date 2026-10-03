@@ -31,10 +31,6 @@
       vertical-align: bottom;
       padding: 0;
     }
-    /* The page keeps its side margins, so the corners are coloured too:
-       the band reaches both edges, like Banded's. */
-    @bottom-left-corner { content: ""; background: {{ branding.footer_bg }}; }
-    @bottom-right-corner { content: ""; background: {{ branding.footer_bg }}; }
     {% else %}
     @bottom-left {
       /* Taken from the page via string-set (see .number) rather than
@@ -257,7 +253,10 @@
     align-items: center;
     gap: 12pt;
     height: 14mm;
-    padding: 0;
+    /* The page keeps 18mm side margins, so the band reaches out through
+       them to both edges: one box, edge to edge, with no seams. */
+    margin: 0 -18mm;
+    padding: 0 18mm;
     background: {{ branding.footer_bg }};
     color: {{ branding.footer_fg }};
     font-size: 8pt;

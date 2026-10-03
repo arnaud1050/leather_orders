@@ -422,18 +422,27 @@ reason being that a stored copy can disagree with the rows it describes.
 - **PD8.** Payment instructions follow U5 exactly: printed only while money
   is owed and the invoice isn't void, under the heading **"Payment
   instructions"**.
-- **PD8a — At the bottom left of the last page.** They sit in WeasyPrint's
-  footnote area (`float: footnote`, with no call or marker printed), so
-  they close the page they land on, at its foot and on the left, as in the
-  invoice the Banded layout was ported from. Unlike that invoice they are
-  **never absolutely positioned**: when they don't fit under the last
-  line, they move to the next page instead of being printed over items.
-  The block's markup has **no whitespace between its tags** — inside the
-  footnote area each gap becomes an empty ~27px line, which made it
-  measure twice its height and moved it to a page of its own with room to
-  spare.
-- **PD8b — Notes have a "Notes" heading** and come after the payments
-  received and before the payment instructions.
+- **PD8a — A closing block at the bottom left of the last page.** Notes,
+  then payment instructions, sit together in WeasyPrint's footnote area
+  (`float: footnote`, with no call or marker printed), so they close the
+  page they land on, at its foot and on the left, as in the invoice the
+  Banded layout was ported from. Unlike that invoice the block is **never
+  absolutely positioned**: when it doesn't fit under the last line, it
+  moves to the next page instead of being printed over items. With a
+  footer it ends about 10mm above the band. Its markup has **no whitespace
+  between its tags** — inside the footnote area each gap becomes an empty
+  ~27px line, which once made it measure twice its height and moved it to
+  a page of its own with room to spare. With no notes and nothing owed,
+  there is no closing block.
+- **PD8b — Notes have a "Notes" heading and always take the room of three
+  lines**, written or not, so the payment instructions print at the same
+  height on every invoice whatever the notes say. Longer notes stored
+  before the limit (PD8c) are cut at three lines on paper.
+- **PD8c — Notes are at most three lines.** `clean_notes()` (applied by
+  `set_status`) drops blank lines, joins any lines past the third onto it
+  rather than losing them, and caps the text at `config.NOTES_MAX_LENGTH`
+  (250) characters; the invoice page's box is three rows tall with that
+  `maxlength`.
 - **PD9.** The file downloads as an attachment named `<number>.pdf`, the
   number reduced to letters, digits, `_` and `-` (the prefix is
   tenant-typed), falling back to `invoice.pdf`.
@@ -510,16 +519,20 @@ reason being that a stored copy can disagree with the rows it describes.
 - **FT1 — Off until switched on.** `footer_enabled` defaults to false, and
   with it off neither layout prints a footer band or any footer text, even
   if text and colours are stored.
-- **FT2 — A band on every page.** Switched on, both layouts print a band in
-  the page's bottom margin: the footer text on the left and the invoice
-  number with "Page n of m" on the right, which then print nowhere else.
-  Banded runs it edge to edge, like its header; Classic keeps it within
-  the page's side margins.
+- **FT2 — A band at the very bottom of every page**, as on the invoice it's
+  modelled on: 14mm tall, exactly filling the page's bottom margin, from
+  the left edge of the sheet to the right in both layouts (Classic's
+  reaches out through its side margins as one box — coloured corner boxes
+  left visible seams where they met; a page background was tried and
+  WeasyPrint ignores its size). The footer text on the left and the
+  invoice number with "Page n of m" on the right, which then print nowhere
+  else.
 - **FT3 — It can't cover or break the invoice.** The band is a running
-  element shown in a margin box, so it is never on top of the content, and
-  it sits 8mm clear of the paper's bottom edge, inside what any printer
-  can print. The text is printed as escaped HTML, never written into the
-  stylesheet.
+  element shown in a margin box, so it is never on top of the content. Its
+  text is centred, about 7mm up from the edge, which clears what most
+  printers can't reach; the band's colour itself may stop short of the
+  edge on a printer that can't print borderless. The text is printed as
+  escaped HTML, never written into the stylesheet.
 - **FT4 — Colours and text.** A background and a text colour, each a
   checked `#rrggbb` through `Branding.footer_bg` / `footer_fg`, defaulting
   to `#e4e4e3` and `#666666` (the grey band of the invoice it's modelled
@@ -769,14 +782,15 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | PD6 | `test_host_links_are_not_rendered` |
 | PD7 | `test_a_status_that_changes_the_meaning_is_printed`, `test_sent_is_not_printed` |
 | PD8 | `test_payment_instructions_follow_the_same_rule_as_the_page` |
-| PD8a | `test_payment_instructions_sit_at_the_foot_of_the_last_page`, `test_the_payment_block_has_no_whitespace_between_its_tags`, `test_a_short_invoice_with_everything_on_it_stays_on_one_page` *(skipped without WeasyPrint)*, `test_rendered_payment_instructions_close_the_last_page_after_the_notes` *(needs WeasyPrint and pdftotext — runs in the Docker image)* |
-| PD8b | `test_notes_have_a_heading_and_come_before_the_payment_instructions` |
+| PD8a | `test_payment_instructions_sit_at_the_foot_of_the_last_page`, `test_the_payment_block_has_no_whitespace_between_its_tags`, `test_nothing_closes_an_invoice_with_no_notes_and_nothing_owed`, `test_a_short_invoice_with_everything_on_it_stays_on_one_page` *(skipped without WeasyPrint)*, `test_with_a_footer_the_payment_instructions_sit_well_above_it` *(skipped without WeasyPrint)*, `test_rendered_payment_instructions_close_the_last_page_after_the_notes` *(needs WeasyPrint and pdftotext — runs in the Docker image)* |
+| PD8b | `test_notes_have_a_heading_and_come_before_the_payment_instructions`, `test_notes_take_the_room_of_three_lines_whatever_their_length`, `test_the_payment_instructions_print_at_the_same_height_whatever_the_notes` *(skipped without WeasyPrint)* |
+| PD8c | `test_notes_are_kept_to_three_lines`, `test_notes_are_capped_in_length` (`tests/test_invoicing.py`), `test_saved_notes_are_kept_to_three_lines`, `test_the_notes_box_says_it_holds_three_lines` (`tests/test_invoice_routes.py`) |
 | PD9 | `test_the_pdf_downloads_under_the_invoice_number`, `test_the_filename_is_the_number_made_safe` |
 | PD10 | `test_a_long_invoice_renders_without_error` *(skipped without WeasyPrint)* — gap: that blocks stay whole and the header repeats was checked by eye on a rendered 4-page invoice, not asserted |
 | PD11 | `test_an_unknown_template_falls_back_to_the_default` |
 | FT1 | `test_there_is_no_footer_until_it_is_switched_on`, `test_the_footer_is_off_with_grey_defaults_until_chosen`, `test_the_page_shows_the_footer_switched_off_by_default` |
-| FT2 | `test_the_footer_prints_its_text_and_the_page_number`, `test_the_rendered_footer_is_on_every_page` *(needs WeasyPrint and pdftotext)* |
-| FT3 | `test_the_footer_text_is_escaped_and_never_enters_the_stylesheet`, `test_the_footer_keeps_clear_of_the_paper_edge` — gap: that the band never overlaps content was checked by eye on rendered PDFs |
+| FT2 | `test_the_footer_prints_its_text_and_the_page_number`, `test_the_footer_band_fills_the_bottom_margin`, `test_the_rendered_footer_band_touches_the_bottom_edge` *(skipped without WeasyPrint)*, `test_the_rendered_band_spans_the_sheet_in_one_colour` and `test_the_rendered_footer_is_on_every_page` *(need WeasyPrint and poppler)* |
+| FT3 | `test_the_footer_text_is_escaped_and_never_enters_the_stylesheet` — gap: that the band never overlaps content was checked by eye on rendered PDFs |
 | FT4 | `test_bad_footer_colours_fall_back_to_the_defaults`, `test_the_footer_text_is_one_line_and_capped`, `test_a_bad_footer_colour_is_refused` |
 | FT5 | *(by construction — the footer is on `Branding`, read live like the rest; see PD12)* |
 | FT6 | `test_switching_the_footer_on_saves_it_with_its_text_and_colours`, `test_unticking_the_box_switches_the_footer_off`, `test_a_form_without_the_footer_fields_leaves_the_footer_alone`, `test_switching_the_footer_off_keeps_its_text_and_colours`, `test_the_page_shows_a_saved_footer`, `test_each_colour_has_its_own_picker` — gap: showing the fields only while ticked, and the miniatures following the colours live, are script behaviour checked by hand in a browser |
