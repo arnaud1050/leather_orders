@@ -152,8 +152,12 @@ def test_http_is_allowed_only_on_loopback(monkeypatch):
 
 def test_credentials_require_a_refresh_token(app, account):
     account.refresh_token_encrypted = None
-    with pytest.raises(ReauthorizationRequired, match="no refresh token"):
+    with pytest.raises(ReauthorizationRequired, match="lasting access") as caught:
         google_oauth.credentials_for(account)
+    # Shown to the studio on the integrations page: the way back, and never
+    # "disconnect", which deletes every synced message.
+    assert "Connect Gmail" in str(caught.value)
+    assert "isconnect" not in str(caught.value)
 
 
 def test_valid_credentials_are_not_refreshed(app, account, monkeypatch):
@@ -217,13 +221,16 @@ def test_a_revoked_grant_raises_reauthorization_required(app, account, monkeypat
             self.expiry = None
 
         def refresh(self, request):
-            raise RefreshError("invalid_grant")
+            raise RefreshError("invalid_grant: Token has been expired or revoked.")
 
     monkeypatch.setattr("google.oauth2.credentials.Credentials", FakeCredentials)
     monkeypatch.setattr("google.auth.transport.requests.Request", lambda: object())
 
-    with pytest.raises(ReauthorizationRequired, match="reconnected"):
+    with pytest.raises(ReauthorizationRequired, match="Connect Gmail") as caught:
         google_oauth.credentials_for(account)
+    # Google's own wording goes to the log, not to the studio (SY-4a).
+    assert "invalid_grant" not in str(caught.value)
+    assert account.email_address in str(caught.value)
 
 
 def test_naive_utc_normalisation():

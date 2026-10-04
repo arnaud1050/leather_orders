@@ -135,6 +135,10 @@ Covered by `tests/test_ai_reply.py`.
   person**, and leaves whatever is already typed in the textarea
   untouched. Each of the common statuses gets its own advice, because each
   has a different fix.
+- **R-5a** The result shows as a save notice under the reply box's buttons
+  (the host's `MOD8a`): green "Draft inserted. Nothing has been sent…" —
+  the reminder that a box filling itself sent nothing — or red with the
+  `R-5` sentence. While it runs, the button itself reads "Drafting…".
 - **R-6** The button doesn't render at all when no key is saved (`A-1`),
   nor where there's no conversation to draft from — the client page's "New
   message" box, whose suggestion could only be a form letter.
@@ -242,6 +246,14 @@ Covered by `tests/test_ai_render.py`.
 - **G-11** A failed render leaves **no draft** — no row, no file.
 - **G-12** A draft belonging to another company is not served, saved or
   discarded, and answers exactly as a nonexistent one does.
+- **G-13** The window reports like any other save (the host's `MOD8a`): a
+  refused render is a red save notice under Render image, a refused save or
+  discard is one inside that image's card, and the busy button reads
+  "Rendering…" / "Saving…". A saved render reloads the order page, and the
+  host's `save_render` hook leaves a green notice in its Documents section
+  ("Rendering saved to Documents as …") so the result outlives the reload.
+  A render that works and a discard that works say nothing: the image
+  appearing, or its card going, is the result.
 
 ## 8. Deliberately not built
 

@@ -546,6 +546,9 @@ def _save_rendered_document(company_id: int, order_id: int, filename: str,
         return " ".join(result.errors)
     if not result.saved:
         return "The rendering couldn't be saved."
+    # The render window reloads the order page to show the new card; this is
+    # what keeps the result on screen across that reload (ai G-13).
+    documents_routes.leave_notice(f'Rendering saved to Documents as "{filename}".')
     return None
 
 
@@ -913,6 +916,7 @@ def login():
         return redirect(_landing_page())
 
     error = None
+    email = ""
     if request.method == "POST":
         # Normalised through the same helper that writes the column, so a
         # capitalised address signs in rather than mystifying its owner.
@@ -941,7 +945,9 @@ def login():
             next_url = request.args.get("next") if user.is_tenant_user else None
             return redirect(next_url or _landing_page())
 
-    return render_template("login.html", error=error, active_view=None)
+    # A refused sign-in comes back with the address still typed; only the
+    # password has to be entered again.
+    return render_template("login.html", error=error, email=email, active_view=None)
 
 
 @app.route("/logout")

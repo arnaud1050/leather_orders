@@ -223,6 +223,31 @@ def test_a_folded_address_signs_in(app, company):
         assert b"Incorrect email or password." not in response.data
 
 
+
+def test_a_refused_sign_in_is_a_red_save_notice_and_keeps_the_address(app, user):
+    """CO4i. The refusal is the shared red notice, not a style of its own,
+    and only the password has to be typed again — never echoed back."""
+    with app.test_client() as client:
+        body = client.post("/login", data={
+            "email": "admin@example.com", "password": "not-the-password",
+        }).get_data(as_text=True)
+
+    assert "save-notice--error" in body and 'role="alert"' in body
+    assert "Incorrect email or password." in body
+    assert 'value="admin@example.com"' in body
+    assert "not-the-password" not in body
+    # Focus goes where the typing is still to be done.
+    assert 'type="password" name="password" required autofocus' in body
+
+
+def test_a_fresh_sign_in_page_has_no_notice(app):
+    with app.test_client() as client:
+        body = client.get("/login").get_data(as_text=True)
+    # The element, not the word: every page loads save-notice.js (MOD8a).
+    assert "data-save-notice" not in body
+    assert 'value=""' in body
+
+
 # --- PA7-PA9: adding users and resetting passwords ------------------------
 
 def test_a_user_is_added_to_the_named_company(admin_client, other_company):

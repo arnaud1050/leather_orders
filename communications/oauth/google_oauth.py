@@ -18,12 +18,25 @@ also carries the company_id the flow started for, which is what the new
 account is attached to: never a company_id from the query string.
 """
 
+import logging
 import os
 import secrets
 from datetime import datetime, timezone
 
 from communications import config
 from communications.providers.base import ProviderError, ReauthorizationRequired
+
+logger = logging.getLogger(__name__)
+
+# How to recover from a dead grant, in the studio's words: it ends up in
+# EmailAccount.last_sync_error and on the integrations page. Connecting the
+# same address again updates the account in place (prompt="consent" gets a
+# fresh refresh token), so "disconnect first" — which deletes every synced
+# message — is exactly the wrong advice.
+_RECONNECT_ADVICE = (
+    "Click Connect Gmail and sign in with this address again; "
+    "nothing already synced is lost."
+)
 
 # Session keys for the in-flight flow. Namespaced so they can't collide
 # with anything Flask-Login or a future flow puts in the session.
@@ -197,8 +210,8 @@ def credentials_for(account):
     refresh_token = account.refresh_token
     if not refresh_token:
         raise ReauthorizationRequired(
-            f"{account.email_address} has no refresh token stored. "
-            "Disconnect and reconnect the account."
+            f"Google hasn't given the app lasting access to {account.email_address}. "
+            + _RECONNECT_ADVICE
         )
 
     credentials = Credentials(
@@ -216,10 +229,14 @@ def credentials_for(account):
             credentials.refresh(Request())
         except RefreshError as exc:
             # The user revoked access in their Google account, or the grant
-            # was expired by Google. No amount of retrying helps.
+            # was expired by Google. No amount of retrying helps. Google's
+            # own wording ("invalid_grant: …") goes to the log; the message
+            # is shown on the integrations page, to the studio.
+            logger.warning("Token refresh refused for account %s: %s", account.id, exc)
             raise ReauthorizationRequired(
-                f"Google refused to refresh access for {account.email_address} "
-                f"({exc}). The account needs to be reconnected."
+                f"Google no longer accepts the app's access to {account.email_address}: "
+                "it was withdrawn from the Google account, or it expired. "
+                + _RECONNECT_ADVICE
             ) from exc
         account.access_token = credentials.token
         account.token_expiry = _naive_utc(credentials.expiry)

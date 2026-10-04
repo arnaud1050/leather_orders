@@ -71,6 +71,10 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   platform staff on `/admin`. `?next=` is honoured for a tenant user only —
   a staff session following a bookmarked tenant URL would bounce straight
   off `CO6b`.
+- **CO4i.** A refused sign-in shows its reason as the red `.save-notice`
+  (drawn by `templates/_save_notice.html`, like every refused save, `MOD8`)
+  and comes back with the email address still filled in and the password
+  field focused. The password is never echoed back.
 - **CO4h.** A tenant user whose `users.must_change_password` is set is
   redirected to Settings → Account from every route except the settings
   page itself, `change_password`, `/logout`, the legal pages and static
@@ -829,6 +833,17 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   dialogs, like the timeline's OR13). Two lists whose add form sits under a
   long list (a company's Users, Platform admins) report the add beside the
   form rather than under a heading a screen away.
+- **MOD8a — A result that arrives without a page load is the same notice.**
+  A button that runs a request from script (Suggest response, Render image,
+  a render's Save and Discard) reports its result as a `.save-notice`
+  built by `saveNotice()` in `static/assets/js/save-notice.js`, the
+  script twin of the macro: same classes, same `role="alert"` /
+  `role="status"`, same `data-save-notice`, text only. It lands in an empty
+  slot next to the button that was pressed. While the request runs, **the
+  button says so in its own label** ("Drafting…", "Rendering…", "Saving…",
+  via `busyButton()`), disabled and `aria-busy`; there is no separate grey
+  status line. Retired: `.compose-form__ai-status` and `.ai-render__status`
+  (the design system's StatusLine).
   **Every save on the Settings pages, the account switches and the invoice
   page reports**, not only refusals: adding, hiding, showing and deleting a
   configured option (order and document types, sources, units, inventory
@@ -978,6 +993,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | CO4a | `test_change_password_replaces_the_hash`, `test_the_new_password_is_what_logs_in_afterwards`, `test_a_wrong_current_password_changes_nothing`, `test_a_mismatched_confirmation_changes_nothing`, `test_a_short_new_password_is_rejected`, `test_reusing_the_current_password_is_rejected`, `test_the_change_password_routes_require_login` (`tests/test_change_password.py`) |
 | CO4b | — gap — (single-user deployments mean there's no second user to assert isolation against; the route only ever reads `current_user.id`) |
 | CO4c | `test_the_status_message_shows_once` (`tests/test_change_password.py`) |
+| CO4i | `test_a_refused_sign_in_is_a_red_save_notice_and_keeps_the_address`, `test_a_fresh_sign_in_page_has_no_notice` (`tests/test_admin.py`); in a browser, `e2e/pages/LoginPage.ts` reads the error from `.save-notice--error` |
 | CO4h | `test_changing_the_password_clears_the_forced_flag`, `test_a_forced_change_redirects_everywhere_but_settings` (`tests/test_change_password.py`); `test_a_reset_password_must_be_changed`, `test_resetting_a_staff_password_does_not_require_a_change`, `test_a_user_is_added_to_the_named_company` (`tests/test_admin.py`) |
 | CO5 | `test_nav_hides_for_a_logged_out_visitor` |
 | CO5a | `test_nav_includes_the_mobile_hamburger_toggle` (markup presence/order only — the CSS collapse and the open/close click behavior itself are client-side and unassertable by a route test, same limitation as TL7–TL9) |
@@ -1054,6 +1070,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | MOD5 | `test_edit_client_redirects_to_return_to`, `test_edit_order_redirects_to_return_to` |
 | MOD6 | `test_back_label_variants` |
 | MOD7 | `test_every_page_loads_the_script`, `test_the_script_is_served`, `test_every_save_message_is_marked_so_it_is_scrolled_to`, `test_no_form_is_submitted_without_its_submit_event` (`tests/test_stay_in_place.py`); the scrolling itself is `e2e/tests/save-notices.spec.ts` (a save halfway down Settings → Email/Calendar and a refusal at the bottom reopen scrolled to their message, and a refused duplicate on Settings → Orders shows in view) |
+| MOD8a | `test_the_script_twin_draws_the_macros_markup`, `test_every_page_loads_the_script_twin`, `test_no_template_draws_a_grey_status_line` (`tests/test_save_notices.py`); `test_the_reply_box_has_a_notice_slot_not_a_status_line` (`tests/test_ai_reply.py`); `test_saving_a_render_leaves_a_notice_on_the_order_page` (`tests/test_ai_render.py`). The drawing itself was checked in a browser |
 | MOD8 | `tests/test_save_notices.py`: `test_every_tenant_page_is_wired` and `test_every_admin_page_is_wired` (every form names a slot its page renders, every slot shows what's sent to it, anything else lands at the top), `test_every_form_that_leaves_a_message_names_its_section` (static: a form posting to a route that reports must carry `notice_field`), plus one test per kind of save posting it for real and finding its message in the right slot in the right colour (the formerly silent saves: `test_saving_the_time_zone_says_which_zone` through `test_invoice_settings_report_what_changed`, refused deletes included); `test_every_save_message_is_marked_so_it_is_scrolled_to` (`tests/test_stay_in_place.py`) checks no template draws a notice by hand. Checked against three deliberate regressions: a form's field removed, a slot renamed, errors drawn green. In a browser: `e2e/tests/save-notices.spec.ts` (the colours as drawn), `e2e/tests/calendar-event-errors.spec.ts` (a refused event dialog reopening, see CAL-14), `e2e/tests/invoice-logo.spec.ts` (a logo refused by `invoice-appearance.js` before upload, in red, nothing sent) |
 | SET1 | `test_settings_root_redirects_to_general` |
 | SET2–SET3 | — gap — |

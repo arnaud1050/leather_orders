@@ -7,6 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/style.css') }}">
+  {# saveNotice() / busyButton(): a save result drawn from script, in the
+     same box as the _save_notice.html macro (MOD8a). In the head so a
+     page's own inline script can rely on it. #}
+  <script src="{{ url_for('static', filename='assets/js/save-notice.js') }}"></script>
 </head>
 <body>
   {# Platform announcement — a fact about the installation, not the

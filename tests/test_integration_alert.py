@@ -125,6 +125,21 @@ def test_the_badge_reaches_the_integrations_page_itself(logged_in, account):
     assert "nav-badge--alert" in body
 
 
+def test_the_error_itself_is_a_red_warning_note_on_the_account(logged_in, account):
+    """SY-4a. A broken mailbox is a standing condition, so the red
+    .warning-note--alert inside its card — not a line of small red text."""
+    fail(account, "Google no longer accepts the app's access.")
+    body = logged_in.get("/settings/integrations").get_data(as_text=True)
+    note = body.split('class="warning-note warning-note--alert"')[1].split("</p>")[0]
+    assert "Google no longer accepts the app&#39;s access." in note
+    assert "integration-meta--error" not in body
+
+
+def test_a_healthy_account_has_no_warning_note(logged_in, account):
+    body = logged_in.get("/settings/integrations").get_data(as_text=True)
+    assert "warning-note--alert" not in body
+
+
 def test_the_badge_counts_several_failures(logged_in, company, account):
     second = EmailAccount(
         company_id=company.id, provider="gmail", email_address="two@example.com",

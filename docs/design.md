@@ -210,6 +210,29 @@ Current tokens (top of `style.css`):
   save), and `.password-status` on Settings → Account. Amber stays what it
   was: a standing condition, like "set a new password" or "running low".
 
+- **Three ways to say something went wrong, and only three**: `.field-error`
+  (one field a save refused), `.save-notice--error` (a whole submission
+  refused) and `.warning-note--alert` (a standing condition that's broken
+  until someone acts). There used to be a fourth, plain red text with no box
+  ("InlineError" in the design system), in two places at two sizes: the
+  sign-in page's `.login-error` and the 0.7rem `.integration-meta--error`
+  under a mailbox that stopped syncing. Both were retired. A refused sign-in
+  is a refused save (`CO4i`); a dead mailbox is a standing condition, and
+  the most serious one on its page, so it gets the red note inside the
+  account's card (`communications/REQUIREMENTS.md` `SY-4a`). Don't bring
+  unboxed red text back for a new error; pick one of the three.
+
+- **A result that arrives without a page load is still a `.save-notice`**
+  (`MOD8a`). `static/assets/js/save-notice.js` has `saveNotice(slot,
+  message, category)`, the script twin of the macro, and `busyButton(button,
+  label)`. The grey-then-red status line that sat beside Suggest response
+  and inside the render window (StatusLine: `.compose-form__ai-status`,
+  `.ai-render__status`) is retired: its "working" half is now the button's
+  own label ("Drafting…", "Rendering…", "Saving…", faded by
+  `button[aria-busy="true"]`), and its result half is a green or red notice
+  in an empty slot next to the button that was pressed. A request whose
+  success shows itself (a render appearing, a card going) says nothing.
+
 **When extending the UI:** match the current restrained, high-contrast, no-flourish
 look. Don't add serif/display fonts, decorative stitching, or brownish/muted accent
 colors without checking first — all three have been explicitly removed once already.

@@ -9,14 +9,18 @@
   </header>
 
   <form method="post" class="detail-form">
+    {# A refused sign-in is a refused save like any other: the red
+       .save-notice, drawn by the shared macro (MOD8). There's one form and
+       no sections, so it's rendered directly rather than through a slot. #}
     {% if error %}
-    <p class="login-error">{{ error }}</p>
+    {% from "_save_notice.html" import save_notice %}
+    {{ save_notice({'message': error, 'category': 'error'}) }}
     {% endif %}
     {# Email, not a username: usernames were globally unique, which stopped
        working the moment a second company wanted an "admin". See User in
        models.py. #}
-    <label>Email<input type="email" name="email" autocomplete="username" required autofocus></label>
-    <label>Password<input type="password" name="password" required></label>
+    <label>Email<input type="email" name="email" value="{{ email }}" autocomplete="username" required{% if not email %} autofocus{% endif %}></label>
+    <label>Password<input type="password" name="password" required{% if email %} autofocus{% endif %}></label>
     <div>
       <button type="submit" class="btn-primary">Sign in</button>
     </div>

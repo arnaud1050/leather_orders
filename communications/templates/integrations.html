@@ -67,8 +67,10 @@
             · never synced
           {% endif %}
         </span>
+        {# A standing condition — broken until someone reconnects — so the red
+           .warning-note, not a line of small red text (docs/design.md). #}
         {% if account.last_sync_error %}
-        <span class="integration-meta integration-meta--error">{{ account.last_sync_error }}</span>
+        <p class="warning-note warning-note--alert">{{ account.last_sync_error }}</p>
         {% endif %}
         <span class="integration-scopes">
           {% for scope, description in scope_summary(account) %}

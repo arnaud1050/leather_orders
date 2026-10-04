@@ -45,6 +45,13 @@ def _flash(message: str, category: str = "error") -> None:
     session["documents_notice"] = {"message": message, "category": category}
 
 
+def leave_notice(message: str, category: str = "success") -> None:
+    """Public form of `_flash`, for a host hook that adds a document from
+    outside this module's own routes (app.py's `_save_rendered_document`)
+    and wants the order page's Documents section to say so on reload."""
+    _flash(message, category)
+
+
 def take_notice() -> dict | None:
     """Public form, for order_page() in app.py — the page this module's
     upload form redirects back to — to surface an upload rejection."""

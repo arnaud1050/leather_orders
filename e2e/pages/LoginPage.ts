@@ -15,7 +15,7 @@ export class LoginPage {
     this.emailInput = page.locator('input[name="email"]');
     this.passwordInput = page.locator('input[name="password"]');
     this.submitButton = page.getByRole("button", { name: "Sign in" });
-    this.errorMessage = page.locator(".login-error");
+    this.errorMessage = page.locator(".save-notice--error");
   }
 
   async goto(next?: string): Promise<void> {

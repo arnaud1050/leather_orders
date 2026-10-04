@@ -67,9 +67,14 @@
     <button type="button" class="btn-secondary" id="ai-suggest-btn"
             data-endpoint="{{ url_for('ai.suggest_reply') }}"
             data-thread-id="{{ thread.id }}">Suggest response</button>
-    <span class="compose-form__ai-status" id="ai-suggest-status" role="status" aria-live="polite"></span>
     {% endif %}
   </div>
+  {# Where a suggestion's result lands: a save notice under the buttons
+     (MOD8a), filled by saveNotice(). While it runs, the button itself
+     reads "Drafting…". #}
+  {% if offer_suggestion %}
+  <div class="compose-form__notice" id="ai-suggest-notice" aria-live="polite"></div>
+  {% endif %}
 </form>
 
 {% if offer_attachments %}
@@ -292,14 +297,15 @@
   // Send button is still the only thing that does.
   (function () {
     var button = document.getElementById('ai-suggest-btn');
-    var status = document.getElementById('ai-suggest-status');
+    var notice = document.getElementById('ai-suggest-notice');
     if (!button) { return; }
     var textarea = button.closest('form').querySelector('textarea[name="body_text"]');
 
     button.addEventListener('click', function () {
-      button.disabled = true;
-      status.className = 'compose-form__ai-status';
-      status.textContent = 'Drafting…';
+      // The button says it's working; the last result goes until there's
+      // a new one.
+      var done = window.busyButton(button, 'Drafting…');
+      window.saveNotice(notice, '');
 
       fetch(button.dataset.endpoint, {
         method: 'POST',
@@ -316,18 +322,14 @@
           textarea.value = data.suggestion;
           // A box that fills itself is ambiguous about whether anything was
           // sent, so it says so where the eye already is.
-          status.textContent = 'Draft inserted — edit it before sending.';
+          window.saveNotice(notice, 'Draft inserted. Nothing has been sent: edit it, then press Send reply.', 'success');
         } else {
           // Whatever is already typed stays exactly as it is.
-          status.className = 'compose-form__ai-status compose-form__ai-status--error';
-          status.textContent = data.error || 'Something went wrong. Try again.';
+          window.saveNotice(notice, data.error || 'Something went wrong. Try again.', 'error');
         }
       }).catch(function () {
-        status.className = 'compose-form__ai-status compose-form__ai-status--error';
-        status.textContent = 'Couldn\'t reach the server. Try again.';
-      }).then(function () {
-        button.disabled = false;
-      });
+        window.saveNotice(notice, 'Couldn\'t reach the server. Try again.', 'error');
+      }).then(done);
     });
   })();
 </script>

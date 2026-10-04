@@ -462,6 +462,19 @@ def test_the_button_appears_on_a_reply_when_configured(logged_in, user, thread):
     assert "Suggest response" in body
 
 
+def test_the_reply_box_has_a_notice_slot_not_a_status_line(logged_in, user, thread):
+    """R-5a / MOD8a. The result goes into a save-notice slot under the
+    buttons, drawn by saveNotice(), and the button carries "Drafting…"
+    itself; the old grey status line is gone."""
+    services.save_reply_settings(user.company_id, api_key="sk-test-123456789012")
+    db.session.commit()
+    body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
+    assert 'id="ai-suggest-notice"' in body
+    assert "window.saveNotice(notice" in body
+    assert "window.busyButton(button, 'Drafting…')" in body
+    assert "ai-status" not in body
+
+
 def test_the_button_is_absent_without_a_key(logged_in, thread):
     body = logged_in.get(f"/mail/threads/{thread.id}").get_data(as_text=True)
     assert "Suggest response" not in body

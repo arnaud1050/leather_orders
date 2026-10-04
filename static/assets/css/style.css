@@ -1367,12 +1367,6 @@ a.btn-secondary {
   margin: 80px auto 0;
 }
 
-.login-error {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--status-rush);
-}
-
 /* A field a save refused (OR13, templates/_field_error.html). Same red as
    .save-notice--error — "that submission didn't go through" — but plain
    and unboxed, since it sits under its own input. Not the amber
@@ -1795,6 +1789,14 @@ a.btn-secondary {
 
 .save-notice a {
   color: var(--status-progress);
+}
+
+/* A button whose request is running says so in its own label ("Drafting…",
+   "Rendering…", "Saving…" — busyButton() in save-notice.js), instead of a
+   separate grey line beside it. Faded and unpressable until it's back. */
+button[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 /* Inside a dialog the box spans the form, like its fields do. */
@@ -2563,9 +2565,6 @@ a.btn-secondary {
   margin-bottom: 0;
 }
 
-/* Settings → Account. Same reasoning as .compose-form__ai-status: transient
-   feedback about one button press, not a standing condition of the page, so
-   plain text rather than the amber .warning-note panel. */
 /* Wider than .settings-source-add — these forms carry addresses and
    multi-line instructions, not a single short label. */
 .settings-form {
@@ -2744,7 +2743,8 @@ a.btn-secondary {
 .pill--paused { --pill-color: var(--ink-soft); }
 .pill--error { --pill-color: var(--status-rush); }
 
-/* Secondary line under a connected account: provider, last sync, errors. */
+/* Secondary line under a connected account: provider, last sync. A sync
+   error isn't drawn here — it's a red .warning-note--alert under it. */
 .integration-meta {
   display: block;
   margin-top: 4px;
@@ -2752,8 +2752,11 @@ a.btn-secondary {
   color: var(--ink-soft);
 }
 
-.integration-meta--error {
-  color: var(--status-rush);
+/* The sync error inside an account card: closer to the line above than a
+   page-level note, and as wide as the card's own text. */
+.integration-account .warning-note {
+  margin-top: 8px;
+  max-width: none;
 }
 
 /* What a mailbox actually granted — one chip per scope. */
@@ -3667,17 +3670,11 @@ button.chip--event:hover .chip__title {
   gap: 12px;
 }
 
-/* Deliberately not a .warning-note: this is transient feedback about one
-   button press, not a standing condition of the page, and giving it the
-   amber panel would read as the form itself being in a bad state. Plain
-   text in --ink-soft, red only when it's reporting a failure. */
-.compose-form__ai-status {
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-}
-
-.compose-form__ai-status--error {
-  color: var(--day-today);
+/* Where Suggest response's result lands: a .save-notice drawn by
+   save-notice.js (MOD8a), under the buttons. Empty until then, and an
+   empty slot takes no room. */
+.compose-form__notice .save-notice {
+  margin-bottom: 0;
 }
 
 /* Settings → AI. Exactly the .compose-form arrangement and for the same
@@ -3710,17 +3707,14 @@ button.chip--event:hover .chip__title {
   overflow-y: auto;
 }
 
-/* Same component as .compose-form__ai-status, and deliberately not a
-   .warning-note: transient feedback about one button press, not a standing
-   condition of the page. */
-.ai-render__status {
+/* A refused render, under the dialog's buttons, and a refused save or
+   discard inside one image's card: .save-notice boxes drawn by
+   save-notice.js (MOD8a). As wide as what they sit in, like a notice in a
+   dialog form (.modal__form .save-notice). */
+.ai-render__notice .save-notice,
+.ai-render__card-notice .save-notice {
+  max-width: none;
   margin: 12px 0 0;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-}
-
-.ai-render__status--error {
-  color: var(--day-today);
 }
 
 /* auto-fit rather than a fixed count: one attempt fills the width, three sit

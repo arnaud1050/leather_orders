@@ -26,7 +26,11 @@
       </div>
     </div>
 
-    <p class="ai-render__status" id="ai-render-status" role="status" aria-live="polite"></p>
+    {# A refused render lands here, under the button that was pressed, as a
+       save notice (the host's MOD8a). While it runs the button itself reads
+       "Rendering…"; a render that works says so by appearing below. Saving
+       or discarding one image reports inside that image's own card. #}
+    <div class="ai-render__notice" id="ai-render-notice" aria-live="polite"></div>
 
     {# Newest first. Kept across renders on purpose: comparing the third
        attempt with the first is the whole reason to regenerate. #}
@@ -40,17 +44,12 @@
     if (!modal) { return; }
 
     var promptBox = document.getElementById('ai-render-prompt');
-    var status = document.getElementById('ai-render-status');
+    var notice = document.getElementById('ai-render-notice');
     var results = document.getElementById('ai-render-results');
     var goButton = document.getElementById('ai-render-go');
     var sourceLabel = document.getElementById('ai-render-source');
     var orderId = {{ order.id }};
     var documentId = null;
-
-    function say(message, isError) {
-      status.textContent = message || '';
-      status.className = 'ai-render__status' + (isError ? ' ai-render__status--error' : '');
-    }
 
     function card(draft) {
       var wrapper = document.createElement('figure');
@@ -74,6 +73,12 @@
       var actions = document.createElement('div');
       actions.className = 'ai-render__result-actions';
 
+      // This image's own messages: a refused save or discard shows here,
+      // next to the button that was pressed, not at the top of the dialog.
+      var cardNotice = document.createElement('div');
+      cardNotice.className = 'ai-render__card-notice';
+      cardNotice.setAttribute('aria-live', 'polite');
+
       if (draft.saved) {
         var savedNote = document.createElement('span');
         savedNote.className = 'ai-render__saved';
@@ -84,7 +89,7 @@
         save.type = 'button';
         save.className = 'btn-primary';
         save.textContent = 'Save to documents';
-        save.addEventListener('click', function () { saveDraft(draft.id, save); });
+        save.addEventListener('click', function () { saveDraft(draft.id, save, cardNotice); });
         actions.appendChild(save);
       }
 
@@ -92,10 +97,11 @@
       discard.type = 'button';
       discard.className = 'btn-secondary';
       discard.textContent = 'Discard';
-      discard.addEventListener('click', function () { discardDraft(draft.id); });
+      discard.addEventListener('click', function () { discardDraft(draft.id, cardNotice); });
       actions.appendChild(discard);
 
       caption.appendChild(actions);
+      caption.appendChild(cardNotice);
       wrapper.appendChild(caption);
       return wrapper;
     }
@@ -118,8 +124,8 @@
     }
 
     function render() {
-      goButton.disabled = true;
-      say('Rendering… this takes a moment.');
+      var done = window.busyButton(goButton, 'Rendering…');
+      window.saveNotice(notice, '');
       fetch('/orders/' + orderId + '/documents/' + documentId + '/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -127,23 +133,20 @@
         body: JSON.stringify({ extra_prompt: promptBox.value })
       }).then(readJson).then(function (data) {
         if (data.draft) {
-          say('');
           // Newest first, prepended rather than reloading the list — the
           // images already on screen keep their decoded state.
           results.insertBefore(card(data.draft), results.firstChild);
         } else {
-          say(data.error || 'Something went wrong. Try again.', true);
+          window.saveNotice(notice, data.error || 'Something went wrong. Try again.', 'error');
         }
       }).catch(function () {
-        say('Couldn\'t reach the server. Try again.', true);
-      }).then(function () {
-        goButton.disabled = false;
-      });
+        window.saveNotice(notice, 'Couldn\'t reach the server. Try again.', 'error');
+      }).then(done);
     }
 
-    function saveDraft(draftId, button) {
-      button.disabled = true;
-      say('Saving…');
+    function saveDraft(draftId, button, cardNotice) {
+      var done = window.busyButton(button, 'Saving…');
+      window.saveNotice(cardNotice, '');
       fetch('/ai/renders/' + draftId + '/save', {
         method: 'POST', credentials: 'same-origin'
       }).then(readJson).then(function (data) {
@@ -151,30 +154,34 @@
           // The order page behind the modal is now out of date — the
           // Documents area doesn't have this file in it. Reloading is the
           // honest way to show that without duplicating documents/'s
-          // rendering of a document card here.
-          say('Saved. Reloading the page…');
+          // rendering of a document card here. The host's save hook left
+          // a "saved" notice for the Documents section, so the result is
+          // still on screen after the reload (G-13).
           window.location.reload();
         } else {
-          say(data.error || 'Couldn\'t save that image.', true);
-          button.disabled = false;
+          window.saveNotice(cardNotice, data.error || 'Couldn\'t save that image.', 'error');
+          done();
         }
       }).catch(function () {
-        say('Couldn\'t reach the server. Try again.', true);
-        button.disabled = false;
+        window.saveNotice(cardNotice, 'Couldn\'t reach the server. Try again.', 'error');
+        done();
       });
     }
 
-    function discardDraft(draftId) {
+    function discardDraft(draftId, cardNotice) {
+      window.saveNotice(cardNotice, '');
       fetch('/ai/renders/' + draftId + '/discard', {
         method: 'POST', credentials: 'same-origin'
       }).then(readJson).then(function (data) {
         if (data.discarded) {
+          // The card disappearing is the result; nothing to say.
           var card = results.querySelector('[data-draft-id="' + draftId + '"]');
           if (card) { card.remove(); }
-          say('');
         } else {
-          say(data.error || 'Couldn\'t discard that image.', true);
+          window.saveNotice(cardNotice, data.error || 'Couldn\'t discard that image.', 'error');
         }
+      }).catch(function () {
+        window.saveNotice(cardNotice, 'Couldn\'t reach the server. Try again.', 'error');
       });
     }
 
@@ -185,7 +192,7 @@
         documentId = button.dataset.renderDocument;
         sourceLabel.textContent = 'From ' + button.dataset.filename + '.';
         promptBox.value = '';
-        say('');
+        window.saveNotice(notice, '');
         results.innerHTML = '';
         modal.showModal();
         load();

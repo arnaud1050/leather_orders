@@ -404,6 +404,36 @@ def test_a_saved_draft_reports_itself_as_saved(logged_in, order, render_ready, i
     assert history["drafts"][0]["saved"] is True
 
 
+def test_saving_a_render_leaves_a_notice_on_the_order_page(logged_in, order, render_ready, image_vendor):
+    """G-13. The window reloads the page to show the new document; the
+    host's save hook leaves a green notice for the Documents section, so the
+    result isn't lost with the reload. Shown once."""
+    response = logged_in.post(
+        f"/orders/{order.id}/documents/{render_ready.id}/render", json={})
+    draft_id = response.get_json()["draft"]["id"]
+    assert logged_in.post(f"/ai/renders/{draft_id}/save").get_json()["saved"] is True
+
+    page = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
+    assert "save-notice--success" in page
+    assert f"Rendering saved to Documents as &#34;rendering-{draft_id}.png&#34;." in page
+    again = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
+    assert "Rendering saved to Documents" not in again
+
+
+def test_a_refused_save_leaves_no_notice_for_the_page(logged_in, order, render_ready, image_vendor, monkeypatch):
+    """The refusal is shown in the image's card by the window itself; the
+    order page behind it has nothing to report."""
+    from documents import config as documents_config
+    response = logged_in.post(
+        f"/orders/{order.id}/documents/{render_ready.id}/render", json={})
+    draft_id = response.get_json()["draft"]["id"]
+    monkeypatch.setattr(documents_config, "MAX_TOTAL_BYTES", 1)
+    assert logged_in.post(f"/ai/renders/{draft_id}/save").status_code == 400
+
+    page = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
+    assert "Rendering saved" not in page
+
+
 def test_opening_the_history_prunes_expired_drafts(logged_in, order, render_ready, image_vendor):
     """There's no scheduled job — the app's scheduler is opt-in and off by
     default, so anything hung on it would in practice never run. Opening

@@ -811,3 +811,43 @@ def test_invoice_settings_report_what_changed(logged_in, order):
     body = _post(logged_in, url, {"status": "void", "notice_section": "invoice-settings"})
     message = only_message(body)
     assert message == "Invoice marked void."
+
+
+# --- MOD8a: a result that arrives without a page load ---------------------
+
+def _root():
+    import pathlib
+    return pathlib.Path(__file__).resolve().parent.parent
+
+
+def test_the_script_twin_draws_the_macros_markup():
+    """saveNotice() in save-notice.js must build what save_notice() in the
+    macro does, or a script-drawn notice would look or announce differently."""
+    macro = (_root() / "templates" / "_save_notice.html").read_text(encoding="utf-8")
+    script = (_root() / "static" / "assets" / "js" / "save-notice.js").read_text(encoding="utf-8")
+    for markup in ("data-save-notice", "save-notice save-notice--", "'alert'", "'status'"):
+        assert markup in macro, markup
+        assert markup in script, markup
+    # Text, never HTML: a vendor's error sentence is shown verbatim.
+    assert "textContent = message" in script
+    assert "innerHTML" not in script
+
+
+def test_every_page_loads_the_script_twin(logged_in):
+    for path in ("/", "/settings/general", "/invoices"):
+        body = logged_in.get(path, follow_redirects=True).get_data(as_text=True)
+        assert "assets/js/save-notice.js" in body, path
+
+
+def test_no_template_draws_a_grey_status_line():
+    """StatusLine is retired: a request's progress is the button's own label
+    and its result is a save notice. A new hand-rolled status line would be
+    the fifth way of saying the same thing."""
+    retired = re.compile(r"__ai-status|ai-render__status|className = '[\w-]*status")
+    for directory in ("templates", "communications", "ai", "documents", "inventory",
+                      "billing", "admin", "static"):
+        for path in sorted((_root() / directory).rglob("*")):
+            if path.suffix not in (".html", ".js", ".css"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert not retired.search(text), f"{path.relative_to(_root())} draws a status line"
