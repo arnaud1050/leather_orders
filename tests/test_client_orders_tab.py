@@ -1,6 +1,6 @@
 """
 The client page's Orders tab (/clients/<id>/orders) is a sortable, filterable
-table styled like the main Orders list (/orders) — same `.invoice-table`,
+table styled like the main Orders list (/orders) — same `.data-table`,
 same column-header sort links, same click-a-legend-item-to-hide status
 filter — scoped to one client's own orders, plus columns that list doesn't
 have (Start) and one it doesn't need company-wide (Invoice).

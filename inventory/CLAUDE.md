@@ -192,7 +192,7 @@ Behaviour is `U*` and `V*`; this is the markup map.
   of its own the way `.icon-btn` does.
 
   **Actions column** icons are shared macros in
-  `templates/inventory/_icons.html` (pencil/trash/eye/eye-slash) so this page
+  the host's `templates/_icons.html` (pencil/trash/eye/eye-slash) so this page
   and the Materials tab draw them identically — the same `.icon-btn` component
   `documents/_explorer.html` introduced.
 - **Order page → Materials tab** — the route `order_materials()` lives in

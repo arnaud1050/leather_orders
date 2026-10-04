@@ -1,3 +1,4 @@
+{% from "_icons.html" import icon_grip %}
 {# Included from templates/settings.html's "orders" section, right after
    the Order types block. Context expected: document_types (list, in
    sort_order, active + hidden — see documents.services.list_document_types),
@@ -24,14 +25,7 @@
   {% for type in document_types %}
   <li class="settings-source-list__item {% if not type.is_active %}settings-source-list__item--hidden{% endif %}" draggable="true" data-type-id="{{ type.id }}">
     <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
-      <svg viewBox="0 0 10 16" fill="currentColor">
-        <circle cx="2" cy="2" r="1.3"/>
-        <circle cx="8" cy="2" r="1.3"/>
-        <circle cx="2" cy="8" r="1.3"/>
-        <circle cx="8" cy="8" r="1.3"/>
-        <circle cx="2" cy="14" r="1.3"/>
-        <circle cx="8" cy="14" r="1.3"/>
-      </svg>
+      {{ icon_grip() }}
     </span>
     <span class="settings-source-list__label">
       {{ type.label }}

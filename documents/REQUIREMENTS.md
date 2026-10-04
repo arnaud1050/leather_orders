@@ -120,6 +120,21 @@ error — and never a 500.
   label) — not the browser's native, unstyled file input control.
 - Multi-file selection is supported (`multiple` on the file input); one
   `change` event covers the whole batch, one upload request, one redirect.
+- **Files can be dragged in, too.** Every grid that shows an "Add file"
+  tile (`data-doc-drop`) is a drop target as a whole — the tile, the cards
+  and the gaps between them. Dropped files go through that grid's own
+  upload form, so into that section's document type, as one batch, with
+  the same checks, notice and quota as picking them. A grid without the
+  tile (a hidden type) takes no drops.
+- The tile says so: an **"or drop files here"** line under "Add file",
+  the same hint (`.doc-explorer__add-hint`) as the invoice logo tile's.
+  Hidden on touch-only screens (`hover: none`), where nothing can be
+  dragged.
+- While files are over a grid it's outlined in ink and its tile turns
+  solid ink on the recessed grey — the drop target gets louder, never
+  fainter. Only drags carrying files count: moving a thumbnail or selected
+  text around the page highlights nothing. A file dropped just outside a
+  grid is ignored rather than opened by the browser in place of the page.
 - Rejections (disallowed type, oversized, over quota, failed content
   sniff) are surfaced as a visible message on the page after redirect —
   never a silent no-op and never a 500. Delivered via a one-shot

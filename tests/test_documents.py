@@ -640,3 +640,60 @@ def test_migration_adds_document_type_id_to_existing_installs(app):
         inspector = sa.inspect(db.engine)
         columns = {c["name"] for c in inspector.get_columns("order_documents")}
         assert "document_type_id" in columns
+
+
+# --- drag-and-drop: which grids are drop targets ----------------------------
+
+def _drop_zones(html: str) -> int:
+    return html.count("data-doc-drop>") + html.count("data-doc-drop ")
+
+
+def test_flat_grid_is_a_drop_target(logged_in, order):
+    """No document types: the one grid has an "Add file" tile, so the whole
+    grid takes dropped files (documents/REQUIREMENTS.md §7)."""
+    html = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
+    assert _drop_zones(html) == 1
+    # The drop goes through the grid's own upload form, so the input the
+    # script fills has to be inside it.
+    grid = html[html.index("data-doc-drop"):]
+    assert grid.index("doc-upload-input") < grid.index("doc-explorer__quota")
+
+
+def test_only_uploadable_sections_are_drop_targets(logged_in, company, order):
+    """A hidden type kept for its old files shows no "Add file" tile, so its
+    grid mustn't take drops either; the uploadable ones each do."""
+    mockups = services.add_document_type(company.id, "Mockups")
+    services.add_document_type(company.id, "Renderings")
+    services.upload(company.id, order.id, [("m.png", _png_bytes())], document_type_id=mockups.id)
+    services.toggle_document_type(company.id, mockups.id)  # hidden, but referenced
+
+    html = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
+
+    # Mockups (hidden, not uploadable) + Renderings + Other → two targets.
+    assert [s.can_upload for s in services.sections_for_order(order.id, company.id)] == [False, True, True]
+    assert _drop_zones(html) == 2
+
+
+def test_a_drop_uploads_into_its_sections_type(logged_in, company, order):
+    """What the drop script submits is the section's own form, which carries
+    that section's document_type_id — so a file dropped on Renderings is
+    filed under Renderings."""
+    renderings = services.add_document_type(company.id, "Renderings")
+    html = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
+    zone = html[html.index("data-doc-drop"):]
+    assert f'name="document_type_id" value="{renderings.id}"' in zone[:zone.index("doc-upload-input")]
+
+    logged_in.post(
+        f"/orders/{order.id}/documents/upload",
+        data={"files": (io.BytesIO(_png_bytes()), "r.png"), "document_type_id": str(renderings.id)},
+        content_type="multipart/form-data",
+    )
+    doc = Document.query.filter_by(order_id=order.id).one()
+    assert doc.document_type_id == renderings.id
+
+
+def test_the_add_tile_says_it_takes_drops(logged_in, order):
+    """Nobody guesses a grid takes dropped files; the tile says so
+    (documents/REQUIREMENTS.md §7)."""
+    html = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
+    assert '<span class="doc-explorer__add-hint">or drop files here</span>' in html

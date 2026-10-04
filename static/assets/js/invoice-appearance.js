@@ -122,14 +122,28 @@
     });
 
     if (!form.hasAttribute('data-logo-drop')) return;
+    // Its own state class, not the shared .is-dragging (which fades a card
+    // being reordered on Analytics): a drop target has to stand out, not
+    // recede. dragleave also fires when the cursor crosses onto the tile's
+    // own label or icon, so it only clears once the cursor is really out.
     ['dragenter', 'dragover'].forEach(function (type) {
       form.addEventListener(type, function (event) {
         event.preventDefault();
-        form.classList.add('is-dragging');
+        form.classList.add('is-drop-target');
       });
     });
-    ['dragleave', 'drop'].forEach(function (type) {
-      form.addEventListener(type, function () { form.classList.remove('is-dragging'); });
+    form.addEventListener('dragleave', function (event) {
+      if (!form.contains(event.relatedTarget)) form.classList.remove('is-drop-target');
+    });
+    form.addEventListener('drop', function () { form.classList.remove('is-drop-target'); });
+    // An image dropped just beside the tile would otherwise make the browser
+    // open it in place of the settings page. Swallow those near misses.
+    ['dragover', 'drop'].forEach(function (type) {
+      document.addEventListener(type, function (event) {
+        var types = event.dataTransfer && event.dataTransfer.types;
+        var carriesFiles = !!types && Array.prototype.indexOf.call(types, 'Files') !== -1;
+        if (carriesFiles && !form.contains(event.target)) event.preventDefault();
+      });
     });
     form.addEventListener('drop', function (event) {
       event.preventDefault();

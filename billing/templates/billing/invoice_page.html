@@ -27,7 +27,7 @@
         {% if doc.issuer.address %}<p class="invoice-doc__issuer-address">{{ doc.issuer.address }}</p>{% endif %}
         {% if doc.issuer.registrations %}
         <p class="invoice-doc__issuer-reg">
-          {% for label, value in doc.issuer.registrations %}<span>{{ label }} <span class="is-mono">{{ value }}</span></span>{% endfor %}
+          {% for label, value in doc.issuer.registrations %}<span>{{ label }} <span class="invoice-doc__value">{{ value }}</span></span>{% endfor %}
         </p>
         {% endif %}
       </div>
@@ -54,14 +54,14 @@
       </div>
       <div>
         <span class="invoice-doc__label">Issued</span>
-        <p class="invoice-doc__party is-mono">{{ doc.issued_date.strftime('%Y-%m-%d') }}</p>
+        <p class="invoice-doc__party invoice-doc__value">{{ doc.issued_date.strftime('%Y-%m-%d') }}</p>
         <span class="invoice-doc__label">Payment due</span>
-        <p class="invoice-doc__party is-mono">{{ doc.due_date.strftime('%Y-%m-%d') if doc.due_date else '—' }}</p>
+        <p class="invoice-doc__party invoice-doc__value">{{ doc.due_date.strftime('%Y-%m-%d') if doc.due_date else '—' }}</p>
       </div>
     </div>
 
     <div class="table-scroll">
-      <table class="invoice-table invoice-table--doc">
+      <table class="data-table">
         <thead>
           <tr>
             <th>Description</th>
@@ -108,7 +108,7 @@
       <ul>
         {% for payment in doc.payments %}
         <li>
-          <span class="is-mono">{{ payment.paid_date.strftime('%Y-%m-%d') }}</span>
+          <span class="invoice-doc__value">{{ payment.paid_date.strftime('%Y-%m-%d') }}</span>
           &middot; {{ payment_method_labels.get(payment.method, payment.method) }}
           {% if payment.reference %}<span class="doc-list__ref">({{ payment.reference }})</span>{% endif %}
           <span class="invoice-doc__payment-amount">${{ '%.2f'|format(payment.amount) }}</span>

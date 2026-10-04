@@ -48,8 +48,9 @@ changes made:
     labeled "Delete" — and nothing else.** A row inside a `.doc-list` (order
     line items, payments, inventory materials/others, documents) deletes via
     an `.icon-btn.icon-btn--danger` rendering `icon_trash()`
-    (`inventory/templates/inventory/_icons.html` — shared across modules
-    despite the name, same reuse as `.doc-list__delete-form` itself once was)
+    (`templates/_icons.html` — a host template, so every module can import
+    it; it lives beside `icon_pencil`, `icon_eye`, `icon_eye_slash` and
+    `icon_grip`, the drag handle on every reorderable list)
     inside a `.doc-list__actions` wrapper and an `.icon-form` around the lone
     `<form>` so it doesn't take up flex layout space, matching the inventory
     list's own Actions column. A row inside a `.settings-source-list`
@@ -180,6 +181,12 @@ Current tokens (top of `style.css`):
   beside it back to 360px. **If a third form needs a wide textarea, copy that
   pattern**; don't raise `.detail-form`'s cap, which would stretch every
   single-line field in the app.
+
+- **A ticked checkbox is a white check on black** (`accent-color: var(--ink)`),
+  never the browser's default blue. Every page checkbox sits in a
+  `.checkbox-group__item` or an `.invoice-look__check`, which share that rule;
+  a new standalone checkbox goes in one of them. The dialog's rush box is the
+  one exception, accented `--status-rush` because it turns the bar red.
 
 - **A field a save refused gets one sentence of red text under it, inside
   its own `<label>`** (`.field-error`), and a red border

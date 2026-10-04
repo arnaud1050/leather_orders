@@ -396,19 +396,6 @@ body {
   opacity: 0.35;
 }
 
-.legend__item--static {
-  cursor: default;
-  color: var(--ink-soft);
-}
-
-.legend__item--static:hover {
-  color: var(--ink-soft);
-}
-
-.legend__item--static .timeline__star {
-  margin-left: 0;
-}
-
 .dot {
   width: 7px;
   height: 7px;
@@ -1341,7 +1328,11 @@ a.btn-secondary {
   color: var(--ink);
 }
 
-.checkbox-group__item input[type="checkbox"] {
+/* Ink accent, so a ticked box is a white check on black like everything
+   else that's "on" in the app — never the browser's default blue. Every
+   standalone page checkbox goes through one of these two classes. */
+.checkbox-group__item input[type="checkbox"],
+.invoice-look__check input[type="checkbox"] {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
@@ -1473,35 +1464,10 @@ a.btn-secondary {
   color: var(--ink-soft);
 }
 
-.doc-list__delete-form {
-  margin-left: auto;
-}
-
-.doc-list__delete {
-  font-family: inherit;
-  font-size: 0.72rem;
-  color: var(--status-rush);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-}
-
-.doc-list__delete:hover {
-  color: #000;
-}
-
 .doc-list__amount {
   margin-left: auto;
   font-size: 0.8rem;
   color: var(--ink);
-}
-
-/* Sits after .doc-list__amount, so the Remove button keeps its own
-   margin-left rather than both fighting for the same auto gap. */
-.doc-list__amount + .doc-list__delete-form {
-  margin-left: 16px;
 }
 
 .doc-list__ref {
@@ -1565,6 +1531,25 @@ a.btn-secondary {
   color: var(--ink);
 }
 
+/* Files are being dragged over an uploadable grid (data-doc-drop). The grid
+   gets an ink outline so it's clear the whole area takes the drop, and its
+   "Add file" tile turns into the same solid-ink drop target as the invoice
+   logo tile (.invoice-look__add.is-drop-target) — louder, never faded. */
+.doc-explorer.is-drop-target {
+  outline: 1px solid var(--ink);
+  outline-offset: 6px;
+}
+
+.doc-explorer.is-drop-target .doc-explorer__add {
+  border-style: solid;
+  border-color: var(--ink);
+  background: var(--paper-deep);
+}
+
+.doc-explorer.is-drop-target .doc-explorer__add-trigger {
+  color: var(--ink);
+}
+
 .doc-explorer__add-icon {
   display: flex;
   align-items: center;
@@ -1583,6 +1568,23 @@ a.btn-secondary {
 .doc-explorer__add-label {
   font-size: 0.76rem;
   font-weight: 600;
+}
+
+/* "or drop files here" under the label, on both upload tiles (documents
+   and the invoice logo). Centred so it still reads as one block when it
+   wraps in the narrow grid tile. Takes the trigger's colour, so it goes to
+   ink with the rest of the tile on hover and while a drop is pending. */
+.doc-explorer__add-hint {
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+/* Nothing can be dragged onto a touch-only screen, so the hint would
+   promise something that can't happen there. */
+@media (hover: none) {
+  .doc-explorer__add-hint {
+    display: none;
+  }
 }
 
 .doc-explorer__thumb {
@@ -1889,14 +1891,16 @@ a.btn-secondary {
 }
 
 /* ---------------------------------------------------------------------
-   Invoices
+   Data tables and invoices
    --------------------------------------------------------------------- */
 
 .table-scroll {
   overflow-x: auto;
 }
 
-.invoice-table {
+/* The one table style for every list — orders, clients, invoices,
+   inventory, a client's orders, the activity log, an invoice's lines. */
+.data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.84rem;
@@ -1904,7 +1908,7 @@ a.btn-secondary {
   background: var(--paper);
 }
 
-.invoice-table th {
+.data-table th {
   text-align: left;
   font-size: 0.66rem;
   font-weight: 600;
@@ -1916,46 +1920,31 @@ a.btn-secondary {
   white-space: nowrap;
 }
 
-.invoice-table td {
+.data-table td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
 
-.invoice-table tr:last-child td {
+.data-table tr:last-child td {
   border-bottom: none;
 }
 
-.invoice-table a {
+.data-table a {
   color: var(--ink);
   text-decoration: none;
   font-weight: 600;
 }
 
-.invoice-table a:hover {
+.data-table a:hover {
   color: var(--status-progress);
 }
 
-.invoice-table .is-numeric {
+.data-table .is-numeric {
   text-align: right;
 }
 
-.invoice-table th.is-numeric {
-  font-family: var(--font-body);
-}
-
-/* Orders / Clients / Invoices list tables — no mono font for now. */
-.invoice-table--no-mono .is-numeric {
-  font-family: var(--font-body);
-}
-
-/* The printable invoice document's own numeric columns aren't covered by
-   .invoice-table--no-mono (a different table class), so scoped here. */
-.invoice-doc .is-numeric {
-  font-family: var(--font-body);
-}
-
-/* A <button> that reads exactly like .invoice-table a — for the inventory
+/* A <button> that reads exactly like .data-table a — for the inventory
    item name, which has to be a button (it opens an edit modal) rather than
    a link. */
 .link-button {
@@ -2012,7 +2001,7 @@ a.btn-secondary {
   gap: 6px;
 }
 
-/* Same idea as .doc-list__delete-form/.doc-explorer__delete-form: a <form>
+/* Same idea as .doc-explorer__delete-form: a <form>
    wrapping a single icon button among flex siblings shouldn't itself take
    up flex layout space. Generic (not scoped to one component) since both
    the inventory table and the order Materials tab's .doc-list rows need it. */
@@ -2020,8 +2009,8 @@ a.btn-secondary {
   display: contents;
 }
 
-/* Icon-button equivalent of .doc-list__delete-form — sits where the old
-   text "Remove" button did, holding an Edit + Delete icon pair. */
+/* The trailing icon buttons of a .doc-list row — where the old text
+   "Remove" button was, holding an Edit + Delete icon pair. */
 .doc-list__actions {
   display: flex;
   align-items: center;
@@ -2036,21 +2025,23 @@ a.btn-secondary {
 /* Recent activity (audit log) — "Detail" can be a long freeform message, so
    this variant fixes the table to the container width and wraps text
    instead of forcing a horizontal scroll. */
-.invoice-table--wrap {
+.data-table--wrap {
   table-layout: fixed;
 }
 
-.invoice-table--wrap td {
+.data-table--wrap td {
   white-space: normal;
   word-break: break-word;
 }
 
-.invoice-table--wrap th:nth-child(1), .invoice-table--wrap td:nth-child(1) { width: 16%; }
-.invoice-table--wrap th:nth-child(2), .invoice-table--wrap td:nth-child(2) { width: 18%; }
-.invoice-table--wrap th:nth-child(3), .invoice-table--wrap td:nth-child(3) { width: 52%; }
-.invoice-table--wrap th:nth-child(4), .invoice-table--wrap td:nth-child(4) { width: 14%; }
+.data-table--wrap th:nth-child(1), .data-table--wrap td:nth-child(1) { width: 16%; }
+.data-table--wrap th:nth-child(2), .data-table--wrap td:nth-child(2) { width: 18%; }
+.data-table--wrap th:nth-child(3), .data-table--wrap td:nth-child(3) { width: 52%; }
+.data-table--wrap th:nth-child(4), .data-table--wrap td:nth-child(4) { width: 14%; }
 
-.is-mono {
+/* A date or registration number on the invoice page, a step smaller than
+   the text around it. */
+.invoice-doc__value {
   font-size: 0.78rem;
 }
 
@@ -2742,7 +2733,7 @@ a.btn-secondary {
 /* ---------------------------------------------------------------------
    Communications module (see communications/) — connected mailboxes,
    email threads, calendar events. Reuses the existing pill / settings-list
-   / invoice-table vocabulary wherever it fits rather than inventing a
+   / data-table vocabulary wherever it fits rather than inventing a
    parallel one; these rules only cover what genuinely has no equivalent.
    --------------------------------------------------------------------- */
 
@@ -2901,14 +2892,18 @@ a.btn-secondary {
   border-radius: var(--radius);
 }
 
-.invoice-look__add.is-dragging {
+/* A file is over the tile: the dashed "add" outline turns into a solid
+   ink frame, the ground deepens and the label goes to full ink, so it reads
+   as "let go here". Its own class rather than .is-dragging, which fades
+   whatever it's on (see analytics). */
+.invoice-look__add.is-drop-target {
+  border-style: solid;
   border-color: var(--ink);
   background: var(--paper-deep);
 }
 
-.invoice-look__add-hint {
-  font-size: 0.72rem;
-  color: var(--ink-soft);
+.invoice-look__add.is-drop-target .doc-explorer__add-trigger {
+  color: var(--ink);
 }
 
 /* The native file input stays in the tab order and reachable by keyboard

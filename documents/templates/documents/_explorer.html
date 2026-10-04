@@ -78,13 +78,20 @@
       </svg>
     </span>
     <span class="doc-explorer__add-label">Add file</span>
+    {# Says the grid takes drops (see data-doc-drop below). Plural, since a
+       drop can carry several; hidden where nothing can be dragged. #}
+    <span class="doc-explorer__add-hint">or drop files here</span>
   </label>
   <input type="file" name="files" multiple accept="{{ allowed_extensions|join(',') }}" id="doc-upload-input-{{ key }}" class="doc-explorer__upload-input doc-upload-input">
 </form>
 {% endmacro %}
 
+{# A grid that takes uploads is also a drop target for files: dropping
+   anywhere on it — the tile, a card, the gaps — uploads into that grid's
+   own form, so into that section's document type. A grid that can't take
+   uploads (a hidden type kept for its old files) isn't one. #}
 {% macro section_grid(documents, order, can_upload, key, type_id=none) %}
-<div class="doc-explorer">
+<div class="doc-explorer"{% if can_upload %} data-doc-drop{% endif %}>
   {% if can_upload %}{{ add_tile(order, key, type_id) }}{% endif %}
   {% for doc in documents %}{{ document_card(doc, order) }}{% endfor %}
 </div>
@@ -129,4 +136,54 @@
       }
     });
   });
+
+  // Drag-and-drop: files dropped on an uploadable grid go through that
+  // grid's own "Add file" form — same input, same submit, so the same
+  // checks, notice and quota as choosing them in the picker. Only drags
+  // that carry files count: dragging a thumbnail or some selected text
+  // around the page is not an upload.
+  (function () {
+    function hasFiles(event) {
+      var types = event.dataTransfer && event.dataTransfer.types;
+      return !!types && Array.prototype.indexOf.call(types, 'Files') !== -1;
+    }
+
+    var zones = document.querySelectorAll('[data-doc-drop]');
+    if (!zones.length) return;
+
+    zones.forEach(function (zone) {
+      var input = zone.querySelector('.doc-upload-input');
+      if (!input) return;
+      ['dragenter', 'dragover'].forEach(function (type) {
+        zone.addEventListener(type, function (event) {
+          if (!hasFiles(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          zone.classList.add('is-drop-target');
+        });
+      });
+      // dragleave also fires when the cursor crosses onto a card inside the
+      // grid; only clear once it has really left.
+      zone.addEventListener('dragleave', function (event) {
+        if (!zone.contains(event.relatedTarget)) zone.classList.remove('is-drop-target');
+      });
+      zone.addEventListener('drop', function (event) {
+        zone.classList.remove('is-drop-target');
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.dataTransfer.files.length) return;
+        input.files = event.dataTransfer.files;
+        input.closest('form').requestSubmit();
+      });
+    });
+
+    // A file dropped just outside a grid would otherwise make the browser
+    // open it in place of this page. Swallow those near misses.
+    ['dragover', 'drop'].forEach(function (type) {
+      document.addEventListener(type, function (event) {
+        if (hasFiles(event) && !event.target.closest('[data-doc-drop]')) event.preventDefault();
+      });
+    });
+  })();
 </script>

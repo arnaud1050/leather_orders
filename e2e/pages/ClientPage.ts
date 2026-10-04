@@ -25,7 +25,7 @@ export class ClientPage extends BasePage {
     this.hideButton = page.locator('[data-open-lifecycle="hide-client-modal"]');
     this.hideDialog = page.locator("#hide-client-modal");
     this.showButton = page.getByRole("button", { name: "Show on the client list" });
-    this.ordersTable = page.locator("table.invoice-table");
+    this.ordersTable = page.locator("table.data-table");
   }
 
   async goto(clientId: number | string, returnTo?: string): Promise<void> {

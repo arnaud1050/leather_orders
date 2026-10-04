@@ -158,7 +158,7 @@ first being shoved right and the second trailing after it. Points worth knowing:
   a sentinel so "don't touch" stays distinguishable from "clear it".
 
 **Orders list** (`/orders`) / **Clients list** (`/clients`) — full rosters, one row
-per order / client, in a `.invoice-table` (same class as the invoice list's table —
+per order / client, in a `.data-table` (same class as the invoice list's table —
 generic enough to reuse rather than naming a near-duplicate class after invoices
 specifically). Unlike the timeline (windowed to a few weeks), these show everything
 at once. **Sorting is server-side**: clicking a column header (`sort_link()` macro,
@@ -259,7 +259,7 @@ behind a "Show hidden" toggle. Each row's Actions column carries Hide/Unhide +
 Delete icon buttons. "+ Add item" opens a modal rather than an inline form.
 
 **Invoices** (`/invoices`, `/invoices/<id>`) — `invoices()` lists every invoice for
-the company in a `.invoice-table` (number, client, order, issued, total, paid,
+the company in a `.data-table` (number, client, order, issued, total, paid,
 balance, status pill) with an **Outstanding** figure at the top, followed by a
 "Not invoiced yet" list of orders with no `Invoice` — that second list is the actual
 to-do the page exists for. Client names and order names are links on both lists,
@@ -528,8 +528,8 @@ bottom of `timeline.html`. Each modal has a link out to a full page:
   (`url_for(..., return_to=return_to)`) so switching tabs doesn't lose the
   timeline window you arrived from.
 
-  **The Orders tab is a sortable, filterable table**, same `.invoice-table
-  invoice-table--no-mono` look and interaction as `/orders` — clickable column
+  **The Orders tab is a sortable, filterable table**, same `.data-table`
+  look and interaction as `/orders` — clickable column
   headers doing a real `?sort=&dir=` page load (`sort_link()` macro, this one
   local to `client_page.html` rather than `orders_list.html`'s, since the target
   route differs), and the same click-a-legend-item status filter persisted to

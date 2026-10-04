@@ -115,10 +115,8 @@
 
 {# One attached-document row. A <template> rather than string-building in
    JS so the markup stays with the rest of the markup — and so the trash
-   icon is the app's real one. The path is inline rather than imported from
-   inventory/_icons.html: a communications template reaching into another
-   module's templates would be exactly the cross-module dependency the
-   layout exists to prevent, and this is nine bytes of SVG. #}
+   icon is the app's real one, from the host's shared _icons.html. #}
+{% from "_icons.html" import icon_trash %}
 <template id="doc-attachment-row">
   <li class="doc-list__item">
     <input type="hidden" name="document_id" value="">
@@ -126,9 +124,7 @@
     <span class="doc-list__filename"></span>
     <div class="doc-list__actions">
       <button type="button" class="icon-btn icon-btn--danger" title="Remove" aria-label="Remove this attachment">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4.5 6h11M8 6V4.5h4V6M6 6l.6 9.2c.04.7.62 1.3 1.32 1.3h4.16c.7 0 1.28-.6 1.32-1.3L14 6"/>
-        </svg>
+        {{ icon_trash() }}
       </button>
     </div>
   </li>

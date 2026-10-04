@@ -605,6 +605,11 @@ reason being that a stored copy can disagree with the rows it describes.
   their refusal without leaving the page. The picker lists `.png`, `.jpg`
   and `.jpeg` as well as the two MIME types, for systems that give a JPEG
   no type. Without JavaScript, a plain Upload button does the same job.
+  Its "or drop an image here" hint is the documents tile's own
+  `.doc-explorer__add-hint`, hidden on touch-only screens. While an image
+  is over the tile it turns solid ink on the recessed grey (louder, never
+  faded), and an image dropped just beside it is ignored rather than opened
+  by the browser in place of the page.
 
 ## 15. Explicit non-requirements
 
