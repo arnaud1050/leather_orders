@@ -64,6 +64,12 @@ banner, and in exchange every page a platform admin looks at is rendered by
 the same filtered code path a real user gets. There's nothing to keep in
 sync because there's only one implementation.
 
+**The one cross-tenant page is `/admin/usage`, and it doesn't break this.**
+It reads `usage_events`, a table that exists only to be counted across
+companies and holds ids and enums, never a studio's records. Nothing there
+goes through the tenant-filtered queries, so there's no second copy of
+them to drift. See [usage/CLAUDE.md](../usage/CLAUDE.md) and `PA31`–`PA33`.
+
 **Keeping staff out of tenant routes is one hook, not 155 edits.**
 `_keep_staff_out_of_tenant_routes` in `app.py` redirects a company-less user
 back to `/admin` from anything that isn't an admin route, `/logout`, the

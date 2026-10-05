@@ -234,6 +234,23 @@ def _limit_lock_wait(conn):
 PERIODS = {"30": 30, "90": 90, "365": 365, "all": None}
 DEFAULT_PERIOD = "90"
 
+# The catalog's areas, in catalog order — the Area filter's options.
+AREAS = list(dict.fromkeys(area for area, _, _ in EVENTS.values()))
+
+# Sortable columns of the feature table: key -> (row value, first-click
+# direction). Numbers open largest-first, since "what's used most" is the
+# question; text opens A–Z. "area" is catalog order, the default.
+_CATALOG_ORDER = {name: index for index, name in enumerate(EVENTS)}
+FEATURE_SORTS = {
+    "area": (lambda r: _CATALOG_ORDER[r["event"]], "asc"),
+    "feature": (lambda r: r["label"].lower(), "asc"),
+    "companies": (lambda r: r["companies"], "desc"),
+    "people": (lambda r: r["users"], "desc"),
+    "uses": (lambda r: r["uses"], "desc"),
+    "last_used": (lambda r: r["last_used"] or datetime.min, "desc"),
+}
+DEFAULT_SORT = "area"
+
 
 def period_start(period: str) -> datetime | None:
     days = PERIODS.get(period)
@@ -295,6 +312,14 @@ def feature_report(since: datetime | None, company_id: int | None = None) -> lis
             "breakdown": sorted(breakdowns.get(name, []), key=lambda b: -b[1]),
         })
     return report
+
+
+def sort_features(rows: list[dict], key: str, direction: str) -> list[dict]:
+    """Sort the feature table. Ties keep catalog order whichever way the
+    main key runs, so equal rows don't shuffle between clicks."""
+    value, _ = FEATURE_SORTS[key]
+    rows = sorted(rows, key=lambda r: _CATALOG_ORDER[r["event"]])
+    return sorted(rows, key=value, reverse=(direction == "desc"))
 
 
 def _describe_props(props_json: str) -> str:

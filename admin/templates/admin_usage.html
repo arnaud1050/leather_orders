@@ -24,6 +24,14 @@
         {% endfor %}
       </select>
     </label>
+    <label>Area
+      <select name="area">
+        <option value="">All areas</option>
+        {% for name in areas %}
+        <option value="{{ name }}" {% if name == area %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
     <label>Company
       <select name="company">
         <option value="">All companies</option>
@@ -34,8 +42,27 @@
         {% endfor %}
       </select>
     </label>
+    {# The current sort survives a filter change. #}
+    <input type="hidden" name="sort" value="{{ sort_by }}">
+    <input type="hidden" name="dir" value="{{ sort_dir }}">
     <div><button type="submit" class="btn-secondary">Show</button></div>
   </form>
+
+  {# Same header-link sorting as the Orders list. A click on the active
+     column flips it; a click on another opens in that column's natural
+     direction (largest first for numbers). Filters ride along. #}
+  {% macro sort_link(key, label, numeric=False) %}
+  {% set next_dir = ('asc' if sort_dir == 'desc' else 'desc') if sort_by == key else sort_defaults[key] %}
+  <a href="{{ url_for('admin.usage', period=period, company=company.id if company else None, area=area or None, sort=key, dir=next_dir) }}"
+     class="sort-link {{ 'is-active' if sort_by == key else '' }} {{ 'is-numeric' if numeric else '' }}">
+    {{ label }}
+    {% if sort_by == key %}
+    <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      {% if sort_dir == 'asc' %}<path d="M6 15l6-6 6 6" />{% else %}<path d="M6 9l6 6 6-6" />{% endif %}
+    </svg>
+    {% endif %}
+  </a>
+  {% endmacro %}
 
   <p class="detail-note">
     Counts only successful actions by people inside a studio. Platform staff
@@ -67,7 +94,7 @@
             </td>
             <td class="is-numeric">{{ row.users }} / {{ row.seats }}</td>
             <td class="is-numeric">{{ row.logins }}</td>
-            <td class="is-numeric">{{ row.features }}</td>
+            <td class="is-numeric">{{ row.features }} / {{ feature_count }}</td>
             <td class="is-numeric">{{ row.events }}</td>
             <td>{{ row.last_seen.strftime('%Y-%m-%d %H:%M') if row.last_seen else '—' }}</td>
           </tr>
@@ -87,17 +114,19 @@
       "Companies" is the number to read first: one busy person can make a
       feature look popular by raw count, but not by how many studios use it.
       {% endif %}
+      "Breakdown" splits a feature's uses by their detail, such as where an
+      order was edited from or how a payment was made.
     </p>
     <div class="table-scroll">
       <table class="data-table" id="usage-features">
         <thead>
           <tr>
-            <th>Area</th>
-            <th>Feature</th>
-            {% if not company %}<th class="is-numeric">Companies</th>{% endif %}
-            <th class="is-numeric">People</th>
-            <th class="is-numeric">Uses</th>
-            <th>Last used (UTC)</th>
+            <th>{{ sort_link('area', 'Area') }}</th>
+            <th>{{ sort_link('feature', 'Feature') }}</th>
+            {% if not company %}<th class="is-numeric">{{ sort_link('companies', 'Companies', numeric=True) }}</th>{% endif %}
+            <th class="is-numeric">{{ sort_link('people', 'People', numeric=True) }}</th>
+            <th class="is-numeric">{{ sort_link('uses', 'Uses', numeric=True) }}</th>
+            <th>{{ sort_link('last_used', 'Last used (UTC)') }}</th>
             <th>Breakdown</th>
           </tr>
         </thead>

@@ -252,6 +252,14 @@ What studios use, read from `usage_events`. The recording rules are
   with no uses in the period, and shows companies, people, uses, the last
   use, and the split by props. Across all companies, a table of companies
   by activity comes first, silent companies included.
+- **PA32a.** The feature table sorts by Area (catalog order, the default),
+  Feature, Companies, People, Uses or Last used, from its column headers,
+  the same way the Orders list does. A numeric column opens largest-first,
+  ties keep catalog order, and Companies isn't sortable for a single
+  company (the column isn't shown). An **Area** filter narrows it to one
+  area. Sorting and filters combine and survive each other's changes; an
+  unknown value falls back to the default. The companies table shows
+  features used as "x / catalog size".
 - **PA33.** Counts only. The page names features and companies, never a
   client, order, invoice, message or any figure from a studio's records.
 
@@ -268,7 +276,7 @@ What studios use, read from `usage_events`. The recording rules are
 | PA24, PA24a, PA25 | `tests/test_user_migration.py` |
 | PA24b, PA24c | `tests/test_seeding.py` |
 | PA26–PA30 | `tests/test_admin.py` — the announcement banner |
-| PA31–PA33, PA31a | `tests/test_usage.py` — `/admin/usage`, excluding a company |
+| PA31–PA33, PA31a, PA32a | `tests/test_usage.py` — `/admin/usage`, excluding a company |
 | PA8 (the usage flag) | `tests/test_usage.py` — excluding a company |
 
 **Not covered by tests:** the templates' own markup (no page here has logic

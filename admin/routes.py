@@ -362,14 +362,36 @@ def usage():
     raw_company = request.args.get("company", "")
     company = next((c for c in companies if str(c.id) == raw_company), None)
 
+    area = request.args.get("area", "")
+    if area not in usage_store.AREAS:
+        area = ""
+    # Companies is a column only across all companies; sorting by it for one
+    # company would sort by a figure the table doesn't show.
+    sort_by = request.args.get("sort", usage_store.DEFAULT_SORT)
+    if sort_by not in usage_store.FEATURE_SORTS or (sort_by == "companies" and company):
+        sort_by = usage_store.DEFAULT_SORT
+    sort_dir = request.args.get("dir")
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = usage_store.FEATURE_SORTS[sort_by][1]
+
+    features = usage_store.feature_report(since, company.id if company else None)
+    if area:
+        features = [row for row in features if row["area"] == area]
+
     return render_template(
         "admin_usage.html",
-        features=usage_store.feature_report(since, company.id if company else None),
+        features=usage_store.sort_features(features, sort_by, sort_dir),
+        feature_count=len(usage_store.EVENTS),
         company_rows=None if company else usage_store.company_report(since),
         companies=companies,
         company=company,
         period=period,
         periods=usage_store.PERIODS,
+        area=area,
+        areas=usage_store.AREAS,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        sort_defaults={key: d for key, (_, d) in usage_store.FEATURE_SORTS.items()},
         section="usage",
         active_view="admin",
     )

@@ -517,3 +517,72 @@ def test_a_form_without_the_box_leaves_the_flag_alone(staff, company):
     db.session.expire_all()
     row = db.session.get(Company, company.id)
     assert (row.name, row.exclude_from_usage) == ("Renamed", True)
+
+
+# ---------------------------------------------------------------------------
+# Sorting and filtering the feature table (PA32a)
+# ---------------------------------------------------------------------------
+
+def _feature_order(html):
+    import re
+    return re.findall(r'<tr data-event="([^"]+)"', html)
+
+
+@pytest.fixture
+def seeded_usage(company, committed):
+    for _ in range(3):
+        _seed(company.id, committed.id, "mail.sent")
+    _seed(company.id, committed.id, "order.created")
+    db.session.commit()
+
+
+def test_the_feature_table_opens_in_catalog_order(staff, seeded_usage):
+    order = _feature_order(staff.get("/admin/usage").get_data(as_text=True))
+    assert order == list(EVENTS)
+
+
+def test_sorting_by_uses_puts_the_most_used_first(staff, seeded_usage):
+    order = _feature_order(staff.get("/admin/usage?sort=uses&dir=desc").get_data(as_text=True))
+    assert order[:2] == ["mail.sent", "order.created"]
+    # Ties keep catalog order rather than shuffling.
+    unused = [e for e in order if e not in ("mail.sent", "order.created")]
+    assert unused == [e for e in EVENTS if e not in ("mail.sent", "order.created")]
+
+
+def test_a_numeric_column_opens_largest_first(staff, seeded_usage):
+    """No `dir` in the URL: the column's natural direction applies."""
+    order = _feature_order(staff.get("/admin/usage?sort=uses").get_data(as_text=True))
+    assert order[0] == "mail.sent"
+
+
+def test_sorting_ascending_by_feature_name(staff):
+    page = staff.get("/admin/usage?sort=feature&dir=asc").get_data(as_text=True)
+    labels = [EVENTS[e][1].lower() for e in _feature_order(page)]
+    assert labels == sorted(labels)
+
+
+def test_the_area_filter_shows_only_that_area(staff):
+    page = staff.get("/admin/usage?area=Invoicing").get_data(as_text=True)
+    assert _feature_order(page) == [e for e, (a, _, _) in EVENTS.items() if a == "Invoicing"]
+    assert '<option value="Invoicing" selected>' in page
+
+
+def test_unknown_sort_and_area_fall_back(staff):
+    page = staff.get("/admin/usage?sort=nope&dir=sideways&area=Nope").get_data(as_text=True)
+    assert _feature_order(page) == list(EVENTS)
+
+
+def test_sorting_by_companies_is_ignored_for_one_company(staff, company):
+    """That column isn't shown for a single company."""
+    page = staff.get(f"/admin/usage?company={company.id}&sort=companies").get_data(as_text=True)
+    assert _feature_order(page) == list(EVENTS)
+
+
+def test_sort_links_keep_the_filters(staff, company):
+    page = staff.get(f"/admin/usage?period=30&company={company.id}&area=Orders").get_data(as_text=True)
+    assert f"/admin/usage?period=30&amp;company={company.id}&amp;area=Orders&amp;sort=uses&amp;dir=desc" in page
+
+
+def test_features_used_is_shown_out_of_the_catalog(staff, seeded_usage):
+    page = staff.get("/admin/usage").get_data(as_text=True)
+    assert f"2 / {len(EVENTS)}" in page
