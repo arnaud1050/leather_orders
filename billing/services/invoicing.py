@@ -38,6 +38,10 @@ class Amounts:
     tax_lines: list[tax.TaxLine]
     amount_paid: float
     tax_status: str
+    untaxed: tuple[str, ...] = ()
+    taxed_elsewhere: tuple[str, ...] = ()
+    tax_province: str | None = None
+    seller_province: str | None = None
 
     @property
     def tax_total(self) -> float:
@@ -54,6 +58,15 @@ class Amounts:
     @property
     def is_settled(self) -> bool:
         return self.balance_due < 0.005
+
+
+def _tax_province(billable: Billable, issuer: IssuerDetails) -> str | None:
+    """The province whose taxes apply to this sale — the one place that
+    decides it, so live amounts and the freeze can't disagree."""
+    return tax.place_of_supply(
+        billable.tax_province, issuer.province,
+        picked_up=billable.picked_up, outside_canada=billable.outside_canada,
+    )
 
 
 # --- Profiles -------------------------------------------------------------
@@ -188,6 +201,8 @@ def amounts_for(
     what stops an edit to the subject's lines from changing a number the
     buyer has already been given.
     """
+    province = _tax_province(billable, issuer)
+    registrations = issuer.tax_registrations
     issued = invoice is not None and invoice.status != "draft"
     if issued and invoice.is_frozen:
         lines = invoice.frozen_tax_lines
@@ -197,16 +212,25 @@ def amounts_for(
         lines, subtotal = [], billable.subtotal
     else:
         subtotal = billable.subtotal
-        lines = tax.taxes_for(
-            billable.tax_province, issuer.tax_registrations, subtotal
-        )
+        lines = tax.taxes_for(province, registrations, subtotal)
     return Amounts(
         subtotal=subtotal,
         tax_lines=lines,
         amount_paid=billable.amount_paid,
         tax_status=tax.status_for(
-            billable.tax_province, issuer.tax_registrations, lines
+            province, registrations, lines,
+            picked_up=billable.picked_up, outside_canada=billable.outside_canada,
         ),
+        # The two warnings only while they can still be acted on: an issued
+        # invoice is frozen.
+        untaxed=() if issued else tuple(
+            tax.unregistered_taxes(province, registrations)
+        ),
+        taxed_elsewhere=() if issued else tuple(
+            tax.taxes_elsewhere(province, issuer.province, lines)
+        ),
+        tax_province=province,
+        seller_province=issuer.province,
     )
 
 
@@ -259,6 +283,10 @@ def document_for(
         amount_paid=amounts.amount_paid,
         is_frozen=invoice.is_frozen,
         tax_status=amounts.tax_status,
+        untaxed=amounts.untaxed,
+        taxed_elsewhere=amounts.taxed_elsewhere,
+        tax_province=amounts.tax_province,
+        seller_province=amounts.seller_province,
     )
 
 
@@ -318,8 +346,8 @@ def freeze(company_id: int, invoice: Invoice, billable: Billable,
     invoice.tax_rows = [
         InvoiceTaxLine(label=line.label, rate=line.rate, amount=line.amount, sort_order=i)
         for i, line in enumerate(
-            tax.taxes_for(billable.tax_province, issuer.tax_registrations,
-                          billable.subtotal)
+            tax.taxes_for(_tax_province(billable, issuer),
+                          issuer.tax_registrations, billable.subtotal)
         )
     ]
 

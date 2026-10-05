@@ -162,6 +162,10 @@ class IssuerDetails:
     qst_number: str | None = None
     neq: str | None = None
     payment_instructions: str | None = None
+    # Where the seller is, for taxing goods collected in person. Not printed
+    # separately (it's already in `address`) and not frozen: an issued
+    # invoice carries its tax lines, so it never needs to recompute them.
+    province: str | None = None
 
     @property
     def registrations(self) -> list[tuple[str, str]]:
@@ -194,7 +198,9 @@ class Billable:
 
     `subject_id` is the host's own id for it (an Order here). `tax_province`
     is the *buyer's* province — tax is destination-based, so it comes from
-    the payer, not the seller.
+    the payer, not the seller. `picked_up` (collected at the seller's
+    premises) and `outside_canada` (an export) change which province that
+    is; see `tax.place_of_supply`.
     """
 
     subject_id: int
@@ -204,6 +210,8 @@ class Billable:
     lines: list[LineItem] = field(default_factory=list)
     payments: list[PaymentRecord] = field(default_factory=list)
     url: str | None = None  # host link, e.g. the order's page
+    picked_up: bool = False
+    outside_canada: bool = False
 
     @property
     def subtotal(self) -> float:
@@ -240,6 +248,10 @@ class InvoiceDocument:
     amount_paid: float
     is_frozen: bool
     tax_status: str
+    untaxed: tuple[str, ...] = ()
+    taxed_elsewhere: tuple[str, ...] = ()
+    tax_province: str | None = None
+    seller_province: str | None = None
 
     @property
     def tax_total(self) -> float:

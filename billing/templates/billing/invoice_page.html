@@ -124,19 +124,45 @@
   </article>
 
   <section class="invoice-admin no-print">
-    {% if doc.status == 'draft' and doc.tax_status != 'ok' %}
+    {% if doc.status == 'draft' and doc.tax_status == 'outside_canada' %}
+    <p class="detail-note">
+      No sales tax: the buyer is outside Canada and the goods are shipped, so
+      this is an export.
+    </p>
+    {% elif doc.status == 'draft' and doc.tax_status != 'ok' %}
     <p class="warning-note">
-      {% if doc.tax_status == 'no_buyer_province' %}
+      {% if doc.tax_status == 'no_seller_province' %}
+        No tax on this invoice: the goods are collected at the studio, so the
+        studio's province sets the tax, and none is on file. Add it in
+        <a href="{{ url_for('settings_invoicing') }}">Settings</a>.
+      {% elif doc.tax_status == 'no_buyer_province' %}
         No tax on this invoice: {{ doc.payer.name }} has no province on file,
         and the rate depends on where the buyer is.
       {% elif doc.tax_status == 'unknown_province' %}
         No tax on this invoice: that isn't a province this app has rates for.
       {% else %}
-        No tax on this invoice: no registration number is on file for the
-        buyer's province. Add one in <a href="{{ url_for('settings_invoicing') }}">Settings</a>
+        No tax on this invoice: no registration number is on file for
+        {{ doc.tax_province }}'s taxes. Add one in <a href="{{ url_for('settings_invoicing') }}">Settings</a>
         if that's wrong.
       {% endif %}
       Whatever is shown here is frozen the moment you mark it sent.
+    </p>
+    {% elif doc.status == 'draft' and doc.untaxed %}
+    <p class="warning-note">
+      {{ doc.untaxed|join(' and ') }} isn't on this invoice: {{ doc.tax_province }}
+      levies it, but no registration number is on file for it. Add one in
+      <a href="{{ url_for('settings_invoicing') }}">Settings</a> if that's wrong.
+      Whatever is shown here is frozen the moment you mark it sent.
+    </p>
+    {% endif %}
+    {% if doc.status == 'draft' and doc.taxed_elsewhere %}
+    <p class="warning-note">
+      {{ doc.tax_province }} {{ doc.taxed_elsewhere|join(' and ') }} is on this invoice,
+      but the studio is in {{ doc.seller_province }}. The PST number in
+      <a href="{{ url_for('settings_invoicing') }}">Settings</a> is used for BC,
+      Saskatchewan and Manitoba alike, so check you're registered in
+      {{ doc.tax_province }} too. Whatever is shown here is frozen the moment you
+      mark it sent.
     </p>
     {% endif %}
 

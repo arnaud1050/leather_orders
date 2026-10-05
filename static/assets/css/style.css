@@ -1332,6 +1332,7 @@ a.btn-secondary {
    else that's "on" in the app — never the browser's default blue. Every
    standalone page checkbox goes through one of these two classes. */
 .checkbox-group__item input[type="checkbox"],
+.checkbox-group__item input[type="radio"],
 .invoice-look__check input[type="checkbox"] {
   width: 15px;
   height: 15px;

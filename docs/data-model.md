@@ -56,6 +56,7 @@ User(id, company_id, email, full_name, password_hash,           # email is the l
                                                                 # staff — the one nullable one
 Client(id, company_id, first_name, last_name, email, phone,     # .name -> "first last"
        street, city, province, postal_code,                     # province decides tax
+       outside_canada,                                          # picker's "Outside Canada"; province stays NULL
        inquiry_type, first_message,                             # lead-capture fields, see below
        other_source_detail, notes)                              # see below; notes are staff-facing
 SourceOption(id, company_id, label, sort_order, is_active,      # company-configurable, see below
@@ -63,7 +64,7 @@ SourceOption(id, company_id, label, sort_order, is_active,      # company-config
 client_sources                                                  # Client <-> SourceOption join table
 OrderType(id, company_id, label, sort_order, is_active)         # company-configurable, optional per order
 Order(id, client_id, item, start, due, pickup_date, status,     # .total from its lines, no price column
-      order_type_id, notes)
+      order_type_id, picked_up, notes)                         # picked_up: taxed at the studio
 OrderLine(id, order_id, description, quantity, unit_price, sort_order)
 Payment(id, order_id, amount, paid_date, method, reference)     # one order can have many, see below
 ```
@@ -360,7 +361,11 @@ Materials tab.
 the **client's** province's rate (destination-based, which is how place-of-supply
 works for goods shipped to a customer), and prices are **tax-exclusive** — a line's
 `unit_price` is pre-tax and tax is added on top, so nothing already entered changed
-value when this landed. Two rules decide what actually gets charged:
+value when this landed. Two exceptions move the province: an order with
+`picked_up` ("Picked up at the studio") is taxed in the **studio's** province, and
+a client with `outside_canada` is charged nothing on shipped orders (an export) —
+`billing.tax.place_of_supply()` decides, see billing `C10`–`C12`. Two rules decide
+what actually gets charged:
 
 1. The client's `province` picks the row in `PROVINCE_TAXES`. **A client with no
    province is charged nothing** — `Order.tax_status` reports which of

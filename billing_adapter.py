@@ -21,7 +21,9 @@ def billable_for(order: Order, *, with_urls: bool = False) -> Billable:
     """Describe an order the way billing understands it.
 
     `tax_province` is the *client's*, not the studio's — tax is
-    destination-based (see billing/tax.py).
+    destination-based (see billing/tax.py). `picked_up` and
+    `outside_canada` let billing move that to the studio's province, or to
+    none at all.
 
     `with_urls` is off by default because `url_for` needs a request
     context, and this is called from `Order.total`, which runs in scripts
@@ -48,6 +50,8 @@ def billable_for(order: Order, *, with_urls: bool = False) -> Billable:
             for p in order.payments
         ],
         url=url_for("order_page", order_id=order.id) if with_urls else None,
+        picked_up=bool(order.picked_up),
+        outside_canada=bool(client.outside_canada),
     )
 
 

@@ -2,7 +2,8 @@
 Where clients are: the "Outside Canada" province choice (CL12a) and the
 City / Province columns on /clients (LST5e).
 
-"Outside Canada" only records the fact for now — tax must not move.
+What "Outside Canada" does to tax (exports, pickups) is billing `C10`/`C11`,
+tested in test_place_of_supply.py.
 """
 
 from datetime import date
@@ -42,7 +43,8 @@ def test_choosing_a_province_clears_outside_canada(logged_in, client_record):
 
 
 def test_outside_canada_changes_no_order_total(company, client_record):
-    """Same as having no province: nothing charged, before and after."""
+    """A shipped order to a client abroad is charged nothing — the same as
+    having no province, so marking existing clients moves no total."""
     client_record.province = None
     order = Order(client_id=client_record.id, item="Bag", start=date(2026, 7, 1),
                   due=date(2026, 7, 15), status="confirmed")

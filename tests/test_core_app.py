@@ -557,6 +557,7 @@ def test_edit_order_pickup_date_can_be_set(logged_in, order):
 
 def test_new_order_creates_a_single_line_from_price(logged_in, client_record):
     logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "Weekender bag",
         "start": "2026-08-01", "due": "2026-08-15", "price": "480.00",
         "status": "confirmed",
@@ -621,6 +622,7 @@ def test_new_order_rejects_a_date_it_cannot_read(logged_in, client_record, paylo
     missing field raises `TypeError` rather than `ValueError`. Both used to
     surface as a 500."""
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "Bad dates",
         "price": "100.00", "status": "confirmed", **payload,
     })
@@ -633,6 +635,7 @@ def test_new_order_rejects_a_due_date_before_the_start(logged_in, client_record)
     """OR2a — reachable straight from the UI: the two date pickers have no
     relationship to each other, so nothing but the server catches it."""
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "Backwards",
         "start": "2026-08-20", "due": "2026-08-01",
         "price": "100.00", "status": "confirmed",
@@ -647,6 +650,7 @@ def test_new_order_allows_a_single_day_order(logged_in, client_record):
     finishes on one day is ordinary, and the boundary is where an
     off-by-one would hide."""
     logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "Same day",
         "start": "2026-08-01", "due": "2026-08-01",
         "price": "100.00", "status": "confirmed",
@@ -659,6 +663,7 @@ def test_new_order_rejects_a_whitespace_only_item(logged_in, client_record):
     """OR12 — `required` accepts "   ", which strips to nothing and leaves
     an order with no name anywhere it renders."""
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "   ",
         "start": "2026-08-01", "due": "2026-08-15",
         "price": "100.00", "status": "confirmed",
@@ -790,6 +795,7 @@ def test_a_quick_edit_with_a_blank_item_is_refused_not_silently_kept(logged_in, 
 
 def test_new_order_explains_a_backwards_due_date_and_keeps_the_form(logged_in, client_record):
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "Weekender",
         "start": "2026-08-20", "due": "2026-08-01",
         "price": "480.00", "status": "confirmed", "notes": "Brass hardware",
@@ -810,6 +816,7 @@ def test_new_order_explains_a_backwards_due_date_and_keeps_the_form(logged_in, c
 
 def test_new_order_explains_a_name_that_is_only_spaces(logged_in, client_record):
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "   ",
         "start": "2026-08-01", "due": "2026-08-15", "price": "100.00",
     })
@@ -828,6 +835,7 @@ def test_new_order_with_blank_new_client_names_explains_both_and_creates_nobody(
     clients_before = Client.query.count()
 
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": "new", "new_first_name": "  ", "new_last_name": "",
         "new_email": "ana@example.com",
         "item": "Belt", "start": "2026-08-01", "due": "2026-08-10",
@@ -846,6 +854,7 @@ def test_new_order_with_blank_new_client_names_explains_both_and_creates_nobody(
 
 def test_new_order_strips_surrounding_spaces_before_saving(logged_in):
     logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": "new", "new_first_name": "  Ana ", "new_last_name": " Silva  ",
         "new_email": " ana@example.com ",
         "item": "  Card holder  ", "start": "2026-08-01", "due": "2026-08-10",
@@ -1329,7 +1338,7 @@ def test_new_order_carries_return_to_through_to_the_redirect(logged_in, client_r
         data={
             "client_id": str(client_record.id), "item": "Tote",
             "start": "2026-08-01", "due": "2026-08-15", "price": "100",
-            "status": "confirmed",
+            "status": "confirmed", "fulfilment": "shipped",
         },
     )
     assert response.status_code == 302
@@ -1338,6 +1347,7 @@ def test_new_order_carries_return_to_through_to_the_redirect(logged_in, client_r
 
 def test_new_order_inline_client_creation_creates_both_rows(logged_in, company):
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": "new", "new_first_name": "Jean", "new_last_name": "Tremblay",
         "new_email": "jean@example.com", "new_phone": "",
         "item": "Belt", "start": "2026-08-01", "due": "2026-08-10",
@@ -1354,6 +1364,7 @@ def test_new_order_inline_client_creation_creates_both_rows(logged_in, company):
 
 def test_new_order_inline_client_creation_requires_first_and_last_name(logged_in):
     response = logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": "new", "new_first_name": "", "new_last_name": "",
         "item": "Belt", "start": "2026-08-01", "due": "2026-08-10",
         "price": "60", "status": "confirmed",

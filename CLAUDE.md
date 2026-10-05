@@ -208,6 +208,8 @@ scripts/               # run by hand, never at startup
   seed_sample_data.py  # loads sample_data.py into a dev/demo database
   migrate.py           # applies pending migrations on purpose, and prints the diff
                        # (booting the app already does this — see docs/deployment.md)
+  backfill_pickup.py   # marks existing orders "picked up"; dry run lists every
+                       # uninvoiced order whose total would change, --apply writes
 
 admin/                 # platform admin: companies, users       -> admin/CLAUDE.md
                        # NOT a module — imports host models on purpose

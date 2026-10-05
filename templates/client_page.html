@@ -57,7 +57,8 @@
     </label>
     {% if client.outside_canada %}
     <p class="detail-note detail-form__note">
-      Outside Canada: orders for this client are billed with no sales tax.
+      Orders shipped to this client are exports and charged no Canadian sales
+      tax. Orders they collect at the studio are still taxed there.
     </p>
     {% elif not client.province %}
     <p class="detail-note detail-form__note">

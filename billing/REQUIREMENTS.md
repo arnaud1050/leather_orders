@@ -89,6 +89,13 @@ accounting period closes.
 - **R8.** BC PST, SK PST and MB RST all read the **same** `pst_number`
   field: a seller is realistically registered in at most one. Quebec's QST
   is gated separately on `qst_number`.
+- **R8a.** A tax the buyer's province levies but the seller can't charge for
+  want of a registration is reported by `unregistered_taxes` (e.g. `PST` for a
+  BC buyer when only GST is held), even though `status_for` says `ok` because
+  *some* tax was charged. The order page and a draft invoice warn about it;
+  an issued invoice doesn't (it's frozen). Amounts are unaffected. Tests:
+  `test_unregistered_taxes_names_the_skipped_tax`,
+  `test_a_bc_order_without_a_pst_number_warns_that_pst_is_skipped`.
 - **R9.** The rate table must be corrected **from the CRA**, never from the
   test — and the test corrected from the CRA too. A test that imported the
   constant it checks would pass no matter what the constant said.
@@ -114,7 +121,9 @@ accounting period closes.
 ## 3. What actually gets charged
 
 - **C1 — Destination-based.** Tax follows the **buyer's** province
-  (`Billable.tax_province`), never the seller's.
+  (`Billable.tax_province`), never the seller's — **except** when the goods
+  are collected in person (C10). `place_of_supply()` is the one function
+  that decides the province; live amounts and `freeze()` both go through it.
 - **C2 — Registration-gated.** A tax is charged only when the seller holds
   the matching registration. A studio under the small-supplier threshold
   has no `gst_number` and charges no GST; one that never registered in BC
@@ -125,6 +134,8 @@ accounting period closes.
 - **C4 — Charge nothing rather than guess.** A blank or unrecognised
   province yields no tax lines.
 - **C5 — Say why nothing was charged.** `status_for()` returns `ok`,
+  `outside_canada` (C11 — correct, shown as a note, not a warning),
+  `no_seller_province` (C10 with no seller province on file),
   `no_buyer_province`, `unknown_province` or `not_registered`, so a host can
   surface the reason instead of silently billing zero.
 - **C6 — Round per tax line, to the cent**, so a document's total matches
@@ -134,6 +145,20 @@ accounting period closes.
 - **C8 — Rates print without trailing zeros** (`5%`, `9.975%`).
 - **C9 — Tax applies to the whole subtotal.** There is no per-line taxable
   flag (see Z2).
+- **C10 — Collected in person is taxed at the seller.** A `Billable` with
+  `picked_up` is taxed in the **seller's** province (`IssuerDetails.province`,
+  from the letterhead), whatever the buyer's province — and even when the
+  buyer is outside Canada. No seller province on file charges nothing and
+  reports `no_seller_province`.
+- **C11 — Exports owe nothing.** A `Billable` with `outside_canada` and not
+  `picked_up` is charged no tax and reports `outside_canada`.
+- **C12 — PST for another province is flagged, not refused.** One
+  `pst_number` gates BC PST, SK PST and MB RST (R8), so a seller registered
+  in one province charges all three. `taxes_elsewhere()` names any PST/RST
+  charged for a province other than the seller's; the order page and a
+  draft invoice warn about it. Silent when the seller's province isn't on
+  file. Amounts are unaffected — selling into another province can require
+  registering there, so the charge may well be right.
 
 ## 4. The seller's letterhead (`BillingProfile`)
 
@@ -685,6 +710,7 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | R6 | `test_hst_hangs_off_the_federal_registration` |
 | R7 | `test_manitoba_uses_its_own_name_for_the_tax` |
 | R8 | `test_pst_provinces_share_one_registration_field`, `test_quebec_qst_is_gated_on_the_qst_registration` |
+| R8a | `test_unregistered_taxes_names_the_skipped_tax`, `test_a_bc_order_without_a_pst_number_warns_that_pst_is_skipped` |
 | R9 | *(structural — `test_tax.py` writes the CRA table out a second time, independently of `PROVINCE_TAXES`. Nothing can test that a human did the corrections in the right direction.)* |
 | R10 | `test_the_spellings_of_one_province_all_resolve`, `test_the_other_provinces_resolve_too`, `test_every_code_and_name_in_the_table_resolves_to_itself` |
 | R11 | `test_anything_else_is_dropped_rather_than_guessed`, `test_a_dropped_province_is_not_a_taxable_one` |
@@ -697,6 +723,9 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | C7 | `test_each_tax_is_computed_on_the_subtotal_not_compounded` |
 | C8 | `test_rate_percent_is_printable` |
 | C9 | *(by construction — `taxes_for` takes one subtotal; see Z2)* |
+| C10 | `test_place_of_supply`, `test_a_picked_up_order_is_taxed_in_the_studio_province`, `test_a_picked_up_order_with_no_studio_province_says_so`, `test_an_export_collected_at_the_studio_is_taxed_there`, `test_freezing_uses_the_pickup_province` (`tests/test_place_of_supply.py`) |
+| C11 | `test_status_for_the_new_cases`, `test_an_export_is_charged_nothing_and_says_why` (`tests/test_place_of_supply.py`) |
+| C12 | `test_taxes_elsewhere_flags_pst_for_another_province`, `test_pst_for_another_province_is_charged_but_flagged` (`tests/test_place_of_supply.py`) |
 | P1 | `test_profiles_are_per_tenant` |
 | P2 | `test_profiles_are_per_tenant` (creation-on-first-use is exercised, not separately asserted) |
 | P3 | `test_the_profile_name_survives_a_plain_query` |

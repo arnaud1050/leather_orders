@@ -22,7 +22,8 @@ from dataclasses import dataclass
 
 __all__ = [
     "PROVINCE_TAXES", "PROVINCES", "TaxLine", "TaxRule", "normalize_province",
-    "status_for", "taxes_for",
+    "place_of_supply", "status_for", "taxes_elsewhere", "taxes_for",
+    "unregistered_taxes",
 ]
 
 
@@ -196,19 +197,95 @@ def taxes_for(
     ]
 
 
+def place_of_supply(
+    buyer_province: str | None,
+    seller_province: str | None,
+    *,
+    picked_up: bool = False,
+    outside_canada: bool = False,
+) -> str | None:
+    """The province whose taxes apply, or None when none does.
+
+    Goods shipped to the buyer are taxed where they're delivered — the
+    buyer's province. Goods the buyer collects in person are delivered at
+    the seller's premises, so they're taxed in the *seller's* province,
+    wherever the buyer lives (and even if the buyer lives abroad). Goods
+    shipped out of the country are exported: no Canadian sales tax.
+    """
+    if picked_up:
+        return seller_province
+    if outside_canada:
+        return None
+    return buyer_province
+
+
+def taxes_elsewhere(
+    province: str | None,
+    seller_province: str | None,
+    charged: list[TaxLine],
+) -> list[str]:
+    """Labels of charged PST/RST taxes belonging to a province the seller
+    isn't in — e.g. `["PST"]` for BC PST charged by a Saskatchewan studio.
+
+    One `pst_number` gates BC PST, Saskatchewan PST and Manitoba RST alike,
+    so a studio registered in one of them charges all three. Selling into
+    another province can require registering there too, so it may be right;
+    this only flags it for a person to confirm. Unknown when the seller's
+    own province isn't on file, so nothing is flagged then.
+    """
+    if not seller_province or province == seller_province:
+        return []
+    charged_labels = {line.label for line in charged}
+    return [
+        rule.label
+        for rule in PROVINCE_TAXES.get(province or "", ())
+        if rule.registration_field == "pst_number" and rule.label in charged_labels
+    ]
+
+
+def unregistered_taxes(
+    province: str | None,
+    registrations: Mapping[str, str | None] | None,
+) -> list[str]:
+    """Labels of taxes this province levies that weren't charged because the
+    seller holds no registration for them — e.g. `["PST"]` for a BC buyer
+    when no PST number is on file.
+
+    `status_for` can't say this: it reports "ok" whenever *any* tax was
+    charged, so a BC order billed GST only looks fine. Callers show this as
+    a warning; it never changes the amounts.
+    """
+    held = registrations or {}
+    return [
+        rule.label
+        for rule in PROVINCE_TAXES.get(province or "", ())
+        if not held.get(rule.registration_field)
+    ]
+
+
 def status_for(
     province: str | None,
     registrations: Mapping[str, str | None] | None,
     charged: list[TaxLine],
+    *,
+    picked_up: bool = False,
+    outside_canada: bool = False,
 ) -> str:
     """Why nothing was charged, when nothing was.
 
-    `"ok"` means tax was calculated normally. The other three are reasons a
-    host can show the user instead of silently billing zero:
-    `no_buyer_province`, `unknown_province`, `not_registered`.
+    `province` is the one `place_of_supply` resolved, and the two flags are
+    the ones passed to it. `"ok"` means tax was calculated normally;
+    `"outside_canada"` means none is owed (an export). The rest are reasons
+    a host can show the user instead of silently billing zero:
+    `no_seller_province` (picked up, but the seller's province isn't on
+    file), `no_buyer_province`, `unknown_province`, `not_registered`.
     """
     if charged:
         return "ok"
+    if picked_up and not (province or "").strip():
+        return "no_seller_province"
+    if outside_canada and not picked_up:
+        return "outside_canada"
     if not (province or "").strip():
         return "no_buyer_province"
     if province not in PROVINCE_TAXES:
