@@ -48,7 +48,7 @@ than through `seed_if_empty()` gets them too.
 
 ```python
 Company(id, name, timezone, is_active,                          # tenant boundary; letterhead moved
-        order_columns, exclude_from_usage)                      # to billing.BillingProfile, see below
+        order_columns, client_columns, exclude_from_usage)      # to billing.BillingProfile, see below
 UsageEvent(id, created_at, company_id, user_id, event, props)   # usage/store.py — see usage/CLAUDE.md
 User(id, company_id, email, full_name, password_hash,           # email is the login identity, and
      signature, is_active, is_platform_admin)                   # the only globally unique column
@@ -515,7 +515,7 @@ every boot and on a fresh database.
 - **`_ADDED_COLUMNS`** is a list of `(table, column, DDL)` for columns added after
   their table first shipped (`companies.invoice_prefix`, `clients.address`,
   `payments.method`, `payments.reference`, `orders.order_type_id`,
-  `companies.timezone`, `orders.pickup_date`, `companies.order_columns`,
+  `companies.timezone`, `orders.pickup_date`, `companies.order_columns`, `companies.client_columns`,
   `source_options.is_other`, `clients.other_source_detail`, `clients.notes`,
   `users.signature`, `orders.is_rush`, `clients.is_hidden`). Its DDL spells the default zone as a literal rather
   than interpolating `DEFAULT_TIMEZONE` — a migration records what shipped and

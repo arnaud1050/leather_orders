@@ -18,7 +18,7 @@
   {# Each section shows the messages its own buttons leave (MOD8). #}
   {% from "_save_notice.html" import notice_field, notice_slot, page_notice, save_notice %}
   {% set slots = {'general': ['timezone'], 'account': ['password', 'signature'],
-                  'orders': ['order-types', 'order-columns'], 'clients': ['sources'],
+                  'orders': ['order-types', 'order-columns'], 'clients': ['sources', 'client-columns'],
                   'inventory': ['units', 'inventory-types', 'inventory-columns'],
                   'invoicing': ['company-details', 'invoicing', 'appearance']} %}
   {{ page_notice(notice, slots.get(section, [])) }}
@@ -155,7 +155,7 @@
       their data; they just stop rendering that column.
     </p>
 
-    <ul class="settings-source-list" id="order-column-list">
+    <ul class="settings-source-list" id="order-column-list" data-reorder-url="{{ url_for('reorder_order_columns') }}">
       {% for col in order_columns %}
       <li class="settings-source-list__item {% if not col.visible %}settings-source-list__item--hidden{% endif %}" draggable="true" data-key="{{ col.key }}">
         <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
@@ -292,6 +292,44 @@
         });
       })();
     </script>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Clients list columns</h2>
+    {{ notice_slot(notice, 'client-columns') }}
+    <p class="detail-note">
+      Reorder and hide/show the columns shown on the
+      <a href="{{ url_for('clients_list') }}">Clients</a> list. Drag a row by
+      its handle to reorder — it saves as you drop it. Hidden columns keep
+      their data; they just stop rendering that column. Name always shows,
+      since it's the link to each client's page.
+    </p>
+
+    <ul class="settings-source-list" id="client-column-list" data-reorder-url="{{ url_for('reorder_client_columns') }}">
+      {% for col in client_columns %}
+      <li class="settings-source-list__item {% if not col.visible %}settings-source-list__item--hidden{% endif %}" draggable="true" data-key="{{ col.key }}">
+        <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
+          {{ icon_grip() }}
+        </span>
+        <span class="settings-source-list__label">
+          {{ col.label }}
+          {% if not col.visible %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+        </span>
+        <div class="settings-source-list__actions">
+          {% if col.can_hide %}
+          <form method="post" action="{{ url_for('toggle_client_column', key=col.key) }}">
+            {{ notice_field('client-columns') }}
+            <button type="submit" class="btn-secondary">{{ 'Show' if not col.visible else 'Hide' }}</button>
+          </form>
+          {% else %}
+          {# Kept even with no button: without a third child, space-between
+             shoves the label flush right (same as "Each" in inventory units). #}
+          <span class="checkbox-group__hidden-tag">(always shown)</span>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
   </section>
 
   {% elif section == 'invoicing' %}
@@ -545,9 +583,9 @@
 </div>
 
 <script>
-  (function () {
-    var list = document.getElementById('order-column-list');
-    if (!list) return;
+  // Column editors (Orders list, Clients list): each list names its own
+  // reorder route in data-reorder-url, and posts its keys there on drop.
+  [].forEach.call(document.querySelectorAll('#order-column-list, #client-column-list'), function (list) {
     var dragged = null;
 
     list.addEventListener('dragstart', function (e) {
@@ -579,12 +617,12 @@
       dragged = null;
       var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
         .map(function (item) { return item.dataset.key; });
-      fetch("{{ url_for('reorder_order_columns') }}", {
+      fetch(list.dataset.reorderUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order: order }),
       });
     });
-  })();
+  });
 </script>
 {% endblock %}

@@ -64,6 +64,9 @@ def test_outside_canada_changes_no_order_total(company, client_record):
 def test_clients_list_shows_city_and_province(logged_in, company):
     add_client(company, "Ana", "Coast", city="Vancouver", province="BC")
     add_client(company, "Ben", "Abroad", city="Lyon", outside_canada=True)
+    # Both columns start hidden (LST13a); a company turns them on.
+    logged_in.post("/settings/client-columns/city/toggle")
+    logged_in.post("/settings/client-columns/province/toggle")
     body = logged_in.get("/clients").get_data(as_text=True)
     assert "Vancouver" in body
     assert 'title="British Columbia">BC<' in body

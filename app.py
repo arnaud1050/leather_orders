@@ -1355,43 +1355,108 @@ ORDER_COLUMNS = {
 }
 
 
+def _merge_columns(saved_json: str | None, canonical: dict,
+                   hidden_by_default: frozenset = frozenset()) -> list[dict]:
+    """A saved column blob, merged against its canonical dict.
+
+    Shared by the Orders and Clients lists: a column added to the app later
+    appears (appended at the end) for a company with an older saved blob,
+    and a column since removed from the app silently drops out instead of
+    erroring. An unparseable blob reads as the canonical order. A column the
+    blob doesn't mention starts visible unless it's in `hidden_by_default`.
+    """
+    saved = []
+    if saved_json:
+        try:
+            saved = json.loads(saved_json)
+        except (ValueError, TypeError):
+            saved = []
+    if not isinstance(saved, list):
+        saved = []
+    seen = set()
+    columns = []
+    for entry in saved:
+        key = entry.get("key") if isinstance(entry, dict) else None
+        if key in canonical and key not in seen:
+            seen.add(key)
+            label, numeric = canonical[key]
+            columns.append({"key": key, "label": label, "numeric": numeric, "visible": bool(entry.get("visible", True))})
+    for key, (label, numeric) in canonical.items():
+        if key not in seen:
+            columns.append({"key": key, "label": label, "numeric": numeric,
+                            "visible": key not in hidden_by_default})
+    return columns
+
+
+def _columns_json(columns: list[dict]) -> str:
+    return json.dumps([{"key": c["key"], "visible": c["visible"]} for c in columns])
+
+
+def _reordered_columns(current: list[dict], order: list[str]) -> list[dict]:
+    """`current` rearranged to follow `order` (already filtered to known
+    keys), keeping each column's visibility. A key the client didn't send
+    back (shouldn't happen — every column renders a draggable row) is
+    appended rather than silently dropped."""
+    visibility = {c["key"]: c["visible"] for c in current}
+    columns = [{"key": key, "visible": visibility.get(key, True)} for key in dict.fromkeys(order)]
+    columns += [{"key": key, "visible": visible}
+                for key, visible in visibility.items() if key not in order]
+    return columns
+
+
 def _order_columns_for(company_id: int) -> list[dict]:
     """This company's Orders-list columns, in the order/visibility it saved.
 
     Stored as one JSON blob on Company.order_columns rather than a table like
     SourceOption/OrderType — this is a fixed set of 9 known columns, not an
     open-ended list a user names, so there's nothing per-row to hide-not-delete.
-    Merges the saved list against ORDER_COLUMNS so a column added to the app
-    later appears (visible, appended at the end) for a company with an older
-    saved blob, and a column since removed from the app silently drops out
-    instead of erroring.
+    Merged against ORDER_COLUMNS by _merge_columns().
     """
     company = db.session.get(Company, company_id)
-    saved = []
-    if company.order_columns:
-        try:
-            saved = json.loads(company.order_columns)
-        except (ValueError, TypeError):
-            saved = []
-    seen = set()
-    columns = []
-    for entry in saved:
-        key = entry.get("key") if isinstance(entry, dict) else None
-        if key in ORDER_COLUMNS and key not in seen:
-            seen.add(key)
-            label, numeric = ORDER_COLUMNS[key]
-            columns.append({"key": key, "label": label, "numeric": numeric, "visible": bool(entry.get("visible", True))})
-    for key, (label, numeric) in ORDER_COLUMNS.items():
-        if key not in seen:
-            columns.append({"key": key, "label": label, "numeric": numeric, "visible": True})
-    return columns
+    return _merge_columns(company.order_columns, ORDER_COLUMNS)
 
 
 def _save_order_columns(company_id: int, columns: list[dict]) -> None:
     company = db.session.get(Company, company_id)
-    company.order_columns = json.dumps([
-        {"key": c["key"], "visible": c["visible"]} for c in columns
-    ])
+    company.order_columns = _columns_json(columns)
+    db.session.commit()
+
+
+# Canonical Clients-list columns, same shape and role as ORDER_COLUMNS.
+# Name can be moved but never hidden (CLIENT_COLUMNS_ALWAYS_SHOWN): it's the
+# only link from a row to the client's page, and it carries the unread-mail
+# badge — a roster without it is a table nobody can act on.
+CLIENT_COLUMNS = {
+    "name": ("Name", False),
+    "email": ("Email", False),
+    "phone": ("Phone", False),
+    "city": ("City", False),
+    "province": ("Province", False),
+    "orders": ("Orders", True),
+    "value": ("Lifetime value", True),
+}
+CLIENT_COLUMNS_ALWAYS_SHOWN = {"name"}
+# Off until a company turns them on in Settings > Clients: most studios
+# don't need where a client lives on the roster at a glance.
+CLIENT_COLUMNS_HIDDEN_BY_DEFAULT = frozenset({"city", "province"})
+
+
+def _client_columns_for(company_id: int) -> list[dict]:
+    """This company's Clients-list columns — see _order_columns_for()."""
+    company = db.session.get(Company, company_id)
+    columns = _merge_columns(company.client_columns, CLIENT_COLUMNS,
+                             CLIENT_COLUMNS_HIDDEN_BY_DEFAULT)
+    for col in columns:
+        col["can_hide"] = col["key"] not in CLIENT_COLUMNS_ALWAYS_SHOWN
+        if not col["can_hide"]:
+            # A blob saved by hand can't hide it either.
+            col["visible"] = True
+    return columns
+
+
+def _save_client_columns(company_id: int, columns: list[dict]) -> None:
+    company = db.session.get(Company, company_id)
+    company.client_columns = _columns_json(columns)
     db.session.commit()
 
 
@@ -1546,6 +1611,8 @@ def clients_list():
         show_order_filter=(
             any(c.orders for c in clients) and any(not c.orders for c in clients)
         ),
+        columns=[c for c in _client_columns_for(current_user.company_id) if c["visible"]],
+        sortable=CLIENT_SORT_KEYS,
         sort_by=sort_by,
         sort_dir=sort_dir,
         provinces=PROVINCES,
@@ -2334,6 +2401,8 @@ def settings_clients():
         section="clients",
         company=db.session.get(Company, current_user.company_id),
         source_options=source_options,
+        # Every column, hidden ones too — this editor is what shows them again.
+        client_columns=_client_columns_for(current_user.company_id),
         notice=_take_settings_notice(),
         active_view="settings",
     )
@@ -2476,15 +2545,49 @@ def reorder_order_columns():
     order = [key for key in payload.get("order", []) if key in ORDER_COLUMNS]
     if not order:
         return ("", 204)
-    visibility = {c["key"]: c["visible"] for c in _order_columns_for(current_user.company_id)}
-    columns = [{"key": key, "visible": visibility.get(key, True)} for key in order]
-    # A key the client didn't send back (shouldn't happen — every column
-    # renders a draggable row) is appended rather than silently dropped.
-    for key in visibility:
-        if key not in order:
-            columns.append({"key": key, "visible": visibility[key]})
+    columns = _reordered_columns(_order_columns_for(current_user.company_id), order)
     _save_order_columns(current_user.company_id, columns)
     track("settings.changed", section="order_columns")
+    return ("", 204)
+
+
+# Clients-list column order/visibility — the Orders-list editor above, over
+# CLIENT_COLUMNS, shown on Settings > Clients.
+@app.route("/settings/client-columns/<key>/toggle", methods=["POST"])
+@login_required
+def toggle_client_column(key: str):
+    if key not in CLIENT_COLUMNS:
+        abort(404)
+    if key in CLIENT_COLUMNS_ALWAYS_SHOWN:
+        # The Hide button isn't rendered for it; only a hand-made POST lands here.
+        _flash_settings_notice(
+            f"The {CLIENT_COLUMNS[key][0]} column can't be hidden: it links to each client's page.")
+        return redirect(url_for("settings_clients"))
+    columns = _client_columns_for(current_user.company_id)
+    shown = None
+    for col in columns:
+        if col["key"] == key:
+            col["visible"] = not col["visible"]
+            shown = col["visible"]
+    _save_client_columns(current_user.company_id, columns)
+    track("settings.changed", section="client_columns")
+    if shown is not None:
+        _flash_settings_notice(
+            f'The {CLIENT_COLUMNS[key][0]} column is now {"shown" if shown else "hidden"} '
+            "on the Clients list.", "success")
+    return redirect(url_for("settings_clients"))
+
+
+@app.route("/settings/client-columns/reorder", methods=["POST"])
+@login_required
+def reorder_client_columns():
+    payload = request.get_json(silent=True) or {}
+    order = [key for key in payload.get("order", []) if key in CLIENT_COLUMNS]
+    if not order:
+        return ("", 204)
+    columns = _reordered_columns(_client_columns_for(current_user.company_id), order)
+    _save_client_columns(current_user.company_id, columns)
+    track("settings.changed", section="client_columns")
     return ("", 204)
 
 

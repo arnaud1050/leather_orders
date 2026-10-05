@@ -683,8 +683,8 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   - **LST5d.** Hiding recomputes the **client count** and **returning**
     stat cards from the still-visible rows, same as LST4 does on
     `/orders`.
-- **LST5e.** `/clients` shows each client's **City** and **Province**, both
-  sortable. Province shows the two-letter code (full name on hover),
+- **LST5e.** `/clients` can show each client's **City** and **Province**,
+  both sortable — hidden until turned on in Settings (LST13a). Province shows the two-letter code (full name on hover),
   "Outside Canada" for CL12a, or "—". Sorting puts blanks last in
   ascending order — provinces by code, then Outside Canada, then blank —
   so the clients nobody has placed yet end up together.
@@ -713,6 +713,26 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
     a reorder that omits a currently-known key appends it at the end.
   - **LST12.** Column preferences are scoped per company — one company's
     saved order/visibility never affects another's.
+- **LST13.** Clients-list columns are **reorderable and hideable** the same
+  way, per company, from `/settings/clients` ("Clients list columns"):
+  `CLIENT_COLUMNS` is the canonical set, the company's choice is one JSON
+  blob on `Company.client_columns` (separate from `order_columns`), merged
+  on read exactly as LST8 describes, and `/settings/client-columns/reorder`
+  / `/settings/client-columns/<key>/toggle` behave as LST10–LST12 describe
+  for their Orders counterparts. `clients_list()` renders only `visible`
+  columns, in the saved order; Email and Phone stay unsortable headers.
+  - **LST13a.** **City and Province are hidden by default**
+    (`CLIENT_COLUMNS_HIDDEN_BY_DEFAULT`): a company that has never saved a
+    preference, or whose saved blob doesn't mention them, sees them as
+    hidden until it shows them. Every other column starts visible.
+  - **LST14.** **Name can be reordered but never hidden** — it's the only
+    link from a row to the client's page and carries the unread-mail badge.
+    The editor renders no Hide button for it, a hand-made toggle POST is
+    refused with a notice and saves nothing, and a saved blob that marks it
+    hidden is read as visible.
+  - **LST15.** Hiding a column hides only the column: the orders filter,
+    the stat cards and sorting by a hidden column's `?sort=` key all keep
+    working.
 
 ## 10. Creating orders and clients
 
@@ -1082,6 +1102,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | LST2–LST3 | `test_orders_list_default_sort_is_due_ascending`, `test_orders_list_sort_by_total_desc`, `test_clients_list_default_sort_is_by_name`, `test_clients_list_sort_by_lifetime_value` |
 | LST4–LST5 | `e2e/tests/orders-list.spec.ts` (status filter recomputing the count and balance cards), `e2e/tests/clients-list.spec.ts` (the With/No orders filter reaching all three states) — client-side, so browser-only |
 | LST6–LST12 | `tests/test_order_columns.py` (all tests in that file) for the routes; `e2e/tests/settings-drag-and-drop.spec.ts` for the drag itself — the `dragend` handler that reads the DOM and builds the reorder payload sits between the editor and those routes, and nothing else exercises it |
+| LST13–LST15 | `tests/test_client_columns.py` (all tests in that file). The drag is the same shared `dragend` handler in `settings.html` as LST6's, now looping over both column lists |
 | OR9 | `test_new_order_carries_return_to_through_to_the_redirect` |
 | OR10 | `test_new_order_button_present_when_orders_list_is_empty` |
 | OR11 | `test_new_order_inline_client_creation_creates_both_rows`, `test_new_order_inline_client_creation_requires_first_and_last_name` |

@@ -249,6 +249,22 @@ is a plain POST + redirect, matching the `toggle_order_type` /
 form — everything else in Settings acts immediately on click, and a
 checkbox would be the only field on the page that didn't.
 
+**Clients list columns work the same way** (REQUIREMENTS `LST13`–`LST15`),
+from Settings > Clients: `CLIENT_COLUMNS` in `app.py`, a separate
+`Company.client_columns` blob, and `/settings/client-columns/reorder` /
+`/settings/client-columns/<key>/toggle`. Both editors share the merge
+(`_merge_columns()`), the reorder logic (`_reordered_columns()`) and the one
+`dragend` script at the bottom of `settings.html`, which loops over both
+lists and posts to each list's own `data-reorder-url`. The one difference is
+**Name**, which can be moved but not hidden (`CLIENT_COLUMNS_ALWAYS_SHOWN`):
+it's the only link into a client's page and carries the unread-mail badge.
+**City and Province start hidden** (`CLIENT_COLUMNS_HIDDEN_BY_DEFAULT`,
+passed to `_merge_columns()`), so a company sees them only once it turns
+them on. `clients_list.html` loops `columns` with the same `{% if col.key == ... %}`
+chain as `orders_list.html`; Email and Phone have no `CLIENT_SORT_KEYS`
+entry, so the template renders a plain header for them instead of
+`sort_link()`.
+
 **Inventory** (`/inventory`) — the master list of stocked materials, owned by
 the self-contained `inventory/` module (see [inventory/CLAUDE.md](../inventory/CLAUDE.md)) rather
 than living in `app.py` like the two lists above it — same "module owns a

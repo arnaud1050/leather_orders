@@ -75,19 +75,21 @@
   <div class="table-scroll">
     <table class="data-table" id="clients-table">
       <thead>
+        {# Columns in the company's saved order, hidden ones left out —
+           Settings > Clients > "Clients list columns" (LST13). #}
         <tr>
-          <th>{{ sort_link('name', 'Name') }}</th>
-          <th>Email</th>
-          <th>Phone</th>
-          <th>{{ sort_link('city', 'City') }}</th>
-          <th>{{ sort_link('province', 'Province') }}</th>
-          <th class="is-numeric">{{ sort_link('orders', 'Orders', numeric=True) }}</th>
-          <th class="is-numeric">{{ sort_link('value', 'Lifetime value', numeric=True) }}</th>
+          {% for col in columns %}
+          <th {% if col.numeric %}class="is-numeric"{% endif %}>
+            {% if col.key in sortable %}{{ sort_link(col.key, col.label, numeric=col.numeric) }}{% else %}{{ col.label }}{% endif %}
+          </th>
+          {% endfor %}
         </tr>
       </thead>
       <tbody>
         {% for client in clients %}
         <tr data-group="{{ 'with' if client.orders else 'none' }}" data-returning="{{ 1 if client.is_returning else 0 }}">
+          {% for col in columns %}
+          {% if col.key == 'name' %}
           <td>
             <a href="{{ url_for('client_page', client_id=client.id) }}?return_to={{ here|urlencode }}">{{ client.name }}</a>
             {% if client.is_returning %}
@@ -104,16 +106,24 @@
                   title="{{ unread }} unread email{{ 's' if unread != 1 }} from {{ client.name }}">{{ unread }}</span>
             {% endif %}
           </td>
+          {% elif col.key == 'email' %}
           <td>{{ client.email or '—' }}</td>
+          {% elif col.key == 'phone' %}
           <td>{{ client.phone|phone or '—' }}</td>
+          {% elif col.key == 'city' %}
           <td>{{ client.city or '—' }}</td>
+          {% elif col.key == 'province' %}
           <td>
             {% if client.province %}<span title="{{ provinces[client.province] }}">{{ client.province }}</span>
             {% elif client.outside_canada %}Outside Canada
             {% else %}—{% endif %}
           </td>
+          {% elif col.key == 'orders' %}
           <td class="is-numeric">{{ client.orders|length }}</td>
+          {% elif col.key == 'value' %}
           <td class="is-numeric">${{ '%.2f'|format(client.lifetime_value) }}</td>
+          {% endif %}
+          {% endfor %}
         </tr>
         {% endfor %}
       </tbody>

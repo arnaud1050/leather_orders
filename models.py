@@ -83,6 +83,10 @@ class Company(db.Model):
     # the default order and stays visible.
     order_columns = db.Column(db.Text)
 
+    # Same shape for the Clients list — see CLIENT_COLUMNS /
+    # _client_columns_for() in app.py.
+    client_columns = db.Column(db.Text)
+
     # JSON list of {"key", "cards"} dicts, in display order, for the Analytics
     # page's sections and the cards inside each — see ANALYTICS_SECTIONS /
     # _analytics_layout_for() in app.py. Null until a company drags something,
@@ -751,6 +755,8 @@ _ADDED_COLUMNS = [
     # in Canada or had no province.
     ("clients", "outside_canada", "BOOLEAN NOT NULL DEFAULT 0"),
     ("orders", "picked_up", "BOOLEAN NOT NULL DEFAULT 0"),
+    # Null reads as the default column order, every column shown.
+    ("companies", "client_columns", "TEXT"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
