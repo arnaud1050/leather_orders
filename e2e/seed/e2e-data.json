@@ -13,6 +13,25 @@
     "fullName": "E2E Fresh User",
     "note": "Created via admin.services.add_user, so must_change_password stays true (CO4h) — used by the forced-password-change test."
   },
+  "invoicingStudio": {
+    "note": "A second tenant used only by the invoice journeys (e2e/tests/invoice-*.spec.ts). They create clients, orders, invoices and payments as they go, and the main studio's specs assert exact counts (six clients, six orders), so that work happens here, out of their sight: every query is scoped to the company. Starts with no clients; each journey makes its own, named after its browser project, so the three browsers never share a row. The letterhead is seeded so every journey can rely on it whichever runs first; the setup journey saves these same values through the Settings forms.",
+    "company": { "name": "E2E Invoicing Studio" },
+    "adminUser": {
+      "email": "e2e-invoicing@example.invalid",
+      "password": "E2E-invoice-pass-1!",
+      "fullName": "E2E Invoicing Admin"
+    },
+    "letterhead": {
+      "invoicePrefix": "E2E",
+      "street": "100 Example Street",
+      "city": "Vancouver",
+      "province": "BC",
+      "postalCode": "V5K 0A1",
+      "gstNumber": "123456789 RT0001",
+      "pstNumber": "PST-1234-5678",
+      "paymentInstructions": "E-transfer to studio@example.invalid"
+    }
+  },
   "calendar": {
     "note": "A connected Google account that granted calendar access, and one synced event today, so the calendar renders its event dialogs (CAL-4 hides them with no calendar). The account is paused and its tokens are placeholders: nothing in the suite may reach Google, and the only event saves the specs make are refused ones, which are rejected before any provider call.",
     "account": {

@@ -205,8 +205,12 @@
 
   {% elif section == 'billing' %}
 
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['line-items']) }}
+
   <section class="detail-lines">
     <h2>Line items</h2>
+    {{ notice_slot(notice, 'line-items') }}
     {% if order.lines %}
     <ul class="doc-list">
       {% for line in order.lines %}
@@ -214,12 +218,17 @@
         <span class="doc-list__label">{{ line.description }}</span>
         <span class="doc-list__filename">{{ line.quantity }} &times; ${{ '%.2f'|format(line.unit_price) }}</span>
         <span class="doc-list__amount">${{ '%.2f'|format(line.total) }}</span>
+        {# Locked once the invoice is sent or void (OR7a); the route refuses
+           too, for a page left open from before it was sent. #}
+        {% if not order.is_issued %}
         <div class="doc-list__actions">
           <form method="post" action="{{ url_for('delete_order_line', order_id=order.id, line_id=line.id) }}" class="icon-form">
+            {{ notice_field('line-items') }}
             <input type="hidden" name="return_to" value="{{ request.path }}">
             <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ line.description }}">{{ icon_trash() }}</button>
           </form>
         </div>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>
@@ -269,17 +278,21 @@
       "Picked up at the studio" above.
     </p>
     {% endif %}
-    {% if order.is_issued %}
-    <p class="detail-note">
-      Invoice {{ order.invoice.number }} has been issued, so this order's total is
-      frozen at what the client was billed. Editing lines below won't change it.
-    </p>
-    {% endif %}
     {% else %}
     <p class="detail-note">No line items yet — this order is worth $0.00 until one is added.</p>
     {% endif %}
 
+    {% if order.is_issued %}
+    <p class="detail-note">
+      Invoice {{ order.invoice.number }} has been {{ 'voided' if order.invoice.status == 'void' else 'sent' }}, so these
+      lines and this total are what the client was billed, and can't change. To
+      correct them, set
+      <a href="{{ url_for('billing.invoice_page', invoice_id=order.invoice.id) }}?return_to={{ request.path }}">the invoice</a>
+      back to Draft first.
+    </p>
+    {% else %}
     <form method="post" action="{{ url_for('add_order_line', order_id=order.id) }}" class="detail-form detail-inline-add">
+      {{ notice_field('line-items') }}
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <label>Description<input type="text" name="description" placeholder="e.g. Brass hardware upgrade" required></label>
       <label>Qty<input type="number" name="quantity" value="1" min="1" step="1" required></label>
@@ -288,6 +301,7 @@
         <button type="submit" class="btn-primary">Add line</button>
       </div>
     </form>
+    {% endif %}
   </section>
 
   <section class="detail-invoice">

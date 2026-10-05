@@ -264,6 +264,12 @@ accounting period closes.
   snapshot that can only have come from a bug.
 - **F14.** `document_for()` reads the **live** profile when the invoice is a
   draft or has no usable snapshot, and the **frozen** copy otherwise.
+- **F15 — Back to draft is how a sent invoice is corrected.** Setting a
+  sent invoice's status back to Draft makes it live again (F1): it follows
+  current lines, settings and province. Sending it again re-freezes it with
+  those figures (F2's draft → not-draft transition), **under the same
+  number**. The client already received the old version, so whoever does
+  this sends them the corrected one.
 
 ## 7. Derived money & status
 
@@ -651,10 +657,13 @@ them without checking first. See `docs/roadmap.md` for reasoning.
   (C9). Zero-rated or exempt items would need a flag on the host's line
   model and `taxes_for()` taking a taxable subtotal rather than the full
   one.
-- **Z3.** **Nothing blocks editing an issued subject's line items.** The
-  invoice total is safely frozen (F5), so the client is never re-billed, but
-  the host's order page will then show lines that don't add up to the
-  invoice. It says so in a note; properly, the host should block the edit.
+- **Z3.** **The module doesn't freeze an invoice's lines, only its money.**
+  `document_for()` lists the subject's lines as they are now, so it's the
+  **host's** job to stop them changing once an invoice is out — this one
+  does (the host's `OR7a`: an order's lines lock while its invoice is sent
+  or void). A host that let them change would print lines that don't add up
+  to the frozen total. Snapshotting the lines at freeze would remove the
+  dependency, at the cost of a table and a migration.
 - **Z4.** **Money is stored as `Float`, not integer cents.** Rounding is
   handled per tax line (C6) and settlement is float-tolerant (D4). Fine at
   this scale; integer cents is the correct fix if this ever handles
@@ -759,9 +768,10 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | F9 | `test_a_draft_saved_as_a_draft_stays_unfrozen` |
 | F10 | `test_an_unknown_status_is_ignored` (both `test_invoicing.py` and `test_invoice_routes.py`) |
 | F11 | *(implicit — every freeze test reads through it)* |
-| F12 | — gap — *(the "issued before freezing existed" branch of `amounts_for` has no direct test)* |
+| F12 | `test_an_invoice_issued_before_freezing_existed_shows_no_tax` (`tests/test_invoice_routes.py`) |
 | F13 | `test_a_snapshot_with_a_blank_name_is_not_treated_as_frozen` |
 | F14 | `test_a_draft_reads_seller_details_live`, `test_an_issued_invoice_ignores_later_seller_changes` |
+| F15 | `test_back_to_draft_and_sent_again_refreezes_with_todays_tax` (`tests/test_invoice_routes.py`); in a browser, `e2e/tests/invoice-correction.spec.ts` |
 | D1 | `test_display_status_is_paid_once_payments_cover_the_total` |
 | D2 | `test_a_deposit_does_not_make_it_paid`, `test_paying_the_pre_tax_amount_does_not_make_it_paid` |
 | D3 | `test_void_wins_over_paid` |
@@ -800,12 +810,12 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | A3 | `test_listing_is_scoped_to_the_tenant` |
 | A4 | `test_creating_an_invoice_for_another_tenants_order_404s` |
 | A5 | `test_profiles_are_per_tenant` |
-| A6 | `test_tax_collected_is_scoped_to_the_tenant`, `test_invoiced_subject_ids` — gap: `POST /invoices/<id>/status` against another tenant's invoice has no 404 test |
+| A6 | `test_tax_collected_is_scoped_to_the_tenant`, `test_invoiced_subject_ids`, `test_changing_another_tenants_invoice_status_404s` (`tests/test_invoice_routes.py`) |
 | U1 | — gap — *(print/no-print markup; manually verified in the browser only)* |
 | U2 | `test_the_page_offers_the_pdf_when_it_can_be_rendered`, `test_the_page_falls_back_to_printing_when_it_cannot` |
-| U3 | `test_the_order_page_warns_when_tax_cannot_be_calculated` (host's order page) — gap: the invoice page's own draft-only warning is untested |
+| U3 | `test_the_order_page_warns_when_tax_cannot_be_calculated` (host's order page), `test_the_invoice_page_tax_warning_shows_on_a_draft_only`, `test_the_draft_invoice_page_explains_the_tax` (`tests/test_invoice_routes.py`); in a browser, `e2e/tests/invoice-lifecycle.spec.ts` |
 | U4 | `test_paid_cannot_be_set_by_hand` |
-| U5 | — gap — |
+| U5 | `test_payment_instructions_show_only_while_money_is_owed`, `test_a_void_invoice_shows_no_payment_instructions` (`tests/test_invoice_routes.py`); in a browser, `e2e/tests/invoice-payments.spec.ts` |
 | U6 | — gap — |
 | U7 | `test_the_invoice_page_shows_the_tax_breakdown` |
 | U8 | `test_the_invoice_list_totals_are_tax_inclusive` (the Outstanding total) — gap: the "not invoiced yet" list itself is untested |

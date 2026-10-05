@@ -10,7 +10,10 @@ line-belongs-to-this-order guard on delete, and tenant isolation on both.
 
 from datetime import date
 
+import pytest
+
 from models import Client, Order, OrderLine, db
+from tests.test_save_notices import located
 
 
 def _foreign_order(other_company):
@@ -136,3 +139,78 @@ def test_delete_order_line_requires_a_login(app, order):
 
     assert response.status_code == 302
     assert db.session.get(OrderLine, line.id) is not None
+
+
+# --- locked once the invoice is sent or void (OR7a) -------------------------
+
+def _invoice(logged_in, order, status):
+    from billing.models import Invoice
+
+    logged_in.post(f"/subjects/{order.id}/invoice", data={})
+    invoice = Invoice.query.filter_by(subject_id=order.id).one()
+    if status != "draft":
+        logged_in.post(f"/invoices/{invoice.id}/status",
+                       data={"status": status, "due_date": "", "notes": ""})
+    db.session.expire_all()
+    return invoice
+
+
+def _billing(logged_in, order):
+    return logged_in.get(f"/orders/{order.id}/billing").get_data(as_text=True)
+
+
+def test_a_draft_invoice_leaves_the_lines_editable(logged_in, order):
+    _invoice(logged_in, order, "draft")
+    before = len(order.lines)
+
+    logged_in.post(f"/orders/{order.id}/lines", data={"description": "Monogram", "unit_price": "45"})
+
+    assert len(db.session.get(Order, order.id).lines) == before + 1
+    assert "Add line" in _billing(logged_in, order)
+
+
+
+@pytest.mark.parametrize("status, done", [("sent", "sent"), ("void", "voided")])
+def test_adding_a_line_is_refused_once_the_invoice_is_out(logged_in, order, status, done):
+    invoice = _invoice(logged_in, order, status)
+    before = len(order.lines)
+
+    response = logged_in.post(f"/orders/{order.id}/lines", data={
+        "description": "Monogram", "unit_price": "45",
+        "return_to": f"/orders/{order.id}/billing", "notice_section": "line-items",
+    }, follow_redirects=True)
+
+    assert len(db.session.get(Order, order.id).lines) == before
+    body = response.get_data(as_text=True)
+    message = f"Invoice {invoice.number} has been {done}, so this order's lines can't change."
+    assert located(body, message) == ("line-items", "error")
+
+
+def test_deleting_a_line_is_refused_once_the_invoice_is_sent(logged_in, order):
+    _invoice(logged_in, order, "sent")
+    line = order.lines[0]
+
+    logged_in.post(f"/orders/{order.id}/lines/{line.id}/delete")
+
+    assert db.session.get(OrderLine, line.id) is not None
+
+
+def test_a_sent_invoice_hides_the_line_controls_and_says_how_to_unlock(logged_in, order):
+    _invoice(logged_in, order, "sent")
+    body = _billing(logged_in, order)
+
+    assert "Add line" not in body
+    assert f"/orders/{order.id}/lines/" not in body  # no trash buttons
+    assert "set" in body and "back to Draft first" in body
+
+
+def test_back_to_draft_unlocks_the_lines(logged_in, order):
+    """The correction flow (billing F15) is the way through."""
+    invoice = _invoice(logged_in, order, "sent")
+    logged_in.post(f"/invoices/{invoice.id}/status",
+                   data={"status": "draft", "due_date": "", "notes": ""})
+    before = len(db.session.get(Order, order.id).lines)
+
+    logged_in.post(f"/orders/{order.id}/lines", data={"description": "Monogram", "unit_price": "45"})
+
+    assert len(db.session.get(Order, order.id).lines) == before + 1

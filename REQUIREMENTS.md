@@ -551,6 +551,16 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **OR7.** Editing line items is add/remove only — no in-place edit of an
   existing line's description/quantity/price (a known limitation, not an
   oversight; see "Explicit non-requirements").
+- **OR7a.** **An order's lines are locked once its invoice is sent or
+  void** (`Order.is_issued`). An invoice lists the order's lines, and its
+  total is frozen when it's sent (billing F2, hard rule 11), so a line
+  added or removed afterwards would print on an invoice whose total
+  doesn't include it. The Billing tab hides the add form and the trash
+  buttons and says why, linking to the invoice; `add_order_line()` and
+  `delete_order_line()` refuse too (for a page left open from before),
+  with a red notice in the Line items section (MOD8). The way through is
+  billing F15: set the invoice back to Draft, change the lines, send it
+  again. A draft invoice leaves the lines editable.
 - **OR8.** `Order.is_settled` compares `balance_due` against a small epsilon
   (`< 0.005`), not exact zero, so floating-point rounding never leaves a
   fully-paid order reading as outstanding.
@@ -1081,6 +1091,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | OR6 | `test_new_order_creates_a_single_line_from_price` |
 | OR6a | `test_a_payment_amount_that_is_not_a_finite_number_is_ignored`, `test_a_line_price_that_is_not_a_finite_number_is_ignored` (both parametrized over the `inf`/`nan` spellings `float()` accepts) |
 | OR7 | *(non-requirement — see N1)* |
+| OR7a | `test_a_draft_invoice_leaves_the_lines_editable`, `test_adding_a_line_is_refused_once_the_invoice_is_out` (sent and void), `test_deleting_a_line_is_refused_once_the_invoice_is_sent`, `test_a_sent_invoice_hides_the_line_controls_and_says_how_to_unlock`, `test_back_to_draft_unlocks_the_lines` (`tests/test_order_lines.py`); in a browser, `e2e/tests/invoice-lifecycle.spec.ts` |
 | OR8 | `test_is_settled_tolerates_a_cent_of_rounding` |
 | PM1 | `test_add_payment_creates_a_row_and_updates_balance` |
 | PM2 | — gap — (the modal-omits-payments UI split isn't asserted, only the route behavior) |

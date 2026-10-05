@@ -134,11 +134,46 @@ def seed(data: dict) -> None:
     if data.get("calendar"):
         _seed_calendar(company, data["calendar"])
 
+    if data.get("invoicingStudio"):
+        _seed_invoicing_studio(data["invoicingStudio"])
+
     db.session.commit()
     total_orders = sum(len(c.get("orders", [])) for c in data["clients"])
     print(
         f"Seeded '{company.name}' (company id={company.id}): "
         f"{len(data['clients'])} clients, {total_orders} orders."
+    )
+
+
+def _seed_invoicing_studio(spec: dict) -> None:
+    """A second tenant for the invoice journeys, with its letterhead set.
+
+    Its own company rather than more rows in the main one: the journeys
+    create clients and orders as they go, and the main studio's specs
+    assert exact counts. No clients are seeded — each journey makes its own.
+    """
+    from billing.services import invoicing
+
+    company, admin = create_company(
+        spec["company"]["name"],
+        spec["adminUser"]["email"],
+        spec["adminUser"]["password"],
+        admin_full_name=spec["adminUser"].get("fullName"),
+    )
+    admin.must_change_password = False  # same reason as the main admin above
+    db.session.add(admin)
+
+    letterhead = spec["letterhead"]
+    invoicing.update_profile(
+        company.id, company.name,
+        invoice_prefix=letterhead["invoicePrefix"],
+        street=letterhead["street"],
+        city=letterhead["city"],
+        province=letterhead["province"],
+        postal_code=letterhead["postalCode"],
+        gst_number=letterhead["gstNumber"],
+        pst_number=letterhead["pstNumber"],
+        payment_instructions=letterhead["paymentInstructions"],
     )
 
 

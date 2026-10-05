@@ -270,6 +270,164 @@ def test_saved_notes_are_kept_to_three_lines(logged_in, order):
     assert invoice_for(order).notes == "a\nb\nc d"
 
 
+# --- Gaps closed: U3, U5, A6, F12, the correction flow ---------------------
+
+def _draft_for(client_, order_row):
+    client_.post(f"/subjects/{order_row.id}/invoice", data={})
+    db.session.expire_all()
+    return invoice_for(order_row).id
+
+
+def _set_status(client_, invoice_id, status, notes=""):
+    return client_.post(f"/invoices/{invoice_id}/status",
+                        data={"status": status, "due_date": "", "notes": notes})
+
+
+def _order_for(client_row, unit_price=100.0, **fields):
+    row = Order(client_id=client_row.id, item="Belt", start=date(2026, 7, 1),
+                due=date(2026, 7, 2), status="confirmed", **fields)
+    db.session.add(row)
+    db.session.flush()
+    db.session.add(OrderLine(order_id=row.id, description="Belt", quantity=1,
+                             unit_price=unit_price))
+    db.session.commit()
+    return row
+
+
+def test_the_invoice_page_tax_warning_shows_on_a_draft_only(logged_in, registered, company):
+    """U3: once sent, the figures are settled, so the warning goes."""
+    no_province = Client(company_id=company.id, first_name="No", last_name="Province")
+    db.session.add(no_province)
+    db.session.flush()
+    invoice_id = _draft_for(logged_in, _order_for(no_province))
+
+    assert "No tax on this invoice" in logged_in.get(f"/invoices/{invoice_id}").get_data(as_text=True)
+
+    _set_status(logged_in, invoice_id, "sent")
+    assert "No tax on this invoice" not in logged_in.get(f"/invoices/{invoice_id}").get_data(as_text=True)
+
+
+def test_back_to_draft_and_sent_again_refreezes_with_todays_tax(logged_in, order, registered):
+    """The correction flow: an invoice sent without a tax it should have
+    carried is set back to Draft, picks the tax up live, and freezes again
+    with it when re-sent — under the same number."""
+    invoicing.update_profile(registered.id, registered.name, qst_number=None)
+    db.session.commit()
+    invoice_id = _draft_for(logged_in, order)
+    number = db.session.get(Invoice, invoice_id).number
+    _set_status(logged_in, invoice_id, "sent")
+    db.session.expire_all()
+    assert [r.label for r in db.session.get(Invoice, invoice_id).tax_rows] == ["GST"]
+
+    # The registration arrives later: a sent invoice ignores it (F4)...
+    invoicing.update_profile(registered.id, registered.name, qst_number="1234567890 TQ0001")
+    db.session.commit()
+    db.session.expire_all()
+    assert [t.label for t in db.session.get(Order, order.id).tax_lines] == ["GST"]
+
+    # ...back to draft, it follows it live...
+    _set_status(logged_in, invoice_id, "draft")
+    db.session.expire_all()
+    assert [t.label for t in db.session.get(Order, order.id).tax_lines] == ["GST", "QST"]
+
+    # ...and sending again freezes the corrected figures, same number.
+    _set_status(logged_in, invoice_id, "sent")
+    db.session.expire_all()
+    invoice = db.session.get(Invoice, invoice_id)
+    assert [r.label for r in invoice.tax_rows] == ["GST", "QST"]
+    assert invoice.issued_subtotal == 1000.0
+    assert invoice.number == number
+    assert Invoice.query.count() == 1
+
+
+def test_payment_instructions_show_only_while_money_is_owed(logged_in, order, registered):
+    """U5: once it's paid in full, or void, there's nothing left to pay."""
+    invoicing.update_profile(registered.id, registered.name,
+                             payment_instructions="E-transfer to pay@example.com")
+    db.session.commit()
+    invoice_id = _draft_for(logged_in, order)
+    _set_status(logged_in, invoice_id, "sent")
+
+    def shown():
+        return "E-transfer to pay@example.com" in logged_in.get(
+            f"/invoices/{invoice_id}").get_data(as_text=True)
+
+    assert shown()
+    logged_in.post(f"/orders/{order.id}/payments",
+                   data={"amount": "500.00", "paid_date": "2026-07-03", "method": "cash"})
+    assert shown()  # a deposit leaves money owing
+    logged_in.post(f"/orders/{order.id}/payments",
+                   data={"amount": "649.75", "paid_date": "2026-07-10", "method": "cash"})
+    assert not shown()
+
+
+def test_a_void_invoice_shows_no_payment_instructions(logged_in, order, registered):
+    invoicing.update_profile(registered.id, registered.name,
+                             payment_instructions="E-transfer to pay@example.com")
+    db.session.commit()
+    invoice_id = _draft_for(logged_in, order)
+    _set_status(logged_in, invoice_id, "void")
+    body = logged_in.get(f"/invoices/{invoice_id}").get_data(as_text=True)
+    assert "E-transfer to pay@example.com" not in body
+
+
+def test_changing_another_tenants_invoice_status_404s(logged_in, other_company, order):
+    """A6: the status route is scoped like the page is."""
+    invoice_id = _draft_for(logged_in, order)
+    invoice = db.session.get(Invoice, invoice_id)
+    invoice.company_id = other_company.id
+    db.session.commit()
+
+    response = _set_status(logged_in, invoice_id, "sent")
+
+    assert response.status_code == 404
+    db.session.expire_all()
+    invoice = db.session.get(Invoice, invoice_id)
+    assert invoice.status == "draft"
+    assert not invoice.is_frozen
+
+
+def test_an_invoice_issued_before_freezing_existed_shows_no_tax(order, registered):
+    """F12: past draft but never frozen — it went out with no tax, and
+    inventing some now would change an amount already billed."""
+    from billing_adapter import billable_for
+
+    invoice = invoicing.create_invoice(registered.id, billable_for(order))
+    invoice.status = "sent"  # as an old row looks: issued, no snapshot
+    db.session.commit()
+    assert not invoice.is_frozen
+
+    amounts = invoicing.amounts_for(
+        billable_for(order), invoicing.profile_for(registered.id).issuer, invoice)
+    assert amounts.tax_lines == []
+    assert amounts.subtotal == 1000.0
+
+
+# Each draft-invoice warning, worded for the reason (C5, R8a, C10-C12).
+@pytest.mark.parametrize("letterhead, client_fields, order_fields, expected", [
+    ({"province": "BC", "gst_number": "G", "pst_number": None},
+     {"province": "BC"}, {}, "PST isn't on this invoice"),
+    ({"province": "SK", "gst_number": "G", "pst_number": "P"},
+     {"province": "BC"}, {}, "but the studio is in SK"),
+    ({"province": None, "gst_number": "G"},
+     {"province": "BC"}, {"picked_up": True}, "collected at the studio"),
+    ({"province": "BC", "gst_number": "G"},
+     {"outside_canada": True}, {}, "this is an export"),
+    ({"province": "BC", "gst_number": None, "pst_number": None, "qst_number": None},
+     {"province": "QC"}, {}, "no registration number is on file for"),
+])
+def test_the_draft_invoice_page_explains_the_tax(
+    logged_in, company, letterhead, client_fields, order_fields, expected
+):
+    invoicing.update_profile(company.id, company.name, **letterhead)
+    row = Client(company_id=company.id, first_name="Tax", last_name="Case", **client_fields)
+    db.session.add(row)
+    db.session.commit()
+    invoice_id = _draft_for(logged_in, _order_for(row, **order_fields))
+
+    assert expected in logged_in.get(f"/invoices/{invoice_id}").get_data(as_text=True)
+
+
 def test_the_notes_box_says_it_holds_three_lines(logged_in, order):
     from billing import config
 

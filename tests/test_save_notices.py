@@ -121,6 +121,7 @@ def tenant_pages(studio):
         ("/settings/account", "settings_notice"),
         ("/settings/general", "settings_notice"),
         ("/settings/invoicing", "settings_notice"),
+        (f"/orders/{studio['order'].id}/billing", "order_notice"),
     ]
 
 
@@ -181,7 +182,7 @@ def test_every_admin_page_is_wired(admin_client, company, user):
 # back through the OAuth callback (which names its section itself), and
 # documents', whose messages render inside their own section with no slot.
 LEAVES_A_NOTICE = re.compile(
-    r"\b(_flash|_report|_flash_settings_notice|_thread_action|_event_refused)\(")
+    r"\b(_flash|_report|_flash_settings_notice|_flash_order_notice|_refuse_locked_lines|_thread_action|_event_refused)\(")
 NAMES_ITS_OWN_SECTION = {"communications.google_connect"}
 TEMPLATE_DIRS = ["templates", "communications", "ai", "inventory", "admin"]
 FORM = re.compile(r"<form\b[^>]*?url_for\('([\w.]+)'.*?</form>", re.S)

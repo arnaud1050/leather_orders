@@ -70,6 +70,64 @@ export class OrderPage extends BasePage {
     });
   }
 
+  /** "← Back to …", worded for wherever the page was opened from (MOD5). */
+  backLink(): Locator {
+    return this.page.locator(".back-link");
+  }
+
+  // --- Billing tab ---------------------------------------------------------
+
+  async gotoBilling(orderId: number | string): Promise<void> {
+    await step(`Go to order ${orderId}'s Billing tab`, async () => {
+      await gotoPath(this.page, `/orders/${orderId}/billing`);
+    });
+  }
+
+  /** "Order total" and the like, off the line-totals block. */
+  totalRow(label: string): Locator {
+    // Exact: "Total" would also match inside "Subtotal".
+    const exact = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+    return this.page
+      .locator(".line-totals p")
+      .filter({ has: this.page.locator("span", { hasText: exact }) })
+      .locator("strong");
+  }
+
+  /** The invoice's number, linking to it — only once one exists. */
+  invoiceLink(): Locator {
+    return this.page.locator(".detail-invoice .doc-list__label");
+  }
+
+  /** Creates the draft, which lands on the new invoice's own page. */
+  async createInvoice(): Promise<number> {
+    return await step("Create the invoice from the Billing tab", async () => {
+      await this.page.getByRole("button", { name: "Create invoice" }).click();
+      await this.page.waitForURL(/\/invoices\/\d+/, { waitUntil: "domcontentloaded" });
+      return Number(new URL(this.page.url()).pathname.split("/")[2]);
+    });
+  }
+
+  async addLine(description: string, unitPrice: number): Promise<void> {
+    await step(`Add the line "${description}" at $${unitPrice.toFixed(2)}`, async () => {
+      const form = this.page.locator(".detail-lines form.detail-inline-add");
+      await form.locator('input[name="description"]').fill(description);
+      await form.locator('input[name="unit_price"]').fill(unitPrice.toFixed(2));
+      await form.getByRole("button", { name: "Add line" }).click();
+      await expect(this.page.locator(".detail-lines .doc-list__label", { hasText: description })).toBeVisible();
+    });
+  }
+
+  async addPayment(amount: number): Promise<void> {
+    await step(`Record a $${amount.toFixed(2)} payment`, async () => {
+      const form = this.page.locator("form.detail-payments__add");
+      await form.locator('input[name="amount"]').fill(amount.toFixed(2));
+      await form.getByRole("button", { name: "Add payment" }).click();
+      await expect(
+        this.page.locator(".detail-payments .doc-list__label", { hasText: `$${amount.toFixed(2)}` })
+      ).toBeVisible();
+    });
+  }
+
   async setPickupDate(isoDate: string): Promise<void> {
     await step(`Set the pickup date to ${isoDate}`, async () => {
       await this.pickupDateInput.fill(isoDate);

@@ -2024,6 +2024,7 @@ def order_billing(order_id: int):
         return_to=return_to,
         back_label=back_label(return_to),
         today=date.today(),
+        notice=_take_order_notice(),
         active_view=None,
     )
 
@@ -2181,6 +2182,10 @@ def toggle_rush(order_id: int):
 @login_required
 def add_order_line(order_id: int):
     order = get_order_or_404(order_id)
+    return_to = request.form.get("return_to") or url_for("timeline_view")
+    if order.is_issued:
+        _refuse_locked_lines(order)
+        return redirect(return_to)
     description = request.form.get("description", "").strip()
     unit_price = _parse_amount(request.form.get("unit_price"))
     quantity = request.form.get("quantity", "1")
@@ -2194,7 +2199,6 @@ def add_order_line(order_id: int):
         ))
         db.session.commit()
         track("order.line_added")
-    return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
 
 
@@ -2202,12 +2206,39 @@ def add_order_line(order_id: int):
 @login_required
 def delete_order_line(order_id: int, line_id: int):
     order = get_order_or_404(order_id)
+    return_to = request.form.get("return_to") or url_for("timeline_view")
+    if order.is_issued:
+        _refuse_locked_lines(order)
+        return redirect(return_to)
     line = OrderLine.query.filter_by(id=line_id, order_id=order.id).first()
     if line is not None:
         db.session.delete(line)
         db.session.commit()
-    return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
+
+
+def _refuse_locked_lines(order: Order) -> None:
+    """An order's lines are what its invoice lists, and a sent or void
+    invoice is frozen (billing F2, hard rule 11): changing them now would
+    put items on the invoice that its frozen total doesn't include (OR7a).
+    The way through is the correction flow, billing F15."""
+    done = "voided" if order.invoice.status == "void" else "sent"
+    _flash_order_notice(
+        f"Invoice {order.invoice.number} has been {done}, so this order's lines "
+        "can't change. To correct them, set the invoice back to Draft first.")
+
+
+def _flash_order_notice(message: str, category: str = "error") -> None:
+    """One-shot message for the order page's Billing tab, in the section
+    whose form posted it (MOD8). Same session-key shape as
+    _flash_settings_notice."""
+    session["order_notice"] = {
+        "message": message, "category": category, "section": _notice_section(),
+    }
+
+
+def _take_order_notice() -> dict | None:
+    return session.pop("order_notice", None)
 
 
 @app.route("/orders/<int:order_id>/payments", methods=["POST"])

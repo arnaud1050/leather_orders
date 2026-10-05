@@ -55,10 +55,11 @@ export class SettingsPage extends BasePage {
     return this.page.locator("#invoice-logo-input");
   }
 
-  /** Where invoice-appearance.js reports a file it refused before any
-   * upload. Hidden until it has something to say. */
+  /** Where the shared upload-tile.js reports a logo it refused before any
+   * upload (the tile's `data-upload-status` names it). Hidden until it has
+   * something to say. */
   logoError(): Locator {
-    return this.page.locator("[data-logo-error]");
+    return this.page.locator("#logo-error");
   }
 
   sourceOptionItems(): Locator {

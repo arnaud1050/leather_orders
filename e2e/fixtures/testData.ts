@@ -41,10 +41,26 @@ export interface CalendarEventFixture {
   durationHours: number;
 }
 
+export interface InvoicingStudioFixture {
+  company: { name: string };
+  adminUser: { email: string; password: string; fullName: string };
+  letterhead: {
+    invoicePrefix: string;
+    street: string;
+    city: string;
+    province: string;
+    postalCode: string;
+    gstNumber: string;
+    pstNumber: string;
+    paymentInstructions: string;
+  };
+}
+
 export interface E2EData {
   company: { name: string };
   adminUser: { email: string; password: string; fullName: string };
   freshUser: { email: string; password: string; fullName: string };
+  invoicingStudio: InvoicingStudioFixture;
   calendar: {
     account: { email: string; displayName?: string };
     events: CalendarEventFixture[];

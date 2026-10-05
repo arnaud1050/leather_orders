@@ -48,7 +48,7 @@ test.describe("Invoice appearance — a refused logo is explained in its section
     await expect(error).toHaveCSS("border-left-color", RED);
     await expect(
       adminPage.locator("section").filter({ has: adminPage.getByRole("heading", { name: "Invoice appearance" }) })
-        .locator("[data-logo-error]")
+        .locator("#logo-error")
     ).toBeVisible();
     await expect(settings.logoInput()).toHaveValue("");
     expect(uploads, "a refused file must never be sent").toEqual([]);

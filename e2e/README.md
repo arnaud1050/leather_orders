@@ -48,7 +48,11 @@ Every run:
    paused Gmail account with calendar access and one event today, so the
    calendar renders its event dialogs. That account's tokens are
    placeholders: no spec may save an event (that goes to Google) — only
-   refused saves, which are rejected before any provider call.
+   refused saves, which are rejected before any provider call. A second
+   studio, **E2E Invoicing Studio**, has its own login and a BC letterhead
+   and no clients: the `invoice-*` journeys sign in there (the
+   `invoicingPage` fixture) and create their own clients, orders and
+   payments, out of sight of the main studio's exact counts.
 3. Starts Flask against that database on `http://127.0.0.1:5000`
    (override with `E2E_PORT`).
 4. Logs in once as the seeded admin and saves that session, so individual

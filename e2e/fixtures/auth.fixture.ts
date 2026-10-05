@@ -39,6 +39,16 @@ interface AuthFixtures {
    * than reusing this one.
    */
   freshUserPage: import("@playwright/test").Page;
+
+  /**
+   * Logged in as the admin of the second, invoicing-only tenant — see
+   * seed/e2e-data.json's `invoicingStudio`. The invoice journeys create
+   * clients, orders and payments, which would break the main studio's
+   * exact counts; in their own company nothing else can see them. A fresh
+   * login per test (one POST), like `freshUserPage`, rather than a second
+   * cached session: five journeys don't need the saving.
+   */
+  invoicingPage: import("@playwright/test").Page;
 }
 
 export const test = base.extend<AuthFixtures>({
@@ -63,6 +73,18 @@ export const test = base.extend<AuthFixtures>({
     const login = new LoginPage(page);
     await login.goto();
     await login.login(testData.freshUser.email, testData.freshUser.password);
+    await use(page);
+    await context.close();
+  },
+
+  invoicingPage: async ({ browser }, use) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const login = new LoginPage(page);
+    await login.goto();
+    const { email, password } = testData.invoicingStudio.adminUser;
+    await login.login(email, password);
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { waitUntil: "domcontentloaded" });
     await use(page);
     await context.close();
   },
