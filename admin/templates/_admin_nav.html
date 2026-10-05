@@ -12,5 +12,6 @@
 <nav class="settings-nav">
   <a href="{{ url_for('admin.companies') }}" class="settings-nav__link {{ 'is-active' if section == 'companies' else '' }}">Companies</a>
   <a href="{{ url_for('admin.platform_admins') }}" class="settings-nav__link {{ 'is-active' if section == 'admins' else '' }}">Admin Users</a>
+  <a href="{{ url_for('admin.usage') }}" class="settings-nav__link {{ 'is-active' if section == 'usage' else '' }}">Usage</a>
   <a href="{{ url_for('admin.settings') }}" class="settings-nav__link {{ 'is-active' if section == 'settings' else '' }}">Settings</a>
 </nav>

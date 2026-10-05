@@ -23,6 +23,7 @@ from flask_login import current_user, login_required, logout_user
 
 from admin import services
 from models import DEFAULT_TIMEZONE, User, db
+from usage import store as usage_store
 
 bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="templates")
 
@@ -332,6 +333,37 @@ def update_announcement():
     )
     _report(error, "Announcement saved.")
     return redirect(url_for("admin.settings"))
+
+
+# ---------------------------------------------------------------------------
+# Feature usage — which parts of the app studios actually use (usage/)
+# ---------------------------------------------------------------------------
+
+@bp.route("/usage")
+@platform_admin_required
+def usage():
+    """Counts, never content (PA31): how many companies, people and uses
+    per feature, for the whole installation or one company."""
+    period = request.args.get("period", usage_store.DEFAULT_PERIOD)
+    if period not in usage_store.PERIODS:
+        period = usage_store.DEFAULT_PERIOD
+    since = usage_store.period_start(period)
+
+    companies = services.companies()
+    raw_company = request.args.get("company", "")
+    company = next((c for c in companies if str(c.id) == raw_company), None)
+
+    return render_template(
+        "admin_usage.html",
+        features=usage_store.feature_report(since, company.id if company else None),
+        company_rows=None if company else usage_store.company_report(since),
+        companies=companies,
+        company=company,
+        period=period,
+        periods=usage_store.PERIODS,
+        section="usage",
+        active_view="admin",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -19,6 +19,8 @@ from flask import (
 )
 from flask_login import current_user, login_required
 
+from usage import track
+
 from ai import config, services
 from ai.errors import AIError
 
@@ -151,6 +153,7 @@ def suggest_reply():
     except AIError as exc:
         return jsonify(error=str(exc)), 502
 
+    track("ai.reply_suggested")
     return jsonify(suggestion=suggestion)
 
 
@@ -214,6 +217,7 @@ def render_document(order_id: int, document_id: int):
     except AIError as exc:
         return jsonify(error=str(exc)), 502
 
+    track("ai.render_requested")
     return jsonify(draft=_draft_json(draft))
 
 
@@ -263,6 +267,7 @@ def save_render(draft_id: int):
         return jsonify(error=error), 400
 
     services.mark_saved(draft)
+    track("ai.render_saved")
     return jsonify(saved=True, draft=_draft_json(draft))
 
 
@@ -271,6 +276,7 @@ def save_render(draft_id: int):
 def discard_render(draft_id: int):
     if not services.discard_draft(current_user.company_id, draft_id):
         return jsonify(error="That render isn't available."), 404
+    track("ai.render_discarded")
     return jsonify(discarded=True)
 
 
@@ -315,6 +321,7 @@ def save_replies():
         model=_submitted("model"),
         prompt=_submitted("prompt"),
     )
+    track("settings.changed", section="ai")
     _flash("Inquiry reply settings saved.")
     return redirect(url_for("ai.settings"))
 
@@ -328,6 +335,7 @@ def save_renders():
         model=_submitted("model"),
         prompt=_submitted("prompt"),
     )
+    track("settings.changed", section="ai")
     _flash("Rendering settings saved.")
     return redirect(url_for("ai.settings"))
 
@@ -336,6 +344,7 @@ def save_renders():
 @login_required
 def delete_reply_key():
     services.clear_text_key(current_user.company_id)
+    track("settings.changed", section="ai")
     _flash("OpenAI API key removed. Reply suggestions are switched off.")
     return redirect(url_for("ai.settings"))
 
@@ -344,5 +353,6 @@ def delete_reply_key():
 @login_required
 def delete_render_key():
     services.clear_image_key(current_user.company_id)
+    track("settings.changed", section="ai")
     _flash("Google AI API key removed. Rendering is switched off.")
     return redirect(url_for("ai.settings"))

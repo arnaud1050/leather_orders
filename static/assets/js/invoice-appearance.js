@@ -1,12 +1,10 @@
 /*
  * Settings → Invoicing → Invoice appearance.
  *
- * Enhances markup that already works on its own (a file input with an
- * Upload button, two radio buttons, a hex text field):
+ * Enhances markup that already works on its own (two radio buttons, a hex
+ * text field). The logo tile isn't here: uploading on choose and drop, and
+ * the checks before sending, are the shared upload-tile.js (website_modules).
  *
- *  - the logo uploads as soon as a file is chosen or dropped, after the
- *    same type and size checks the server makes, so a refusal shows up
- *    beside the tile instead of after a round trip;
  *  - the layout cards' thumbnails and the logo tile follow the colour as
  *    it changes, through the section's --look-primary / --look-on-primary;
  *  - clicking a colour swatch (the accent colour, or the footer's
@@ -24,7 +22,6 @@
 
   var root = document.querySelector('[data-invoice-look]');
   if (!root) return;
-  root.classList.add('is-enhanced');
 
   // --- Colour maths --------------------------------------------------------
 
@@ -76,88 +73,6 @@
     var l = 0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2];
     return l > 0.179 ? '#1c1a17' : '#ffffff';
   }
-
-  // --- Logo upload --------------------------------------------------------
-
-  var errorBox = root.querySelector('[data-logo-error]');
-
-  function showError(message) {
-    errorBox.textContent = message || '';
-    errorBox.hidden = !message;
-  }
-
-  root.querySelectorAll('[data-logo-upload]').forEach(function (form) {
-    var input = form.querySelector('input[type=file]');
-    var maxBytes = parseInt(input.dataset.maxBytes, 10);
-
-    function acceptable(file) {
-      var name = (file.name || '').toLowerCase();
-      // Some systems report no type at all for a .jpg; the extension is
-      // only a hint here — the server decides from the bytes.
-      if (!/^image\/(png|jpeg)$/.test(file.type) && !/\.(png|jpe?g)$/.test(name)) {
-        showError('A logo needs to be a PNG or JPEG image.');
-        return false;
-      }
-      if (file.size > maxBytes) {
-        showError('That file is too large. A logo can be up to '
-          + Math.round(maxBytes / 1048576) + ' MB.');
-        return false;
-      }
-      return true;
-    }
-
-    function send() {
-      showError('');
-      form.classList.add('is-uploading');
-      // requestSubmit, not submit(): it fires the submit event, which is
-      // how stay-in-place.js keeps the page where it was.
-      form.requestSubmit();
-    }
-
-    input.addEventListener('change', function () {
-      var file = input.files[0];
-      if (!file) return;
-      if (acceptable(file)) send();
-      else input.value = '';
-    });
-
-    if (!form.hasAttribute('data-logo-drop')) return;
-    // Its own state class, not the shared .is-dragging (which fades a card
-    // being reordered on Analytics): a drop target has to stand out, not
-    // recede. dragleave also fires when the cursor crosses onto the tile's
-    // own label or icon, so it only clears once the cursor is really out.
-    ['dragenter', 'dragover'].forEach(function (type) {
-      form.addEventListener(type, function (event) {
-        event.preventDefault();
-        form.classList.add('is-drop-target');
-      });
-    });
-    form.addEventListener('dragleave', function (event) {
-      if (!form.contains(event.relatedTarget)) form.classList.remove('is-drop-target');
-    });
-    form.addEventListener('drop', function () { form.classList.remove('is-drop-target'); });
-    // An image dropped just beside the tile would otherwise make the browser
-    // open it in place of the settings page. Swallow those near misses.
-    ['dragover', 'drop'].forEach(function (type) {
-      document.addEventListener(type, function (event) {
-        var types = event.dataTransfer && event.dataTransfer.types;
-        var carriesFiles = !!types && Array.prototype.indexOf.call(types, 'Files') !== -1;
-        if (carriesFiles && !form.contains(event.target)) event.preventDefault();
-      });
-    });
-    form.addEventListener('drop', function (event) {
-      event.preventDefault();
-      var files = event.dataTransfer.files;
-      if (!files.length) return;
-      if (files.length > 1) {
-        showError('Drop one image at a time.');
-        return;
-      }
-      if (!acceptable(files[0])) return;
-      input.files = files;
-      send();
-    });
-  });
 
   // --- Layout cards -------------------------------------------------------
 

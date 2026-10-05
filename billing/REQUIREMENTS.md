@@ -602,12 +602,16 @@ reason being that a stored copy can disagree with the rows it describes.
   takes a dropped image; with a logo, it shows on the chosen colour with
   **Replace** and **Delete**. Choosing or dropping a file uploads it at
   once, after the same type and size checks in the browser, which show
-  their refusal without leaving the page. The picker lists `.png`, `.jpg`
+  their refusal without leaving the page, in the box at the top of the
+  section, in this page's own words ("A logo needs to be a PNG or JPEG
+  image.", "That file is too large…", "Drop one image at a time."). With a
+  logo, the whole row takes a dropped replacement. The picker lists `.png`, `.jpg`
   and `.jpeg` as well as the two MIME types, for systems that give a JPEG
   no type. Without JavaScript, a plain Upload button does the same job.
-  Its "or drop an image here" hint is the documents tile's own
-  `.doc-explorer__add-hint`, hidden on touch-only screens. While an image
-  is over the tile it turns solid ink on the recessed grey (louder, never
+  All of it is the shared `upload-tile.js` (website_modules, UT1–UT12),
+  as on the order page. Its "or drop an image here" hint is the documents
+  tile's own `.doc-explorer__add-hint`, shown only where a drop can work.
+  While an image is over the tile it turns solid ink on the recessed grey (louder, never
   faded), and an image dropped just beside it is ignored rather than opened
   by the browser in place of the page.
 
@@ -824,7 +828,7 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | L8 | `test_every_layout_prints_the_logo`, `test_the_seller_is_still_named_in_words_beside_a_logo`, `test_no_logo_no_image` |
 | L9 | `test_the_logo_is_served_to_its_own_company`, `test_no_logo_is_a_404`, `test_another_companys_logo_is_never_served`, `test_the_logo_requires_a_login` |
 | L10 | `test_uploading_a_logo_saves_it`, `test_uploading_something_else_says_why_and_saves_nothing`, `test_uploading_nothing_says_so`, `test_an_oversized_upload_is_refused`, `test_deleting_the_logo`, `test_uploading_does_not_touch_the_rest_of_the_look`, `test_the_logo_routes_require_a_login`, `test_a_logo_refusal_is_shown_beside_the_logo`, `test_the_settings_page_shows_the_logo_with_replace_and_delete` |
-| L11 | `test_the_settings_page_offers_an_add_logo_tile_when_there_is_none`, `test_the_file_picker_takes_jpg_files_by_extension_too` — gap: upload-on-choose, drag-and-drop and the in-browser type/size refusal are script behaviour, checked by hand in a browser |
+| L11 | `test_the_settings_page_offers_an_add_logo_tile_when_there_is_none`, `test_the_file_picker_takes_jpg_files_by_extension_too`, `test_the_logo_tile_says_it_takes_drops_and_checks_with_its_own_words` — upload-on-choose, drag-and-drop and the in-browser refusals are the shared upload-tile.js, tested in a browser in `website_modules/tests/test_upload_tile_js.py` |
 | Z1–Z10 | *(non-requirements — nothing to test)* |
 
 ### The tax-collected report

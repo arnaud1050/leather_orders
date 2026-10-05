@@ -411,7 +411,9 @@ def test_the_settings_page_offers_an_add_logo_tile_when_there_is_none(logged_in,
     assert 'name="logo"' in body
     assert 'enctype="multipart/form-data"' in body
     assert "Add logo" in body
-    assert "data-logo-drop" in body          # a drop target, like order documents
+    assert "data-upload-zone" in body        # a drop target, like order documents
+    assert 'data-upload-status="logo-error"' in body and 'id="logo-error"' in body
+    assert "assets/js/upload-tile.js" in body
     assert "/invoices/logo.png" not in body
 
 
@@ -532,3 +534,12 @@ def test_a_real_pdf_renders_with_a_logo(app, doc, template):
     # The image really is in there, not silently dropped by the fetcher.
     assert len(with_logo) > len(plain)
     assert b"/Image" in with_logo
+
+
+def test_the_logo_tile_says_it_takes_drops_and_checks_with_its_own_words(logged_in, company):
+    """The shared upload-tile.js does the work; the wording of its refusals
+    stays this page's (billing/REQUIREMENTS.md L11)."""
+    body = logged_in.get("/settings/invoicing").get_data(as_text=True)
+    assert 'data-upload-hint hidden>or drop an image here</span>' in body
+    assert 'data-type-error="A logo needs to be a PNG or JPEG image."' in body
+    assert 'data-count-error="Drop one image at a time."' in body

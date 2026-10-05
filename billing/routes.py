@@ -21,6 +21,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 from models import db
+from usage import track
 
 from billing import config, pdf
 from billing.services import invoicing
@@ -218,6 +219,7 @@ def create(subject_id: int):
         display_name=_seller_name(company_id),
     )
     db.session.commit()
+    track("invoice.created")
     return redirect(url_for("billing.invoice_page", invoice_id=invoice.id))
 
 
@@ -240,6 +242,7 @@ def set_status(invoice_id: int):
     )
     db.session.commit()
     if invoice.status != was:
+        track("invoice.status_changed", to=invoice.status)
         message = f"Invoice marked {config.STATUS_LABELS[invoice.status].lower()}."
         if was == "draft":
             # The one save here that can't be taken back (frozen at issue).

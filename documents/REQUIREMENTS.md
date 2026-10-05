@@ -112,29 +112,40 @@ error — and never a 500.
 
 ## 7. Upload UX
 
+The browser side is the shared `static/assets/js/upload-tile.js`, a synced
+copy from `website_modules` (its rules are UT1–UT12 in
+`website_modules/REQUIREMENTS.md`; never edit the copy here). The rules
+below are what this page asks of it.
+
 - Selecting a file **uploads immediately** — there is no separate "Upload"
   button to click. (There was one originally; removed at the user's
   request once auto-submit was confirmed working.)
 - The file picker itself is a tile styled and sized identically to a
   document card in the grid (dashed border, circular "+" icon, "Add file"
   label) — not the browser's native, unstyled file input control.
+  Without JavaScript the tile still opens the picker and a plain Upload
+  button sends the choice; the script hides that button.
 - Multi-file selection is supported (`multiple` on the file input); one
   `change` event covers the whole batch, one upload request, one redirect.
 - **Files can be dragged in, too.** Every grid that shows an "Add file"
-  tile (`data-doc-drop`) is a drop target as a whole — the tile, the cards
+  tile (`data-upload-zone`) is a drop target as a whole — the tile, the cards
   and the gaps between them. Dropped files go through that grid's own
   upload form, so into that section's document type, as one batch, with
   the same checks, notice and quota as picking them. A grid without the
   tile (a hidden type) takes no drops.
 - The tile says so: an **"or drop files here"** line under "Add file",
   the same hint (`.doc-explorer__add-hint`) as the invoice logo tile's.
-  Hidden on touch-only screens (`hover: none`), where nothing can be
-  dragged.
+  It starts hidden and the script shows it, so it never appears where a
+  drop can't work: without JavaScript, or on a touch-only screen
+  (`hover: none`).
 - While files are over a grid it's outlined in ink and its tile turns
   solid ink on the recessed grey — the drop target gets louder, never
   fainter. Only drags carrying files count: moving a thumbnail or selected
   text around the page highlights nothing. A file dropped just outside a
   grid is ignored rather than opened by the browser in place of the page.
+- **No checks in the browser here**: the grid has no status element, so
+  a batch always reaches the server whole and it keeps the files that pass
+  (§3), rather than the browser refusing the batch for one bad file.
 - Rejections (disallowed type, oversized, over quota, failed content
   sniff) are surfaced as a visible message on the page after redirect —
   never a silent no-op and never a 500. Delivered via a one-shot

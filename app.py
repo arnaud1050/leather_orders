@@ -92,6 +92,12 @@ from inventory import services as inventory_service  # noqa: E402
 from inventory.config import UNIT_LABELS as INVENTORY_UNIT_LABELS  # noqa: E402
 from inventory.config import UNIT_WHOLE as INVENTORY_UNIT_WHOLE  # noqa: E402
 
+# Feature-usage events (usage/CLAUDE.md). `track()` only queues; the store's
+# after_request hook below writes the queue, and can never fail the request.
+# Imported before create_all() so its table exists.
+import usage.store as usage_store  # noqa: E402
+from usage import track  # noqa: E402
+
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -142,6 +148,9 @@ if os.environ.get("TRUST_PROXY_HEADERS") == "1":
 
 db.init_app(app)
 communications_routes.register(app)
+# Writes the request's queued usage events once the response exists, on its
+# own connection and inside its own try — see usage.store.flush (US1–US4).
+app.after_request(usage_store.flush)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -939,6 +948,7 @@ def login():
             error = "That account is no longer active. Contact your administrator."
         else:
             login_user(user)
+            track("auth.login")
             # `next` is honoured for a tenant user only. Platform staff have
             # no timeline to be sent back to, and a bookmarked tenant URL
             # would bounce off the guard below into a redirect loop.
@@ -971,7 +981,7 @@ def logout():
 # tell has changed.
 # ---------------------------------------------------------------------------
 
-LEGAL_UPDATED = "8 August 2026"
+LEGAL_UPDATED = "4 October 2026"
 
 
 @app.route("/privacy")
@@ -1550,6 +1560,7 @@ def new_client():
         )
         db.session.add(client)
         db.session.commit()
+        track("client.created", via="form")
         return redirect(return_to)
 
     return render_template(
@@ -1692,6 +1703,7 @@ def toggle_client_hidden(client_id: int):
     client = get_client_or_404(client_id)
     client.is_hidden = not client.is_hidden
     db.session.commit()
+    track("client.hidden", hidden=client.is_hidden)
     return_to = request.form.get("return_to") or url_for("clients_list")
     return redirect(return_to)
 
@@ -1784,6 +1796,7 @@ def new_order():
             )
             db.session.add(client)
             db.session.flush()  # assigns client.id
+            track("client.created", via="order_form")
 
         status = form.get("status")
         order_type_id = form.get("order_type_id", "")
@@ -1816,6 +1829,7 @@ def new_order():
             sort_order=0,
         ))
         db.session.commit()
+        track("order.created")
         return redirect(return_to)
 
     return render_form()
@@ -1845,8 +1859,10 @@ def order_page(order_id: int):
     if request.method == "POST":
         errors, values = _check_order_form(request.form, order)
         if not errors:
+            was = order.status
             _apply_order_form(order, request.form, values)
             db.session.commit()
+            _track_order_edit(was, order, via="page")
             return redirect(return_to)
         return _render_order_details(order, return_to, form=request.form, errors=errors), 400
 
@@ -1964,9 +1980,20 @@ def edit_order(order_id: int):
         _stash_order_edit_error(order, return_to, request.form, errors)
         return redirect(return_to)
 
+    was = order.status
     _apply_order_form(order, request.form, values)
     db.session.commit()
+    _track_order_edit(was, order, via="modal")
     return redirect(return_to)
+
+
+def _track_order_edit(was: str, order: Order, *, via: str) -> None:
+    """Usage events for a saved order form: the edit itself, and the
+    lifecycle move if the save made one. `via` is the point of the first
+    — it says whether the timeline's quick-edit modal earns its place."""
+    track("order.updated", via=via)
+    if order.status != was:
+        track("order.status_changed", **{"from": was, "to": order.status})
 
 
 # ---------------------------------------------------------------------------
@@ -2019,6 +2046,7 @@ def cancel_order(order_id: int):
     if not order.can_cancel:
         abort(400)
 
+    track("order.status_changed", **{"from": order.status, "to": "cancelled"})
     order.status = "cancelled"
     order.is_rush = False  # urgency is meaningless once nothing is owed
 
@@ -2042,6 +2070,7 @@ def toggle_rush(order_id: int):
 
     order.is_rush = not order.is_rush
     db.session.commit()
+    track("order.rush_toggled", on=order.is_rush)
     return redirect(request.form.get("return_to") or url_for("timeline_view"))
 
 
@@ -2067,6 +2096,7 @@ def add_order_line(order_id: int):
             sort_order=len(order.lines),
         ))
         db.session.commit()
+        track("order.line_added")
     return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
 
@@ -2102,6 +2132,7 @@ def add_payment(order_id: int):
             reference=request.form.get("reference", "").strip() or None,
         ))
         db.session.commit()
+        track("order.payment_recorded", method=method if method in PAYMENT_METHOD_LABELS else "cash")
     return_to = request.form.get("return_to") or url_for("timeline_view")
     return redirect(return_to)
 
@@ -2317,6 +2348,7 @@ def update_preferences():
     if chosen in dict(TIME_ZONES):
         company.timezone = chosen
         db.session.commit()
+        track("settings.changed", section="general")
         _flash_settings_notice(
             f"Time zone saved. Times now show in {dict(TIME_ZONES)[chosen]}.", "success")
     else:
@@ -2344,6 +2376,7 @@ def add_order_type():
             sort_order=max_sort_order,
         ))
         db.session.commit()
+        track("settings.changed", section="order_types")
         _flash_settings_notice(f'Order type "{label}" added.', "success")
     return redirect(url_for("settings_orders"))
 
@@ -2354,6 +2387,7 @@ def toggle_order_type(order_type_id: int):
     order_type = get_order_type_or_404(order_type_id)
     order_type.is_active = not order_type.is_active
     db.session.commit()
+    track("settings.changed", section="order_types")
     _flash_settings_notice(
         f'"{order_type.label}" is offered again for new orders.' if order_type.is_active
         else f'"{order_type.label}" hidden. It\'s no longer offered for new orders; '
@@ -2370,6 +2404,7 @@ def delete_order_type(order_type_id: int):
     if order_type.can_delete:
         db.session.delete(order_type)
         db.session.commit()
+        track("settings.changed", section="order_types")
         _flash_settings_notice(f'"{label}" deleted.', "success")
     else:
         # Only reachable from a page loaded before the first order was
@@ -2396,6 +2431,7 @@ def toggle_order_column(key: str):
             col["visible"] = not col["visible"]
             shown = col["visible"]
     _save_order_columns(current_user.company_id, columns)
+    track("settings.changed", section="order_columns")
     if shown is not None:
         _flash_settings_notice(
             f'The {ORDER_COLUMNS[key][0]} column is now {"shown" if shown else "hidden"} '
@@ -2418,6 +2454,7 @@ def reorder_order_columns():
         if key not in order:
             columns.append({"key": key, "visible": visibility[key]})
     _save_order_columns(current_user.company_id, columns)
+    track("settings.changed", section="order_columns")
     return ("", 204)
 
 
@@ -2438,6 +2475,7 @@ def add_source_option():
             sort_order=max_sort_order,
         ))
         db.session.commit()
+        track("settings.changed", section="sources")
         _flash_settings_notice(f'Option "{label}" added.', "success")
     return redirect(url_for("settings_clients"))
 
@@ -2448,6 +2486,7 @@ def toggle_source_option(source_option_id: int):
     option = get_source_option_or_404(source_option_id)
     option.is_active = not option.is_active
     db.session.commit()
+    track("settings.changed", section="sources")
     _flash_settings_notice(
         f'"{option.label}" is shown on client pages again.' if option.is_active
         else f'"{option.label}" hidden from client pages. Clients who picked it keep it.',
@@ -2479,6 +2518,7 @@ def set_other_source_option(source_option_id: int):
     ).update({"is_other": False})
     option.is_other = turning_on
     db.session.commit()
+    track("settings.changed", section="sources")
     if turning_on:
         # Saying where it moved from: only one option can carry the box, so
         # adding it here silently took it off another.
@@ -2510,6 +2550,7 @@ def reorder_source_options():
         if option is not None:
             option.sort_order = index
     db.session.commit()
+    track("settings.changed", section="sources")
     return ("", 204)
 
 
@@ -2521,6 +2562,7 @@ def delete_source_option(source_option_id: int):
     if option.can_delete:
         db.session.delete(option)
         db.session.commit()
+        track("settings.changed", section="sources")
         _flash_settings_notice(f'"{label}" deleted.', "success")
     else:
         _flash_settings_notice(
@@ -2552,6 +2594,7 @@ def update_company_details():
         neq=request.form.get("neq", "").strip() or None,
     )
     db.session.commit()
+    track("settings.changed", section="company")
     _flash_settings_notice(
         "Company details saved." if name
         else "Company details saved. The company name can't be blank, so it was kept.",
@@ -2600,6 +2643,7 @@ def update_signature():
     signature = request.form.get("signature", "").replace("\r\n", "\n").replace("\r", "\n")
     current_user.signature = signature.strip() or None
     db.session.commit()
+    track("settings.changed", section="signature")
     _flash_settings_notice("Signature saved.", "success")
     return redirect(url_for("settings_account"))
 
@@ -2664,6 +2708,7 @@ def update_invoicing_settings():
         fields["invoice_prefix"] = prefix[:10]
     invoicing.update_profile(company.id, company.name, **fields)
     db.session.commit()
+    track("settings.changed", section="invoicing")
     _flash_settings_notice("Invoicing settings saved.", "success")
     return redirect(url_for("settings_invoicing"))
 
@@ -2707,6 +2752,7 @@ def update_invoice_appearance():
         fields["footer_text"] = text[:billing_config.FOOTER_TEXT_MAX_LENGTH] or None
     invoicing.update_profile(company.id, company.name, **fields)
     db.session.commit()
+    track("settings.changed", section="invoice_appearance")
     if rejected:
         _flash_appearance_notice(
             "Not saved: the " + " and ".join(rejected) + " wasn't recognised. "
@@ -2739,6 +2785,7 @@ def upload_invoice_logo():
         _flash_appearance_notice(str(error))
     else:
         db.session.commit()
+        track("settings.changed", section="logo")
         _flash_settings_notice("Logo uploaded.", "success", section="appearance")
     return _back_to_appearance()
 
@@ -2748,6 +2795,7 @@ def upload_invoice_logo():
 def delete_invoice_logo():
     invoicing.remove_logo(current_user.company_id)
     db.session.commit()
+    track("settings.changed", section="logo")
     _flash_settings_notice("Logo removed.", "success", section="appearance")
     return _back_to_appearance()
 
@@ -2884,6 +2932,7 @@ def reorder_analytics_layout():
     # _analytics_layout_for's merge on the next read, so a partial payload
     # degrades to "these moved, the rest keep their default place".
     _save_analytics_layout(current_user.company_id, layout)
+    track("settings.changed", section="analytics_layout")
     return ("", 204)
 
 

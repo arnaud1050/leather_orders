@@ -1525,7 +1525,7 @@ a.btn-secondary {
   color: var(--ink);
 }
 
-/* Files are being dragged over an uploadable grid (data-doc-drop). The grid
+/* Files are being dragged over an uploadable grid (data-upload-zone). The grid
    gets an ink outline so it's clear the whole area takes the drop, and its
    "Add file" tile turns into the same solid-ink drop target as the invoice
    logo tile (.invoice-look__add.is-drop-target) — louder, never faded. */
@@ -1573,13 +1573,9 @@ a.btn-secondary {
   text-align: center;
 }
 
-/* Nothing can be dragged onto a touch-only screen, so the hint would
-   promise something that can't happen there. */
-@media (hover: none) {
-  .doc-explorer__add-hint {
-    display: none;
-  }
-}
+/* Whether it shows at all is upload-tile.js's call: it starts `hidden`
+   and the script unhides it only once a drop can work, and never on a
+   touch-only screen (UT3, UT4). */
 
 .doc-explorer__thumb {
   display: flex;
@@ -2909,6 +2905,13 @@ button[aria-busy="true"] {
   color: var(--ink);
 }
 
+/* With a logo, the whole row takes a dropped replacement: the same louder
+   state on the row's own frame. */
+.invoice-look__logo-list .settings-source-list__item.is-drop-target {
+  border-color: var(--ink);
+  background: var(--paper-deep);
+}
+
 /* The native file input stays in the tab order and reachable by keyboard
    and screen readers; it just isn't what's drawn. */
 .invoice-look__file {
@@ -2917,12 +2920,6 @@ button[aria-busy="true"] {
   height: 1px;
   opacity: 0;
   overflow: hidden;
-}
-
-/* Without JS the tile can't upload on its own, so a plain button shows;
-   the script hides it once it has taken over. */
-.invoice-look.is-enhanced .invoice-look__no-js {
-  display: none;
 }
 
 .invoice-look__upload {
@@ -3799,4 +3796,25 @@ button.chip--event:hover .chip__title {
   .table-scroll {
     overflow-x: visible;
   }
+}
+/* /admin/usage — the period/company filter sits on one row above the
+   tables, rather than detail-form's usual single column. */
+.usage-filter {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  max-width: none;
+  margin-bottom: 16px;
+}
+
+/* A feature (or company) with nothing in the period: still listed, because
+   "nobody uses this" is an answer, but read as quieter than the rest. */
+.usage-row--unused td {
+  color: var(--ink-soft);
+}
+
+.data-table td.usage-breakdown {
+  white-space: normal;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
 }

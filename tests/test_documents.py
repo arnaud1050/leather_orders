@@ -645,7 +645,7 @@ def test_migration_adds_document_type_id_to_existing_installs(app):
 # --- drag-and-drop: which grids are drop targets ----------------------------
 
 def _drop_zones(html: str) -> int:
-    return html.count("data-doc-drop>") + html.count("data-doc-drop ")
+    return html.count("data-upload-zone>") + html.count("data-upload-zone ")
 
 
 def test_flat_grid_is_a_drop_target(logged_in, order):
@@ -655,7 +655,7 @@ def test_flat_grid_is_a_drop_target(logged_in, order):
     assert _drop_zones(html) == 1
     # The drop goes through the grid's own upload form, so the input the
     # script fills has to be inside it.
-    grid = html[html.index("data-doc-drop"):]
+    grid = html[html.index("data-upload-zone"):]
     assert grid.index("doc-upload-input") < grid.index("doc-explorer__quota")
 
 
@@ -680,7 +680,7 @@ def test_a_drop_uploads_into_its_sections_type(logged_in, company, order):
     filed under Renderings."""
     renderings = services.add_document_type(company.id, "Renderings")
     html = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
-    zone = html[html.index("data-doc-drop"):]
+    zone = html[html.index("data-upload-zone"):]
     assert f'name="document_type_id" value="{renderings.id}"' in zone[:zone.index("doc-upload-input")]
 
     logged_in.post(
@@ -696,4 +696,6 @@ def test_the_add_tile_says_it_takes_drops(logged_in, order):
     """Nobody guesses a grid takes dropped files; the tile says so
     (documents/REQUIREMENTS.md §7)."""
     html = logged_in.get(f"/orders/{order.id}").get_data(as_text=True)
-    assert '<span class="doc-explorer__add-hint">or drop files here</span>' in html
+    # Hidden until upload-tile.js knows a drop can work there (UT3, UT4).
+    assert '<span class="doc-explorer__add-hint" data-upload-hint hidden>or drop files here</span>' in html
+    assert "assets/js/upload-tile.js" in html

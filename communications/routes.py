@@ -24,6 +24,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 from models import Client, DEFAULT_TIMEZONE, db
+from usage import track
 
 from communications import config, jobs
 from communications.models import (
@@ -227,6 +228,7 @@ def google_callback():
         return redirect(url_for("communications.integrations"))
 
     db.session.commit()
+    track("integration.google_connected")
     _flash(f"Connected {account.email_address}.", "success", section="accounts")
     return redirect(return_to)
 
@@ -236,6 +238,7 @@ def google_callback():
 def disconnect_account(account_id: int):
     if account_service.disconnect(current_user.company_id, account_id):
         db.session.commit()
+        track("integration.google_disconnected")
         _flash("Account disconnected and its synced mail removed.", "success")
     else:
         abort(404)
@@ -256,6 +259,7 @@ def update_account_flags(account_id: int):
     if account is None:
         abort(404)
     db.session.commit()
+    track("settings.changed", section="mail_accounts")
     if "sync_enabled" in flags:
         _flash(f"Sync {'resumed' if account.sync_enabled else 'paused'} for "
                f"{account.email_address}.", "success")
@@ -304,6 +308,7 @@ def update_sync_settings():
         )
 
     db.session.commit()
+    track("settings.changed", section="sync")
     _flash("Sync settings saved.", "success")
     return redirect(url_for("communications.integrations"))
 
@@ -319,6 +324,8 @@ def sync_calendar_now():
     button labelled for the calendar should do what it says.
     """
     results = calendar_service.sync_now(current_user.company_id)
+    if results:
+        track("mail.manual_sync", scope="calendar")
     if not results:
         _flash("No calendar is connected.", "error")
     elif all(result.ok for result in results):
@@ -341,6 +348,7 @@ def add_sender_rule():
     except sender_rules.SenderRuleError as exc:
         _flash(str(exc), "error")
     else:
+        track("sender_rule.created", action=rule.action)
         _flash(f"Mail from {rule.pattern} will now {rule.action_label.lower()}.", "success")
     return redirect(url_for("communications.integrations"))
 
@@ -433,6 +441,8 @@ def sync_now():
     one is `sync_all_now` below.
     """
     results = email_service.sync_now(current_user.company_id)
+    if results:
+        track("mail.manual_sync", scope="mail")
     if not results:
         _flash("No mailbox is connected and enabled for syncing.", "error")
     elif all(result.ok for result in results):
@@ -459,6 +469,8 @@ def sync_all_now():
     """
     results = email_service.sync_now(current_user.company_id)
     calendar_results = calendar_service.sync_now(current_user.company_id)
+    if results or calendar_results:
+        track("mail.manual_sync", scope="all")
 
     parts = [r.summary() for r in results + calendar_results if not r.ok]
     if parts:
@@ -554,7 +566,8 @@ def leads():
 @login_required
 def dismiss_thread(thread_id: int):
     """Hide a lead. Reversible, and never touches the mailbox."""
-    return _thread_action(thread_id, email_service.dismiss_thread, "Conversation hidden.")
+    return _thread_action(thread_id, email_service.dismiss_thread, "Conversation hidden.",
+                          event="lead.dismissed")
 
 
 @bp.route("/mail/threads/<int:thread_id>/restore", methods=["POST"])
@@ -574,10 +587,11 @@ def trash_thread(thread_id: int):
     return _thread_action(
         thread_id, email_service.trash_thread,
         "Conversation moved to Gmail's Trash — recoverable there for 30 days.",
+        event="lead.trashed",
     )
 
 
-def _thread_action(thread_id: int, action, success_message: str):
+def _thread_action(thread_id: int, action, success_message: str, event: str | None = None):
     """Shared plumbing for dismiss/restore/trash.
 
     All three are: run a service call, report what happened, go back where
@@ -590,6 +604,8 @@ def _thread_action(thread_id: int, action, success_message: str):
     except (email_service.EmailServiceError, ProviderError) as exc:
         _flash(str(exc), "error")
         return redirect(return_to)
+    if event is not None:
+        track(event)
     _flash(success_message, "success")
     return redirect(return_to)
 
@@ -608,6 +624,7 @@ def convert_lead(thread_id: int):
         _flash(str(exc), "error")
         return redirect(request.form.get("return_to") or url_for("communications.leads"))
 
+    track("client.created", via="mail")
     # Shown on the client page it lands on, not the conversation the
     # form was on (MOD8).
     _flash(f"Created {client.name} and linked this conversation.", "success",
@@ -675,6 +692,7 @@ def send_message():
         _flash(str(exc), "error")
         return redirect(return_to)
 
+    track("mail.sent", reply=bool(thread_id), has_attachments=bool(attachments))
     # Naming the count is the only confirmation that the picker's chips
     # turned into real attachments — nothing else on the page they land
     # back on shows what went out until the next sync.
@@ -757,6 +775,7 @@ def create_calendar_event():
         )
     except (calendar_service.CalendarServiceError, ProviderError) as exc:
         return _event_refused(str(exc), return_to)
+    track("calendar.event_created", invite=bool(notify))
     _flash(_event_notice("Event added to your Google Calendar.", event, notify), "success",
            section="calendar")
     return redirect(return_to)
@@ -796,6 +815,7 @@ def update_calendar_event(event_id: int):
         return _event_refused(str(exc), return_to)
     # The dialog closes on success, so the message goes beside the buttons
     # above the grid rather than back into it (MOD8).
+    track("calendar.event_updated")
     _flash(_event_notice("Event updated.", event, notify), "success", section="calendar")
     return redirect(return_to)
 

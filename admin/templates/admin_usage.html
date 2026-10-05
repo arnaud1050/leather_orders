@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Usage — Platform admin{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Platform admin</h1>
+    <p class="detail-subtitle">
+      Feature usage{% if company %} at {{ company.name }}{% else %} across every company{% endif %}
+    </p>
+  </header>
+
+  {% include "_admin_nav.html" %}
+
+  {# Plain GET form: the filter is part of the URL, so a view can be
+     bookmarked or sent to someone as a link. #}
+  <form method="get" action="{{ url_for('admin.usage') }}" class="detail-form usage-filter">
+    <label>Period
+      <select name="period">
+        {% for key, days in periods.items() %}
+        <option value="{{ key }}" {% if key == period %}selected{% endif %}>
+          {{ 'All time' if days is none else 'Last ' ~ days ~ ' days' }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Company
+      <select name="company">
+        <option value="">All companies</option>
+        {% for row in companies %}
+        <option value="{{ row.id }}" {% if company and row.id == company.id %}selected{% endif %}>
+          {{ row.name }}{% if not row.is_active %} (deactivated){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <div><button type="submit" class="btn-secondary">Show</button></div>
+  </form>
+
+  <p class="detail-note">
+    Counts only successful actions by people inside a studio. Platform staff
+    and impersonated sessions are never counted. Pages marked
+    <em>daily</em> count at most once per person per day.
+  </p>
+
+  {% if company_rows is not none %}
+  <section class="detail-orders">
+    <h2>Companies</h2>
+    <div class="table-scroll">
+      <table class="data-table" id="usage-companies">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th class="is-numeric">Active people</th>
+            <th class="is-numeric">Sign-ins</th>
+            <th class="is-numeric">Features used</th>
+            <th class="is-numeric">Actions</th>
+            <th>Last active (UTC)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in company_rows %}
+          <tr {% if not row.events %}class="usage-row--unused"{% endif %}>
+            <td>
+              <a href="{{ url_for('admin.usage', period=period, company=row.id) }}">{{ row.name }}</a>
+              {% if not row.is_active %}<span class="checkbox-group__hidden-tag">(deactivated)</span>{% endif %}
+            </td>
+            <td class="is-numeric">{{ row.users }} / {{ row.seats }}</td>
+            <td class="is-numeric">{{ row.logins }}</td>
+            <td class="is-numeric">{{ row.features }}</td>
+            <td class="is-numeric">{{ row.events }}</td>
+            <td>{{ row.last_seen.strftime('%Y-%m-%d %H:%M') if row.last_seen else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="detail-orders">
+    <h2>Features</h2>
+    <p class="detail-note">
+      {% if company %}
+      Greyed rows are features {{ company.name }} hasn't used in this period.
+      {% else %}
+      "Companies" is the number to read first: one busy person can make a
+      feature look popular by raw count, but not by how many studios use it.
+      {% endif %}
+    </p>
+    <div class="table-scroll">
+      <table class="data-table" id="usage-features">
+        <thead>
+          <tr>
+            <th>Area</th>
+            <th>Feature</th>
+            {% if not company %}<th class="is-numeric">Companies</th>{% endif %}
+            <th class="is-numeric">People</th>
+            <th class="is-numeric">Uses</th>
+            <th>Last used (UTC)</th>
+            <th>Breakdown</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in features %}
+          <tr data-event="{{ row.event }}" {% if not row.uses %}class="usage-row--unused"{% endif %}>
+            <td>{{ row.area }}</td>
+            <td>
+              {{ row.label }}
+              {% if row.daily %}<span class="pill">daily</span>{% endif %}
+            </td>
+            {% if not company %}<td class="is-numeric">{{ row.companies }}</td>{% endif %}
+            <td class="is-numeric">{{ row.users }}</td>
+            <td class="is-numeric">{{ row.uses }}</td>
+            <td>{{ row.last_used.strftime('%Y-%m-%d') if row.last_used else '—' }}</td>
+            <td class="usage-breakdown">
+              {% for description, uses in row.breakdown %}{{ description }} ({{ uses }}){% if not loop.last %} · {% endif %}{% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

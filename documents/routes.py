@@ -17,6 +17,8 @@ here is in that class of risk.
 from flask import Blueprint, abort, redirect, request, send_file, session, url_for
 from flask_login import current_user, login_required
 
+from usage import track
+
 from documents import config, services
 from documents.storage import path_for
 
@@ -86,6 +88,10 @@ def upload(order_id: int):
     raw_type_id = request.form.get("document_type_id", "")
     document_type_id = int(raw_type_id) if raw_type_id.isdigit() else None
     result = services.upload(current_user.company_id, order.id, files, document_type_id)
+    # One event per stored file. Whether it was filed under a type, not
+    # which: type labels are the studio's own free text.
+    for _ in result.saved:
+        track("document.uploaded", typed=document_type_id is not None)
     if result.errors:
         _flash(" ".join(result.errors))
     return _redirect_back(order.id)
@@ -150,6 +156,7 @@ def add_type():
     if document_type is None and label.strip():
         _flash(f'A document type called "{label.strip()}" already exists.')
     elif document_type is not None:
+        track("settings.changed", section="document_types")
         _flash(f'Document type "{document_type.label}" added.', "success")
     return redirect(url_for("settings_orders"))
 
@@ -159,6 +166,7 @@ def add_type():
 def toggle_type(document_type_id: int):
     document_type = services.toggle_document_type(current_user.company_id, document_type_id)
     if document_type is not None:
+        track("settings.changed", section="document_types")
         _flash(
             f'"{document_type.label}" is offered again for new uploads.' if document_type.is_active
             else f'"{document_type.label}" hidden. It\'s no longer offered for new uploads; '
@@ -174,6 +182,7 @@ def delete_type(document_type_id: int):
     if result is not None:
         label, deleted = result
         if deleted:
+            track("settings.changed", section="document_types")
             _flash(f'"{label}" deleted.', "success")
         else:
             _flash(f'"{label}" can\'t be deleted because documents are filed under it. '
@@ -189,4 +198,6 @@ def reorder_types():
     payload = request.get_json(silent=True) or {}
     ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
     services.reorder_document_types(current_user.company_id, ordered_ids)
+    if ordered_ids:
+        track("settings.changed", section="document_types")
     return "", 204

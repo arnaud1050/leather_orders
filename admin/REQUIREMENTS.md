@@ -18,7 +18,9 @@ must hold true*.
   *is* those models; hard rule 4 does not apply to it and the boundary
   tests deliberately don't cover it.
 - **PA0.2 — It administers tenants, it does not read their data.** No page
-  here renders a client, order, invoice, message or analytics figure. The
+  here renders a client, order, invoice, message or analytics figure.
+  Feature-usage counts (`PA31`–`PA33`) are the one exception, and they are
+  counts of feature use, never a studio's records or business figures. The
   supported way to look at a studio's records is to impersonate somebody
   inside it (`PA18`), which goes through the app's ordinary
   `current_user.company_id` filtering rather than around it.
@@ -229,6 +231,22 @@ pattern extended to a table with no `company_id` at all).
   the same way as `/admin/companies` and `/admin/platform-admins`
   (`PA1`, `PA3d`).
 
+## 8. Feature usage
+
+What studios use, read from `usage_events`. The recording rules are
+`US1`–`US10` in [usage/REQUIREMENTS.md](../usage/REQUIREMENTS.md).
+
+- **PA31.** `/admin/usage` is an `_admin_nav.html` tab (**Usage**), guarded
+  like every other page here (`PA1`). It filters by period (30, 90 or 365
+  days, or all time; 90 by default) and optionally by one company. An
+  unknown filter value falls back to the default instead of failing.
+- **PA32.** The feature table lists **every** catalog event, including those
+  with no uses in the period, and shows companies, people, uses, the last
+  use, and the split by props. Across all companies, a table of companies
+  by activity comes first, silent companies included.
+- **PA33.** Counts only. The page names features and companies, never a
+  client, order, invoice, message or any figure from a studio's records.
+
 ## Test coverage map
 
 | Rules | Where |
@@ -242,6 +260,7 @@ pattern extended to a table with no `company_id` at all).
 | PA24, PA24a, PA25 | `tests/test_user_migration.py` |
 | PA24b, PA24c | `tests/test_seeding.py` |
 | PA26–PA30 | `tests/test_admin.py` — the announcement banner |
+| PA31–PA33 | `tests/test_usage.py` — `/admin/usage` |
 
 **Not covered by tests:** the templates' own markup (no page here has logic
 worth asserting on beyond what the route tests already render), and the

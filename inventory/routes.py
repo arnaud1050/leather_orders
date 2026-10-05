@@ -19,6 +19,8 @@ import re
 from flask import Blueprint, current_app, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
+from usage import track
+
 from inventory import services
 from inventory.config import UNIT_LABELS
 
@@ -177,7 +179,7 @@ def inventory_list():
 @login_required
 def add_item():
     raw_type_id = request.form.get("inventory_type_id", "")
-    services.add_item(
+    item = services.add_item(
         current_user.company_id,
         name=request.form.get("name", ""),
         unit=request.form.get("unit", ""),
@@ -189,6 +191,8 @@ def add_item():
         url=request.form.get("url"),
         notes=request.form.get("notes"),
     )
+    if item is not None:
+        track("inventory.item_created")
     return redirect(url_for("inventory.inventory_list"))
 
 
@@ -196,7 +200,7 @@ def add_item():
 @login_required
 def edit_item(item_id: int):
     raw_type_id = request.form.get("inventory_type_id", "")
-    services.edit_item(
+    item = services.edit_item(
         current_user.company_id, item_id,
         name=request.form.get("name", ""),
         unit=request.form.get("unit", ""),
@@ -208,6 +212,8 @@ def edit_item(item_id: int):
         url=request.form.get("url"),
         notes=request.form.get("notes"),
     )
+    if item is not None:
+        track("inventory.item_updated")
     return redirect(url_for("inventory.inventory_list"))
 
 
@@ -240,6 +246,7 @@ def add_unit():
     key = request.form.get("key", "")
     unit = services.add_unit(current_user.company_id, key)
     if unit is not None:
+        track("settings.changed", section="inventory_units")
         _flash_settings_notice(f'"{unit.label}" added.', "success")
     elif key:
         _flash_settings_notice("That unit is already in the list.")
@@ -251,6 +258,7 @@ def add_unit():
 def toggle_unit(unit_id: int):
     unit = services.toggle_unit(current_user.company_id, unit_id)
     if unit is not None:
+        track("settings.changed", section="inventory_units")
         _flash_settings_notice(
             f'"{unit.label}" is offered again for new items.' if unit.is_active
             else f'"{unit.label}" hidden. It\'s no longer offered for new items; '
@@ -266,6 +274,7 @@ def delete_unit(unit_id: int):
     if result is not None:
         label, deleted = result
         if deleted:
+            track("settings.changed", section="inventory_units")
             _flash_settings_notice(f'"{label}" deleted.', "success")
         else:
             _flash_settings_notice(
@@ -281,6 +290,8 @@ def reorder_units():
     payload = request.get_json(silent=True) or {}
     ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
     services.reorder_units(current_user.company_id, ordered_ids)
+    if ordered_ids:
+        track("settings.changed", section="inventory_units")
     return "", 204
 
 
@@ -298,6 +309,7 @@ def reorder_units():
 def toggle_column(key: str):
     column = services.toggle_column(current_user.company_id, key)
     if column is not None:
+        track("settings.changed", section="inventory_columns")
         _flash_settings_notice(
             f'The {column["label"]} column is now {"shown" if column["visible"] else "hidden"} '
             "on the Inventory list.", "success")
@@ -310,6 +322,8 @@ def reorder_columns():
     payload = request.get_json(silent=True) or {}
     ordered_keys = [k for k in payload.get("order", []) if isinstance(k, str)]
     services.reorder_columns(current_user.company_id, ordered_keys)
+    if ordered_keys:
+        track("settings.changed", section="inventory_columns")
     return "", 204
 
 
@@ -326,6 +340,7 @@ def add_type():
     if inventory_type is None and label.strip():
         _flash_settings_notice(f'An inventory type called "{label.strip()}" already exists.')
     elif inventory_type is not None:
+        track("settings.changed", section="inventory_types")
         _flash_settings_notice(f'Inventory type "{inventory_type.label}" added.', "success")
     return redirect(url_for("settings_inventory"))
 
@@ -335,6 +350,7 @@ def add_type():
 def toggle_type(inventory_type_id: int):
     inventory_type = services.toggle_type(current_user.company_id, inventory_type_id)
     if inventory_type is not None:
+        track("settings.changed", section="inventory_types")
         _flash_settings_notice(
             f'"{inventory_type.label}" is offered again for new items.' if inventory_type.is_active
             else f'"{inventory_type.label}" hidden. It\'s no longer offered for new items; '
@@ -350,6 +366,7 @@ def delete_type(inventory_type_id: int):
     if result is not None:
         label, deleted = result
         if deleted:
+            track("settings.changed", section="inventory_types")
             _flash_settings_notice(f'"{label}" deleted.', "success")
         else:
             _flash_settings_notice(
@@ -371,11 +388,13 @@ def _redirect_back(order_id: int):
 def add_material(order_id: int):
     order = _get_order_or_404(order_id)
     raw_item_id = request.form.get("inventory_item_id", "")
-    services.add_material(
+    material = services.add_material(
         current_user.company_id, order.id,
         inventory_item_id=int(raw_item_id) if raw_item_id.isdigit() else -1,
         quantity_used=_parse_float(request.form.get("quantity_used")),
     )
+    if material is not None:
+        track("order.material_added", kind="stock")
     return _redirect_back(order.id)
 
 
@@ -402,11 +421,13 @@ def delete_material(order_id: int, material_id: int):
 @login_required
 def add_other(order_id: int):
     order = _get_order_or_404(order_id)
-    services.add_other(
+    other = services.add_other(
         current_user.company_id, order.id,
         description=request.form.get("description", ""),
         cost=_parse_float(request.form.get("cost")),
     )
+    if other is not None:
+        track("order.material_added", kind="other")
     return _redirect_back(order.id)
 
 

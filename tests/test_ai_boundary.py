@@ -96,8 +96,11 @@ VENDOR_FILES = {"openai": "openai_client.py", "google": "google_image_client.py"
 
 
 def test_the_only_host_helper_is_crypto():
-    """One host import that isn't `db`, and it's the shared SecretBox."""
-    allowed = {"", "ai", "models", "crypto"} | THIRD_PARTY | STDLIB
+    """One host import that isn't `db`, and it's the shared SecretBox —
+    plus `usage`, whose package root is as dependency-free as `crypto.py`
+    (Flask and the standard library only); `tests/test_usage.py` holds the
+    module to importing `track` from it and nothing deeper."""
+    allowed = {"", "ai", "models", "crypto", "usage"} | THIRD_PARTY | STDLIB
     for path in ai_sources():
         for module, _ in imports_in(path):
             root = module.split(".")[0]
