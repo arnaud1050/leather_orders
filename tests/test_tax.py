@@ -17,6 +17,7 @@ import pytest
 
 from billing.tax import (
     PROVINCE_TAXES, PROVINCES, TaxLine, normalize_province, status_for, taxes_for,
+    unregistered_taxes,
 )
 from billing.services import invoicing
 from models import Client, Order, OrderLine, db
@@ -292,6 +293,33 @@ def test_tax_status_flags_a_missing_registration(company, client_record):
                              gst_number=None, qst_number=None, pst_number=None)
     db.session.flush()
     assert make_order(client_record).tax_status == "not_registered"
+
+
+def test_unregistered_taxes_names_the_skipped_tax():
+    """GST charged but no PST number: status_for says "ok", this doesn't."""
+    gst_only = {"gst_number": "123456789 RT0001"}
+    assert unregistered_taxes("BC", gst_only) == ["PST"]
+    assert unregistered_taxes("BC", ALL_REGISTRATIONS) == []
+    assert unregistered_taxes("AB", gst_only) == []
+    assert unregistered_taxes(None, gst_only) == []
+
+
+def test_a_bc_order_without_a_pst_number_warns_that_pst_is_skipped(company):
+    row = Client(company_id=company.id, first_name="Van", last_name="Couver",
+                 province="BC")
+    db.session.add(row)
+    db.session.flush()
+    invoicing.update_profile(company.id, company.name,
+                             gst_number="123456789 RT0001", pst_number=None)
+    db.session.flush()
+    order = make_order(row, 100.0)
+    assert [t.label for t in order.tax_lines] == ["GST"]
+    assert order.tax_status == "ok"
+    assert order.untaxed == ("PST",)
+
+    invoicing.update_profile(company.id, company.name, pst_number="PST-1234")
+    db.session.flush()
+    assert order.untaxed == ()
 
 
 def test_a_taxless_order_still_totals_its_subtotal(company, client_record):

@@ -54,6 +54,13 @@ export class NewOrderPage extends BasePage {
     });
   }
 
+  /** The required pickup/shipped radios (OR3a) — neither is preselected. */
+  async chooseDelivery(value: "pickup" | "shipped"): Promise<void> {
+    await step(`Choose delivery '${value}'`, async () => {
+      await this.page.locator(`input[name="fulfilment"][value="${value}"]`).check();
+    });
+  }
+
   async submit(): Promise<void> {
     await step("Submit the new-order form", async () => {
       await this.submitButton.click();

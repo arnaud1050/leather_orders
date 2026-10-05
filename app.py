@@ -64,6 +64,14 @@ from billing import config as billing_config  # noqa: E402
 from billing.documents import clean_color  # noqa: E402
 from billing.services import invoicing  # noqa: E402
 from billing.tax import PROVINCES  # noqa: E402
+
+# The client province picker's "Outside Canada" choice. Not a province and
+# never stored in `province` — it sets Client.outside_canada instead.
+OUTSIDE_CANADA = "OUTSIDE"
+
+# The order forms' pickup/shipped radios, posted as `fulfilment`. Stored as
+# Order.picked_up — two choices don't need more than a boolean.
+FULFILMENT_CHOICES = ("pickup", "shipped")
 # Self-contained module: its own models, services, templates and blueprint
 # (see communications/__init__.py). Importing it here registers its tables
 # with db.create_all() below; register() attaches its routes. Nothing in
@@ -723,6 +731,11 @@ def _apply_order_form(order: Order, form, values: dict) -> None:
         order.is_rush = order.can_rush and "is_rush" in form
     elif not order.can_rush:
         order.is_rush = False
+
+    # Guarded like notes: the timeline modal doesn't render these radios,
+    # and its saves must leave the choice alone (hard rule 9).
+    if form.get("fulfilment") in FULFILMENT_CHOICES:
+        order.picked_up = form.get("fulfilment") == "pickup"
 
     if "order_type_id" in form:
         order_type_id = form.get("order_type_id", "")
@@ -1607,6 +1620,7 @@ def client_page(client_id: int):
         source_options=source_options,
         other_source_option=other_source_option,
         provinces=PROVINCES,
+        outside_canada=OUTSIDE_CANADA,
         # "Create a client" on a lead conversation lands here (MOD8).
         notice=communications_routes.take_notice(),
         active_view=None,
@@ -1662,6 +1676,9 @@ def edit_client(client_id: int):
         client.street = request.form.get("street", "").strip() or None
         client.city = request.form.get("city", "").strip() or None
         province = request.form.get("province", "").strip().upper()
+        # "Outside Canada" is a picker choice but not a province: it sets
+        # the flag and leaves `province` empty, so the two can't disagree.
+        client.outside_canada = province == OUTSIDE_CANADA
         client.province = province if province in PROVINCES else None
         client.postal_code = request.form.get("postal_code", "").strip().upper() or None
 
@@ -1754,6 +1771,10 @@ def new_order():
         # the inline new client included — so a refused submission leaves no
         # half-made row behind for some later commit to pick up.
         errors, values = _check_order_form(form)
+        # Required, with neither option preselected: it decides the tax, and
+        # a default would be silently wrong for whichever case it isn't.
+        if form.get("fulfilment") not in FULFILMENT_CHOICES:
+            errors["fulfilment"] = "Choose whether the client picks this order up or it's shipped."
 
         client_id = form.get("client_id", "")
         client = None
@@ -1813,6 +1834,7 @@ def new_order():
             due=values["due"],
             status=status if status in INITIAL_STATUSES else "tentative",
             order_type_id=order_type.id if order_type else None,
+            picked_up=form.get("fulfilment") == "pickup",
             notes=form.get("notes", "").strip(),
         )
         db.session.add(order)

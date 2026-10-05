@@ -112,6 +112,7 @@ class BillingProfile(db.Model):
             qst_number=self.qst_number,
             neq=self.neq,
             payment_instructions=self.payment_instructions,
+            province=self.province,
         )
 
     @property

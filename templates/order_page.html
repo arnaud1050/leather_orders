@@ -36,6 +36,20 @@
     <label>Start date<input type="date" name="start" value="{{ typed.get('start', order.start.isoformat()) }}" required{{ invalid(form_errors, 'start') }}>{{ field_error(form_errors, 'start') }}</label>
     <label>Due date<input type="date" name="due" value="{{ typed.get('due', order.due.isoformat()) }}" required{{ invalid(form_errors, 'due') }}>{{ field_error(form_errors, 'due') }}</label>
     <label>Pickup date<input type="date" name="pickup_date" value="{{ typed.get('pickup_date', order.pickup_date.isoformat() if order.pickup_date else '') }}"{{ invalid(form_errors, 'pickup_date') }}>{{ field_error(form_errors, 'pickup_date') }}</label>
+    {% set fulfilment = typed.get('fulfilment', 'pickup' if order.picked_up else 'shipped') %}
+    <fieldset>
+      <legend>Delivery</legend>
+      <div class="checkbox-group">
+        <label class="checkbox-group__item">
+          <input type="radio" name="fulfilment" value="pickup" {% if fulfilment == 'pickup' %}checked{% endif %}>
+          Picked up at the studio (taxed in the studio's province)
+        </label>
+        <label class="checkbox-group__item">
+          <input type="radio" name="fulfilment" value="shipped" {% if fulfilment == 'shipped' %}checked{% endif %}>
+          Shipped to the client (taxed in the client's province)
+        </label>
+      </div>
+    </fieldset>
     {% if order_types %}
     {% set chosen_type = typed.get('order_type_id', order.order_type_id|string if order.order_type_id else '') %}
     <label>Order type
@@ -216,17 +230,43 @@
       {% endfor %}
       <p class="line-totals__total"><span>Order total</span> <strong>${{ '%.2f'|format(order.total) }}</strong></p>
     </div>
-    {% if order.tax_status != 'ok' %}
+    {% if order.tax_status == 'outside_canada' %}
+    {# Not a warning: an export owes no Canadian sales tax. #}
+    <p class="detail-note">
+      No sales tax — {{ order.client.name }} is outside Canada and this order is
+      shipped. Choose "Picked up at the studio" above if they're collecting it.
+    </p>
+    {% elif order.tax_status != 'ok' %}
     <p class="warning-note">
-      {% if order.tax_status == 'no_buyer_province' %}
+      {% if order.tax_status == 'no_seller_province' %}
+        No sales tax is being charged — this order is picked up at the studio, so
+        it's taxed in the studio's province, and none is on file. Add it in
+        <a href="{{ url_for('settings_invoicing') }}">Settings</a>.
+      {% elif order.tax_status == 'no_buyer_province' %}
         No sales tax is being charged — <a href="{{ url_for('client_page', client_id=order.client.id) }}?return_to={{ request.path }}">{{ order.client.name }}</a>
         has no province on file, and the rate follows the client's province.
       {% elif order.tax_status == 'unknown_province' %}
-        No sales tax is being charged — "{{ order.client.province }}" isn't a province this app has rates for.
+        No sales tax is being charged — "{{ order.tax_province }}" isn't a province this app has rates for.
       {% else %}
         No sales tax is being charged — the company holds no registration number
-        for {{ order.client.province }}'s taxes. Add one in <a href="{{ url_for('settings') }}">Settings</a> if that's wrong.
+        for {{ order.tax_province }}'s taxes. Add one in <a href="{{ url_for('settings_invoicing') }}">Settings</a> if that's wrong.
       {% endif %}
+    </p>
+    {% elif order.untaxed %}
+    <p class="warning-note">
+      {{ order.untaxed|join(' and ') }} isn't being charged — {{ order.tax_province }}
+      levies it, but the company holds no registration number for it. Add one in
+      <a href="{{ url_for('settings_invoicing') }}">Settings</a> if that's wrong.
+    </p>
+    {% endif %}
+    {% if order.taxed_elsewhere %}
+    <p class="warning-note">
+      {{ order.tax_province }} {{ order.taxed_elsewhere|join(' and ') }} is being charged,
+      but the studio is in {{ order.seller_province }}. The PST number in
+      <a href="{{ url_for('settings_invoicing') }}">Settings</a> is used for BC,
+      Saskatchewan and Manitoba alike, so check you're registered in
+      {{ order.tax_province }} too. If the client collected it at the studio, choose
+      "Picked up at the studio" above.
     </p>
     {% endif %}
     {% if order.is_issued %}

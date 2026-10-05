@@ -47,6 +47,7 @@ test.describe("New order form — refused saves explain themselves (OR2a, OR12, 
     await form.startInput.fill(start);
     await form.dueInput.fill(due);
     await form.notesInput.fill("Wants brass hardware");
+    await form.chooseDelivery("pickup");
     await form.submit();
 
     await expect(form.fieldError("item")).toContainText("can't be blank or only spaces");
@@ -83,6 +84,7 @@ test.describe("New order form — refused saves explain themselves (OR2a, OR12, 
     await form.itemInput.fill("Card holder");
     await form.startInput.fill(isoDateOffset(1));
     await form.dueInput.fill(isoDateOffset(10));
+    await form.chooseDelivery("pickup");
     await form.submit();
 
     await expect(form.newClientFields).toBeVisible();

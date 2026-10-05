@@ -141,6 +141,7 @@ def test_cancelling_is_not_reachable_through_the_edit_form(logged_in, order):
 
 def test_a_new_order_cannot_be_created_already_finished(logged_in, client_record):
     logged_in.post("/orders/new", data={
+        "fulfilment": "shipped",
         "client_id": str(client_record.id), "item": "Belt",
         "start": "2026-08-01", "due": "2026-08-15", "price": "95",
         "status": "delivered",

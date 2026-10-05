@@ -59,6 +59,21 @@
         {% endfor %}
       </select>
     </label>
+    {# Required with neither ticked: it decides the tax (OR3a). #}
+    <fieldset>
+      <legend>Delivery</legend>
+      <div class="checkbox-group">
+        <label class="checkbox-group__item">
+          <input type="radio" name="fulfilment" value="pickup" required {% if form.get('fulfilment') == 'pickup' %}checked{% endif %}>
+          Picked up at the studio (taxed in the studio's province)
+        </label>
+        <label class="checkbox-group__item">
+          <input type="radio" name="fulfilment" value="shipped" {% if form.get('fulfilment') == 'shipped' %}checked{% endif %}>
+          Shipped to the client (taxed in the client's province)
+        </label>
+      </div>
+      {{ field_error(errors, 'fulfilment') }}
+    </fieldset>
     <label>Notes<textarea name="notes" rows="3">{{ form.get('notes', '') }}</textarea></label>
     <div>
       <button type="submit" class="btn-primary">Create order</button>

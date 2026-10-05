@@ -315,6 +315,13 @@ class Client(db.Model):
     city = db.Column(db.String(120))
     province = db.Column(db.String(2))  # two-letter code; see PROVINCES in app.py
     postal_code = db.Column(db.String(10))
+    # "Outside Canada" in the province picker. Kept as its own flag rather
+    # than a made-up code in `province`, which would print on addresses and
+    # look like a typo to everything that reads a province. Shipped orders
+    # for this client are exports and charged no Canadian sales tax; ones
+    # collected at the studio are still taxed there (Order.picked_up).
+    # Always False while `province` is set — the form writes both together.
+    outside_canada = db.Column(db.Boolean, nullable=False, default=False)
     # Populated when a client originates from the bymonsieur.ca contact
     # form (via a Make.com webhook, see /api/leads) rather than being added
     # by staff. Blank for manually-created clients.
@@ -405,6 +412,12 @@ class Order(db.Model):
     # order could not be both rush and ready for pickup. Only meaningful
     # while the order is active; see `is_active`.
     is_rush = db.Column(db.Boolean, nullable=False, default=False)
+    # Collected in person at the studio rather than shipped. Decides the tax:
+    # goods handed over at the studio are taxed in the studio's province,
+    # not the client's (billing.tax.place_of_supply). Not inferred from
+    # `pickup_date` or the "ready for pickup" status — every order passes
+    # through that status whether it's then collected or shipped.
+    picked_up = db.Column(db.Boolean, nullable=False, default=False)
     notes = db.Column(db.Text)
     # Optional — a company with no OrderTypes defined never shows the
     # dropdown at all (see new_order()/order_page() in app.py), so this
@@ -586,6 +599,29 @@ class Order(db.Model):
         return self._amounts.tax_status
 
     @property
+    def untaxed(self):
+        """Taxes the client's province levies that aren't being charged for
+        want of a registration number (e.g. ("PST",)) — for a warning."""
+        return self._amounts.untaxed
+
+    @property
+    def taxed_elsewhere(self):
+        """PST/RST charged for a province other than the studio's — one
+        PST number gates all three provinces, so worth confirming."""
+        return self._amounts.taxed_elsewhere
+
+    @property
+    def tax_province(self):
+        """The province whose taxes apply: the client's if shipped, the
+        studio's if picked up, None for an export."""
+        return self._amounts.tax_province
+
+    @property
+    def seller_province(self):
+        """The studio's own province, from Settings → Invoicing."""
+        return self._amounts.seller_province
+
+    @property
     def invoice_status(self):
         """The invoice's status *for display* — "paid" once payments cover
         it, which the module derives rather than storing."""
@@ -710,6 +746,11 @@ _ADDED_COLUMNS = [
     # Every client already on file has no history to count before this
     # column existed, so the default is 0 — same reasoning as is_hidden above.
     ("clients", "prior_order_count", "INTEGER NOT NULL DEFAULT 0"),
+    # Both default to the behaviour before they existed: every order was
+    # taxed at the client's province, as if shipped, and every client was
+    # in Canada or had no province.
+    ("clients", "outside_canada", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("orders", "picked_up", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
