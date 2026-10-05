@@ -3818,3 +3818,17 @@ button.chip--event:hover .chip__title {
   color: var(--ink-soft);
   font-size: 0.78rem;
 }
+
+/* A field and the note that explains it, kept together inside a
+   .detail-form. The form's 16px gap separates fields from each other; on
+   its own a note after a field got that gap plus its own margin, and read
+   as belonging to nothing in particular. */
+.detail-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-form__field > .detail-note {
+  margin: 0;
+}

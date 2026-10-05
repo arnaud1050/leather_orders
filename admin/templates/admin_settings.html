@@ -28,14 +28,16 @@
         <textarea name="message" rows="3"
                   placeholder="e.g. Brief downtime Sunday 2-4am Pacific for maintenance.">{{ settings.announcement or '' }}</textarea>
       </label>
-      <label class="checkbox-group__item">
-        <input type="checkbox" name="active" value="1" {% if settings.is_active %}checked{% endif %}>
-        Show this banner now
-      </label>
-      <p class="detail-note">
-        Saving with the message blank and the banner off just clears the
-        draft — turning it on requires a message.
-      </p>
+      <div class="detail-form__field">
+        <label class="checkbox-group__item">
+          <input type="checkbox" name="active" value="1" {% if settings.is_active %}checked{% endif %}>
+          Show this banner now
+        </label>
+        <p class="detail-note">
+          Saving with the message blank and the banner off just clears the
+          draft — turning it on requires a message.
+        </p>
+      </div>
       <div>
         <button type="submit" class="btn-primary">Save</button>
       </div>

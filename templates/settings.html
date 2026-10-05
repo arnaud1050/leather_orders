@@ -65,11 +65,13 @@
         <input type="password" name="new_password" autocomplete="new-password"
                minlength="{{ min_password_length }}" required>
       </label>
-      <label>Confirm new password
-        <input type="password" name="confirm_password" autocomplete="new-password"
-               minlength="{{ min_password_length }}" required>
-      </label>
-      <p class="detail-note">At least {{ min_password_length }} characters.</p>
+      <div class="detail-form__field">
+        <label>Confirm new password
+          <input type="password" name="confirm_password" autocomplete="new-password"
+                 minlength="{{ min_password_length }}" required>
+        </label>
+        <p class="detail-note">At least {{ min_password_length }} characters.</p>
+      </div>
       <div>
         <button type="submit" class="btn-primary">Change password</button>
       </div>
@@ -84,10 +86,12 @@
     </p>
     <form method="post" action="{{ url_for('update_signature') }}" class="detail-form ai-form">
       {{ notice_field('signature') }}
-      <label>Signature
-        <textarea name="signature" rows="5" placeholder="John Smith&#10;My Awesome Studio">{{ current_user.signature or '' }}</textarea>
-      </label>
-      <p class="detail-note">Leave it empty for no signature.</p>
+      <div class="detail-form__field">
+        <label>Signature
+          <textarea name="signature" rows="5" placeholder="John Smith&#10;My Awesome Studio">{{ current_user.signature or '' }}</textarea>
+        </label>
+        <p class="detail-note">Leave it empty for no signature.</p>
+      </div>
       <div>
         <button type="submit" class="btn-primary">Save signature</button>
       </div>
