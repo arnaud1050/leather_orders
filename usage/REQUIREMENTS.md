@@ -29,6 +29,10 @@ is the checklist of *what must hold true*.
   does a session that is impersonating a tenant user — that's us looking.
   Background jobs (scheduled sync) never call `track()` with a request, so
   they never count either.
+- **US4a.** A company flagged `exclude_from_usage` (a demo or test
+  tenant, set in `/admin`) is still **recorded** but left out of every
+  report query. Excluding hides; it doesn't stop recording, so clearing
+  the flag brings the company's history straight back.
 - **US5.** Events marked *daily* in the catalog (page views) count at most
   once per user, per props value, per UTC day. Every other event counts
   each time.
@@ -63,6 +67,7 @@ is the checklist of *what must hold true*.
 | --- | --- |
 | US1, US2, US3, US3a | `tests/test_usage.py` — failure isolation |
 | US4 | `tests/test_usage.py` — who counts |
+| US4a | `tests/test_usage.py` — excluding a company |
 | US5, US5a | `tests/test_usage.py` — page views |
 | US7 | `tests/test_usage.py` — recording |
 | US8 | `tests/test_usage.py` — `/admin/usage` |

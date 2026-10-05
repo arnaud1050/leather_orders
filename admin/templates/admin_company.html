@@ -28,6 +28,15 @@
           {% endfor %}
         </select>
       </label>
+      <input type="hidden" name="exclude_from_usage_shown" value="1">
+      <label class="checkbox-group__item">
+        <input type="checkbox" name="exclude_from_usage" value="1" {% if company.exclude_from_usage %}checked{% endif %}>
+        Exclude from usage analytics
+      </label>
+      <p class="detail-note">
+        For a demo or test company: its activity is left out of the Usage
+        page. It's still recorded, so unticking this brings it back.
+      </p>
       <div>
         <button type="submit" class="btn-primary">Save</button>
       </div>

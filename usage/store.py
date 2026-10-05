@@ -240,7 +240,14 @@ def period_start(period: str) -> datetime | None:
     return None if days is None else utcnow() - timedelta(days=days)
 
 
+def _excluded_company_ids():
+    """Tenants flagged `exclude_from_usage` — demo and test companies.
+    Their events stay in the table; every report query leaves them out."""
+    return sa.select(Company.id).where(Company.exclude_from_usage.is_(True))
+
+
 def _scoped(query, since, company_id):
+    query = query.filter(UsageEvent.company_id.notin_(_excluded_company_ids()))
     if since is not None:
         query = query.filter(UsageEvent.created_at >= since)
     if company_id is not None:
@@ -327,7 +334,8 @@ def company_report(since: datetime | None) -> list[dict]:
         .group_by(User.company_id)
     )
     rows = []
-    for company in Company.query.order_by(Company.name).all():
+    for company in (Company.query.filter_by(exclude_from_usage=False)
+                    .order_by(Company.name).all()):
         row = activity.get(company.id)
         rows.append({
             "id": company.id, "name": company.name, "is_active": company.is_active,

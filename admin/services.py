@@ -157,6 +157,7 @@ def _password_error(password: str) -> str | None:
 def create_company(
     name: str, timezone: str, admin_email: str,
     admin_password: str, admin_full_name: str,
+    *, exclude_from_usage: bool = False,
 ) -> tuple[Company | None, str | None]:
     """Provision a tenant. Returns (company, error) — exactly one is set.
 
@@ -182,16 +183,26 @@ def create_company(
         name, email, admin_password,
         timezone=timezone, admin_full_name=admin_full_name,
     )
+    # Set here rather than passed through `models.create_company`: whether
+    # a tenant counts in our analytics is a platform-admin concern, and the
+    # bootstrap path that function also serves has no opinion on it.
+    company.exclude_from_usage = exclude_from_usage
     db.session.commit()
     return company, None
 
 
-def update_company(company: Company, name: str, timezone: str) -> str | None:
+def update_company(
+    company: Company, name: str, timezone: str,
+    *, exclude_from_usage: bool | None = None,
+) -> str | None:
+    """`exclude_from_usage=None` leaves the flag alone (hard rule 9)."""
     name = (name or "").strip()
     if not name:
         return "A company name is required."
     company.name = name
     company.timezone = timezone
+    if exclude_from_usage is not None:
+        company.exclude_from_usage = exclude_from_usage
     db.session.commit()
     return None
 

@@ -174,6 +174,7 @@ def create_company():
         request.form.get("admin_email", ""),
         request.form.get("admin_password", ""),
         request.form.get("admin_full_name", ""),
+        exclude_from_usage=request.form.get("exclude_from_usage") == "1",
     )
     if error is not None:
         _flash(error)
@@ -216,9 +217,15 @@ def company(company_id: int):
 @platform_admin_required
 def update_company(company_id: int):
     row = _company_or_404(company_id)
+    # An unticked checkbox posts nothing, so the form carries a marker that
+    # it rendered the box at all — without it, absence means "leave alone"
+    # (hard rule 9), not "untick".
+    exclude = (request.form.get("exclude_from_usage") == "1"
+               if "exclude_from_usage_shown" in request.form else None)
     error = services.update_company(
         row, request.form.get("name", ""),
         request.form.get("timezone", row.timezone),
+        exclude_from_usage=exclude,
     )
     _report(error, "Company saved.")
     return redirect(url_for("admin.company", company_id=row.id))
@@ -349,7 +356,9 @@ def usage():
         period = usage_store.DEFAULT_PERIOD
     since = usage_store.period_start(period)
 
-    companies = services.companies()
+    # Excluded tenants aren't offered: picking one would show figures the
+    # rest of the page deliberately leaves out (PA31a).
+    companies = [c for c in services.companies() if not c.exclude_from_usage]
     raw_company = request.args.get("company", "")
     company = next((c for c in companies if str(c.id) == raw_company), None)
 

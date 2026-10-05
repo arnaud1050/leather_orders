@@ -425,3 +425,95 @@ def test_an_unknown_filter_falls_back_rather_than_failing(staff):
     response = staff.get("/admin/usage?period=7&company=nope")
     assert response.status_code == 200
     assert "across every company" in response.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Excluding a company (US4a, PA31a)
+# ---------------------------------------------------------------------------
+
+def test_an_excluded_company_is_left_out_of_every_figure(app, company, other_company, committed):
+    other_company.exclude_from_usage = True
+    other_user = User(company_id=other_company.id, email="demo@example.com")
+    other_user.set_password("changeme")
+    db.session.add(other_user)
+    db.session.flush()
+    _seed(company.id, committed.id, "invoice.created")
+    _seed(other_company.id, other_user.id, "invoice.created")
+    _seed(other_company.id, other_user.id, "mail.sent")
+    db.session.commit()
+
+    report = {r["event"]: r for r in usage_store.feature_report(None)}
+    assert (report["invoice.created"]["companies"], report["invoice.created"]["uses"]) == (1, 1)
+    assert report["mail.sent"]["uses"] == 0
+    assert [r["name"] for r in usage_store.company_report(None)] == ["By Monsieur"]
+
+
+def test_an_excluded_company_is_still_recorded(app, company, committed):
+    """US4a: excluding hides, it doesn't stop recording — so un-excluding
+    brings the history straight back."""
+    company.exclude_from_usage = True
+    db.session.commit()
+    with app.test_client() as test_client:
+        test_client.post("/login", data={"email": "admin@example.com", "password": "changeme"})
+    assert len(events("auth.login")) == 1
+    assert {r["event"]: r for r in usage_store.feature_report(None)}["auth.login"]["uses"] == 0
+
+    company.exclude_from_usage = False
+    db.session.commit()
+    assert {r["event"]: r for r in usage_store.feature_report(None)}["auth.login"]["uses"] == 1
+
+
+def test_an_excluded_company_is_not_offered_in_the_dropdown(staff, other_company):
+    other_company.exclude_from_usage = True
+    db.session.commit()
+    page = staff.get("/admin/usage").get_data(as_text=True)
+    assert f'<option value="{other_company.id}"' not in page
+    assert "By Monsieur" in page
+
+    # A hand-typed URL for it falls back to the all-companies view.
+    page = staff.get(f"/admin/usage?company={other_company.id}").get_data(as_text=True)
+    assert "across every company" in page
+
+
+def test_the_flag_is_set_when_creating_a_company(staff):
+    response = staff.post("/admin/companies", data={
+        "name": "Demo Studio", "timezone": "America/Vancouver",
+        "admin_email": "demo-admin@example.com", "admin_password": "longenough1",
+        "admin_full_name": "Demo", "exclude_from_usage": "1",
+    })
+    assert response.status_code == 302
+    assert Company.query.filter_by(name="Demo Studio").one().exclude_from_usage is True
+
+
+def test_a_new_company_counts_by_default(staff):
+    staff.post("/admin/companies", data={
+        "name": "Real Studio", "timezone": "America/Vancouver",
+        "admin_email": "real@example.com", "admin_password": "longenough1",
+    })
+    assert Company.query.filter_by(name="Real Studio").one().exclude_from_usage is False
+
+
+def test_the_flag_is_toggled_from_the_company_page(staff, company):
+    url = f"/admin/companies/{company.id}"
+    staff.post(url, data={"name": company.name, "timezone": company.timezone,
+                          "exclude_from_usage_shown": "1", "exclude_from_usage": "1"})
+    db.session.expire_all()
+    assert db.session.get(Company, company.id).exclude_from_usage is True
+    assert 'name="exclude_from_usage" value="1" checked' in staff.get(url).get_data(as_text=True)
+
+    # Unticked box: the marker is there, the value isn't.
+    staff.post(url, data={"name": company.name, "timezone": company.timezone,
+                          "exclude_from_usage_shown": "1"})
+    db.session.expire_all()
+    assert db.session.get(Company, company.id).exclude_from_usage is False
+
+
+def test_a_form_without_the_box_leaves_the_flag_alone(staff, company):
+    """Hard rule 9: absent means "leave it alone", not "untick"."""
+    company.exclude_from_usage = True
+    db.session.commit()
+    staff.post(f"/admin/companies/{company.id}",
+               data={"name": "Renamed", "timezone": company.timezone})
+    db.session.expire_all()
+    row = db.session.get(Company, company.id)
+    assert (row.name, row.exclude_from_usage) == ("Renamed", True)

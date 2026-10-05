@@ -73,6 +73,15 @@ that:
 Props are enums only: no names, emails, amounts or free text, and not a
 studio's own labels (an order type's name is the studio's data, not ours).
 
+## Demo and test companies
+
+A company flagged **Exclude from usage analytics** (`Company.exclude_from_usage`,
+set when creating it or on its `/admin` page) is filtered out in
+`_scoped()` / `company_report()` and isn't offered in the page's dropdown.
+It's filtered when reading, not when writing: its events are still saved,
+so a company flagged by mistake loses nothing, and unflagging is instant
+and complete. The cost is a few rows nobody reads.
+
 ## Deliberately not recorded
 
 Deletes, toggles, reorders outside Settings, refused saves, everything in

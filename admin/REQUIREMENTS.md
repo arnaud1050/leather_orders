@@ -78,7 +78,10 @@ must hold true*.
 - **PA7.** A company is created with its first user or not at all. If the
   name, address or password is rejected, neither row exists afterwards.
 - **PA8.** A company's name and time zone are editable here; the name must
-  not be blank.
+  not be blank. So is **Exclude from usage analytics** (`PA31a`), offered
+  both when creating a company (off by default) and on its page. The edit
+  form marks that it rendered the box (`exclude_from_usage_shown`), so a
+  post without the marker leaves the flag alone (hard rule 9).
 
 ## 3. Identity
 
@@ -240,6 +243,11 @@ What studios use, read from `usage_events`. The recording rules are
   like every other page here (`PA1`). It filters by period (30, 90 or 365
   days, or all time; 90 by default) and optionally by one company. An
   unknown filter value falls back to the default instead of failing.
+- **PA31a.** A company with `exclude_from_usage` set (a demo or test
+  tenant) is left out of every figure on `/admin/usage`: the feature
+  table, the companies table, and the company dropdown. A URL naming it
+  falls back to the all-companies view. The Companies list tags it
+  "(not in usage)". Its events are still recorded (`US4a`).
 - **PA32.** The feature table lists **every** catalog event, including those
   with no uses in the period, and shows companies, people, uses, the last
   use, and the split by props. Across all companies, a table of companies
@@ -260,7 +268,8 @@ What studios use, read from `usage_events`. The recording rules are
 | PA24, PA24a, PA25 | `tests/test_user_migration.py` |
 | PA24b, PA24c | `tests/test_seeding.py` |
 | PA26–PA30 | `tests/test_admin.py` — the announcement banner |
-| PA31–PA33 | `tests/test_usage.py` — `/admin/usage` |
+| PA31–PA33, PA31a | `tests/test_usage.py` — `/admin/usage`, excluding a company |
+| PA8 (the usage flag) | `tests/test_usage.py` — excluding a company |
 
 **Not covered by tests:** the templates' own markup (no page here has logic
 worth asserting on beyond what the route tests already render), and the

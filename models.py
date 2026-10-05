@@ -66,6 +66,12 @@ class Company(db.Model):
     # inverse, which is the whole point of doing it this way.
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
+    # Left out of /admin/usage — a demo or test tenant whose clicks would
+    # otherwise count as studios using the product. Its events are still
+    # recorded, so clearing the flag brings its history straight back; only
+    # the report skips it (usage US4a, admin PA31a).
+    exclude_from_usage = db.Column(db.Boolean, nullable=False, default=False)
+
     # IANA zone name. Timestamps are stored as naive UTC everywhere (see the
     # communications module's docstring); this is only how they're *rendered*,
     # so changing it re-labels history rather than rewriting it.
@@ -698,6 +704,9 @@ _ADDED_COLUMNS = [
     # same change aren't here — they need the table rebuilt, not extended;
     # see _migrate_users_to_email() below.
     ("companies", "is_active", "BOOLEAN NOT NULL DEFAULT 1"),
+    # Every company that existed before usage analytics is a real tenant,
+    # so all of them count until someone says otherwise.
+    ("companies", "exclude_from_usage", "BOOLEAN NOT NULL DEFAULT 0"),
     # Every client already on file has no history to count before this
     # column existed, so the default is 0 — same reasoning as is_hidden above.
     ("clients", "prior_order_count", "INTEGER NOT NULL DEFAULT 0"),

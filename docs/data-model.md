@@ -48,7 +48,8 @@ than through `seed_if_empty()` gets them too.
 
 ```python
 Company(id, name, timezone, is_active,                          # tenant boundary; letterhead moved
-        order_columns)                                          # to billing.BillingProfile, see below
+        order_columns, exclude_from_usage)                      # to billing.BillingProfile, see below
+UsageEvent(id, created_at, company_id, user_id, event, props)   # usage/store.py — see usage/CLAUDE.md
 User(id, company_id, email, full_name, password_hash,           # email is the login identity, and
      signature, is_active, is_platform_admin)                   # the only globally unique column
                                                                 # company_id is NULL for platform
