@@ -315,6 +315,13 @@ class Client(db.Model):
     city = db.Column(db.String(120))
     province = db.Column(db.String(2))  # two-letter code; see PROVINCES in app.py
     postal_code = db.Column(db.String(10))
+    # "Outside Canada" in the province picker. Kept as its own flag rather
+    # than a made-up code in `province`, which would print on addresses and
+    # look like a typo to everything that reads a province. For now it only
+    # records the fact: with no province, the client is charged no tax, the
+    # same as before. Always False while `province` is set — the form writes
+    # both together.
+    outside_canada = db.Column(db.Boolean, nullable=False, default=False)
     # Populated when a client originates from the bymonsieur.ca contact
     # form (via a Make.com webhook, see /api/leads) rather than being added
     # by staff. Blank for manually-created clients.
@@ -710,6 +717,9 @@ _ADDED_COLUMNS = [
     # Every client already on file has no history to count before this
     # column existed, so the default is 0 — same reasoning as is_hidden above.
     ("clients", "prior_order_count", "INTEGER NOT NULL DEFAULT 0"),
+    # Every client already on file was entered with a province or none, so
+    # none of them is marked as abroad until someone says so.
+    ("clients", "outside_canada", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.

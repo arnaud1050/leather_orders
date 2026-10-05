@@ -79,6 +79,8 @@
           <th>{{ sort_link('name', 'Name') }}</th>
           <th>Email</th>
           <th>Phone</th>
+          <th>{{ sort_link('city', 'City') }}</th>
+          <th>{{ sort_link('province', 'Province') }}</th>
           <th class="is-numeric">{{ sort_link('orders', 'Orders', numeric=True) }}</th>
           <th class="is-numeric">{{ sort_link('value', 'Lifetime value', numeric=True) }}</th>
         </tr>
@@ -104,6 +106,12 @@
           </td>
           <td>{{ client.email or '—' }}</td>
           <td>{{ client.phone|phone or '—' }}</td>
+          <td>{{ client.city or '—' }}</td>
+          <td>
+            {% if client.province %}<span title="{{ provinces[client.province] }}">{{ client.province }}</span>
+            {% elif client.outside_canada %}Outside Canada
+            {% else %}—{% endif %}
+          </td>
           <td class="is-numeric">{{ client.orders|length }}</td>
           <td class="is-numeric">${{ '%.2f'|format(client.lifetime_value) }}</td>
         </tr>

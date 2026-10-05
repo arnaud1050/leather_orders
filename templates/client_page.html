@@ -52,9 +52,14 @@
         {% for code, label in provinces.items() %}
         <option value="{{ code }}" {% if code == client.province %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
+        <option value="{{ outside_canada }}" {% if client.outside_canada %}selected{% endif %}>Outside Canada</option>
       </select>
     </label>
-    {% if not client.province %}
+    {% if client.outside_canada %}
+    <p class="detail-note detail-form__note">
+      Outside Canada: orders for this client are billed with no sales tax.
+    </p>
+    {% elif not client.province %}
     <p class="detail-note detail-form__note">
       Without a province, orders for this client are billed with no sales tax —
       the rate is set by where the client is.

@@ -64,6 +64,10 @@ from billing import config as billing_config  # noqa: E402
 from billing.documents import clean_color  # noqa: E402
 from billing.services import invoicing  # noqa: E402
 from billing.tax import PROVINCES  # noqa: E402
+
+# The client province picker's "Outside Canada" choice. Not a province and
+# never stored in `province` — it sets Client.outside_canada instead.
+OUTSIDE_CANADA = "OUTSIDE"
 # Self-contained module: its own models, services, templates and blueprint
 # (see communications/__init__.py). Importing it here registers its tables
 # with db.create_all() below; register() attaches its routes. Nothing in
@@ -1443,6 +1447,13 @@ CLIENT_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
     "orders": lambda c: len(c.orders),
     "value": lambda c: c.lifetime_value,
+    # Blanks after every real value, so sorting by where clients are puts
+    # the ones nobody has filled in together at the end rather than first.
+    "city": lambda c: (not c.city, (c.city or "").lower()),
+    # Provinces by code, then "Outside Canada", then blank.
+    "province": lambda c: (
+        0 if c.province else 1 if c.outside_canada else 2, c.province or "",
+    ),
 }
 
 
@@ -1528,6 +1539,7 @@ def clients_list():
         ),
         sort_by=sort_by,
         sort_dir=sort_dir,
+        provinces=PROVINCES,
         active_view="clients",
     )
 
@@ -1607,6 +1619,7 @@ def client_page(client_id: int):
         source_options=source_options,
         other_source_option=other_source_option,
         provinces=PROVINCES,
+        outside_canada=OUTSIDE_CANADA,
         # "Create a client" on a lead conversation lands here (MOD8).
         notice=communications_routes.take_notice(),
         active_view=None,
@@ -1662,6 +1675,9 @@ def edit_client(client_id: int):
         client.street = request.form.get("street", "").strip() or None
         client.city = request.form.get("city", "").strip() or None
         province = request.form.get("province", "").strip().upper()
+        # "Outside Canada" is a picker choice but not a province: it sets
+        # the flag and leaves `province` empty, so the two can't disagree.
+        client.outside_canada = province == OUTSIDE_CANADA
         client.province = province if province in PROVINCES else None
         client.postal_code = request.form.get("postal_code", "").strip().upper() or None
 

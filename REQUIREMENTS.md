@@ -286,6 +286,12 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **CL12.** A `Client` with no `province` is charged **no tax** on any of
   their orders (delegated to `billing.tax`, but the trigger — "does this
   client have a province" — is a core-app fact read off `Client`).
+- **CL12a.** "Outside Canada" is a choice in the client page's province
+  picker but **not a province**: choosing it sets `Client.outside_canada`
+  and leaves `province` empty; choosing a province clears the flag. Both
+  are written together, under CL11's `"street" in request.form` guard, so
+  they can't disagree. For now it only records the fact — tax is unchanged
+  from CL12 (no province, no tax).
 - **CL15.** `Client.notes` is a free-text, staff-facing field (never shown
   to the client) with no relation to an order's own `notes`. It's editable
   only on the full client page's Information tab — the timeline's quick-edit
@@ -667,6 +673,11 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   - **LST5d.** Hiding recomputes the **client count** and **returning**
     stat cards from the still-visible rows, same as LST4 does on
     `/orders`.
+- **LST5e.** `/clients` shows each client's **City** and **Province**, both
+  sortable. Province shows the two-letter code (full name on hover),
+  "Outside Canada" for CL12a, or "—". Sorting puts blanks last in
+  ascending order — provinces by code, then Outside Canada, then blank —
+  so the clients nobody has placed yet end up together.
 - **LST6.** Orders-list columns are **reorderable and hideable**, per
   company, from `/settings/orders`:
   - **LST7.** `ORDER_COLUMNS` is the canonical, fixed set of possible
@@ -1013,6 +1024,8 @@ rows. See [e2e/README.md](e2e/README.md).
 | CL4–CL8 | `test_add_source_option_rejects_a_case_insensitive_duplicate`, `test_add_source_option_rejects_a_duplicate_of_a_hidden_option`, `test_reorder_source_options_sets_sort_order_from_position`, `test_reorder_source_options_ignores_ids_from_another_tenant`, `test_reorder_source_options_reflects_on_the_settings_page`, `test_reorder_source_options_requires_login` (`tests/test_settings_options.py`); the drag that calls that route is `e2e/tests/settings-drag-and-drop.spec.ts` |
 | CL9–CL10 | `test_set_other_marks_the_option`, `test_set_other_toggles_off_on_a_second_click`, `test_only_one_option_can_be_other_at_a_time`, `test_set_other_is_tenant_scoped`, `test_saving_the_other_detail`, `test_the_detail_is_cleared_when_other_is_unchecked` (`tests/test_other_source.py`) |
 | CL11 | `test_edit_client_without_address_field_leaves_address_untouched`, `test_edit_client_with_address_field_updates_it`, `test_edit_client_with_an_invalid_province_clears_it` |
+| CL12a | `test_outside_canada_sets_the_flag_not_the_province`, `test_choosing_a_province_clears_outside_canada`, `test_outside_canada_changes_no_order_total` (`tests/test_client_location.py`) |
+| LST5e | `test_clients_list_shows_city_and_province`, `test_clients_list_sorts_by_province_with_blanks_last`, `test_clients_list_sorts_by_city_with_blanks_last` (`tests/test_client_location.py`) |
 | CL12 | covered indirectly by `tests/test_tax.py`'s client-province gating tests (billing side); `test_order_total_with_no_tax_is_the_sum_of_its_lines` covers the core-app trigger (no province ⇒ no tax) from `Order`'s side |
 | CL15 | `test_edit_client_without_notes_field_leaves_notes_untouched`, `test_edit_client_with_notes_field_updates_it` |
 | CL16 | `test_client_page_renders_blank_notes_not_the_word_none` |
