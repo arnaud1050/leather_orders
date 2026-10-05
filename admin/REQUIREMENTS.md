@@ -256,9 +256,11 @@ What studios use, read from `usage_events`. The recording rules are
   Feature, Companies, People, Uses or Last used, from its column headers,
   the same way the Orders list does. A numeric column opens largest-first,
   ties keep catalog order, and Companies isn't sortable for a single
-  company (the column isn't shown). An **Area** filter narrows it to one
-  area. Sorting and filters combine and survive each other's changes; an
-  unknown value falls back to the default. The companies table shows
+  company (the column isn't shown). An **Areas** filter is one checkbox per
+  area, all ticked by default, with All / None shortcuts: ticked areas are
+  shown. Ticking none, or all, shows every area — an empty table is never
+  what a filter was for. Sorting and filters combine and survive each
+  other's changes; an unknown value falls back to the default. The companies table shows
   features used as "x / catalog size".
 - **PA33.** Counts only. The page names features and companies, never a
   client, order, invoice, message or any figure from a studio's records.

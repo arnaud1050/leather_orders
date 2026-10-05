@@ -561,10 +561,38 @@ def test_sorting_ascending_by_feature_name(staff):
     assert labels == sorted(labels)
 
 
-def test_the_area_filter_shows_only_that_area(staff):
-    page = staff.get("/admin/usage?area=Invoicing").get_data(as_text=True)
-    assert _feature_order(page) == [e for e, (a, _, _) in EVENTS.items() if a == "Invoicing"]
-    assert '<option value="Invoicing" selected>' in page
+def _in_areas(*areas):
+    return [e for e, (a, _, _) in EVENTS.items() if a in areas]
+
+
+def _ticked_areas(html):
+    """{area: ticked?} read off the rendered checkboxes."""
+    import re
+    from html import unescape
+    return {unescape(m.group(1)): bool(m.group(2)) for m in re.finditer(
+        r'name="area" value="([^"]+)"\s*(checked)?', html)}
+
+
+def test_the_area_filter_shows_only_the_ticked_areas(staff):
+    page = staff.get("/admin/usage?area=Invoicing&area=AI").get_data(as_text=True)
+    assert _feature_order(page) == _in_areas("Invoicing", "AI")
+    ticked = _ticked_areas(page)
+    assert {a for a, on in ticked.items() if on} == {"Invoicing", "AI"}
+
+
+def test_every_area_is_ticked_when_none_is_chosen(staff):
+    from usage.store import AREAS
+    ticked = _ticked_areas(staff.get("/admin/usage").get_data(as_text=True))
+    assert list(ticked) == AREAS
+    assert all(ticked.values())
+
+
+def test_ticking_every_area_is_the_same_as_none(staff):
+    from urllib.parse import urlencode
+
+    from usage.store import AREAS
+    page = staff.get("/admin/usage?" + urlencode([("area", a) for a in AREAS])).get_data(as_text=True)
+    assert _feature_order(page) == list(EVENTS)
 
 
 def test_unknown_sort_and_area_fall_back(staff):
@@ -579,8 +607,9 @@ def test_sorting_by_companies_is_ignored_for_one_company(staff, company):
 
 
 def test_sort_links_keep_the_filters(staff, company):
-    page = staff.get(f"/admin/usage?period=30&company={company.id}&area=Orders").get_data(as_text=True)
-    assert f"/admin/usage?period=30&amp;company={company.id}&amp;area=Orders&amp;sort=uses&amp;dir=desc" in page
+    page = staff.get(f"/admin/usage?period=30&company={company.id}&area=Orders&area=AI").get_data(as_text=True)
+    assert (f"/admin/usage?period=30&amp;company={company.id}&amp;area=Orders&amp;area=AI"
+            "&amp;sort=uses&amp;dir=desc") in page
 
 
 def test_features_used_is_shown_out_of_the_catalog(staff, seeded_usage):

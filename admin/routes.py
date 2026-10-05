@@ -362,9 +362,12 @@ def usage():
     raw_company = request.args.get("company", "")
     company = next((c for c in companies if str(c.id) == raw_company), None)
 
-    area = request.args.get("area", "")
-    if area not in usage_store.AREAS:
-        area = ""
+    # Several areas at once, as ticked checkboxes. None ticked (or every
+    # one) means all: an empty table is never what a filter was for.
+    chosen = set(request.args.getlist("area")) & set(usage_store.AREAS)
+    areas = [a for a in usage_store.AREAS if a in chosen]
+    if len(areas) == len(usage_store.AREAS):
+        areas = []
     # Companies is a column only across all companies; sorting by it for one
     # company would sort by a figure the table doesn't show.
     sort_by = request.args.get("sort", usage_store.DEFAULT_SORT)
@@ -375,8 +378,8 @@ def usage():
         sort_dir = usage_store.FEATURE_SORTS[sort_by][1]
 
     features = usage_store.feature_report(since, company.id if company else None)
-    if area:
-        features = [row for row in features if row["area"] == area]
+    if areas:
+        features = [row for row in features if row["area"] in areas]
 
     return render_template(
         "admin_usage.html",
@@ -387,7 +390,7 @@ def usage():
         company=company,
         period=period,
         periods=usage_store.PERIODS,
-        area=area,
+        selected_areas=areas,
         areas=usage_store.AREAS,
         sort_by=sort_by,
         sort_dir=sort_dir,

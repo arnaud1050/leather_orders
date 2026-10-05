@@ -3832,3 +3832,32 @@ button.chip--event:hover .chip__title {
 .detail-form__field > .detail-note {
   margin: 0;
 }
+
+/* The Usage page's area checkboxes: their own full-width row under the
+   selects, boxes side by side and wrapping, rather than detail-form's
+   dashed, stacked fieldset. */
+.detail-form .usage-filter__areas {
+  flex-basis: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 0;
+  border: none;
+}
+
+.usage-filter__areas legend {
+  width: 100%;
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.usage-filter__areas legend .link-button {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}

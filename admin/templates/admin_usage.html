@@ -24,14 +24,6 @@
         {% endfor %}
       </select>
     </label>
-    <label>Area
-      <select name="area">
-        <option value="">All areas</option>
-        {% for name in areas %}
-        <option value="{{ name }}" {% if name == area %}selected{% endif %}>{{ name }}</option>
-        {% endfor %}
-      </select>
-    </label>
     <label>Company
       <select name="company">
         <option value="">All companies</option>
@@ -42,6 +34,21 @@
         {% endfor %}
       </select>
     </label>
+    {# Ticked = shown. Nothing in the URL means every area, so every box
+       starts ticked; unticking them all also means every area. #}
+    <fieldset class="usage-filter__areas">
+      <legend>Areas
+        <button type="button" class="link-button" data-areas="all">All</button>
+        · <button type="button" class="link-button" data-areas="none">None</button>
+      </legend>
+      {% for name in areas %}
+      <label class="checkbox-group__item">
+        <input type="checkbox" name="area" value="{{ name }}"
+               {% if not selected_areas or name in selected_areas %}checked{% endif %}>
+        {{ name }}
+      </label>
+      {% endfor %}
+    </fieldset>
     {# The current sort survives a filter change. #}
     <input type="hidden" name="sort" value="{{ sort_by }}">
     <input type="hidden" name="dir" value="{{ sort_dir }}">
@@ -53,7 +60,7 @@
      direction (largest first for numbers). Filters ride along. #}
   {% macro sort_link(key, label, numeric=False) %}
   {% set next_dir = ('asc' if sort_dir == 'desc' else 'desc') if sort_by == key else sort_defaults[key] %}
-  <a href="{{ url_for('admin.usage', period=period, company=company.id if company else None, area=area or None, sort=key, dir=next_dir) }}"
+  <a href="{{ url_for('admin.usage', period=period, company=company.id if company else None, area=selected_areas or None, sort=key, dir=next_dir) }}"
      class="sort-link {{ 'is-active' if sort_by == key else '' }} {{ 'is-numeric' if numeric else '' }}">
     {{ label }}
     {% if sort_by == key %}
@@ -153,4 +160,15 @@
   </section>
 
 </div>
+<script>
+  // "All" / "None" for the area checkboxes — a shortcut for "everything
+  // but two" or "only these two". The form still submits as normal.
+  document.querySelectorAll('[data-areas]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var on = button.dataset.areas === 'all';
+      document.querySelectorAll('.usage-filter__areas input[name="area"]')
+        .forEach(function (box) { box.checked = on; });
+    });
+  });
+</script>
 {% endblock %}
