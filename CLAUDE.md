@@ -218,7 +218,8 @@ scripts/               # run by hand, never at startup
   migrate.py           # applies pending migrations on purpose, and prints the diff
                        # (booting the app already does this — see docs/deployment.md)
   import_showcase_from_site.py  # copies a website's Recent Commissions into
-                       # Showcase; dry run unless --apply, safe to re-run (SC34)
+                       # Showcase; dry run unless --apply, safe to re-run (SC34);
+                       # --remove deletes what it imported (SC37)
   backfill_pickup.py   # marks existing orders "picked up"; dry run lists every
                        # uninvoiced order whose total would change, --apply writes
 

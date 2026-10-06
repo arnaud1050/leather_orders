@@ -187,6 +187,13 @@ plan (catalog mode, website sync, sharing) is in
   re-encoding (SC11). A card is imported whole or not at all: if a photo
   can't be downloaded, nothing of that card is written and the run reports
   it; the next run tries again.
+- **SC37 — An import can be undone.** `--remove` deletes every piece of
+  the company whose `source_ref` came from that site's host (exactly that
+  host: `bymonsieur.ca` doesn't take `shop.bymonsieur.ca`'s), photos and
+  their files included, withdrawing each first (SC10). A dry run unless
+  `--apply`. Pieces made in the app, other companies' pieces, categories
+  and spec fields are untouched, so the import can then run again from
+  scratch.
 
 ## 9. Boundary
 
@@ -201,7 +208,7 @@ plan (catalog mode, website sync, sharing) is in
 | Rules | Where |
 | --- | --- |
 | SC1–SC17, SC19–SC31 | `tests/test_showcase.py` |
-| SC34–SC36 | `tests/test_import_showcase.py` (a fake site with bymonsieur's markup; checked once against the live bymonsieur.ca on 2026-10-06 — a full dry run, and a limited `--apply` on a throwaway database, twice) |
+| SC34–SC37 | `tests/test_import_showcase.py` (a fake site with bymonsieur's markup; checked once against the live bymonsieur.ca on 2026-10-06 — a full dry run, and a limited `--apply` on a throwaway database, twice) |
 | SC18 | `tests/test_save_notices.py` — `test_every_showcase_page_is_wired`, `test_a_showcase_save_reports_in_its_section` |
 
 **Not covered by tests:** the drag-to-reorder scripts (the JSON endpoints

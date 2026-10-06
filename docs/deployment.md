@@ -185,7 +185,16 @@ from, so running it again only adds what's new on the site, and a card whose
 download failed is picked up next time. bymonsieur.ca's full gallery is about
 254 pieces and 346 photos, roughly 120 MB of re-encoded photos per deployment
 (the Showcase cap is 500 MB per company), and a few minutes to download.
-Rules: showcase `SC34`–`SC36`.
+
+To start again, `--remove` deletes every piece imported from that site,
+photos included (pieces made in the app, categories and spec fields stay).
+Also a dry run first, then `--apply`:
+
+```bash
+docker compose -f docker-compose-demo.yml exec demo python scripts/import_showcase_from_site.py --company "By Monsieur" --site https://bymonsieur.ca --remove --apply
+```
+
+Rules: showcase `SC34`–`SC37`.
 
 To rebuild after changing `requirements.txt` or app code:
 `docker compose up --build` (prod) or

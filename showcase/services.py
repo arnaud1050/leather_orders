@@ -172,6 +172,16 @@ def item_for_source(company_id: int, source_ref: str) -> ShowcaseItem | None:
     return ShowcaseItem.query.filter_by(company_id=company_id, source_ref=source_ref).first()
 
 
+def items_imported_from(company_id: int, host: str) -> list[ShowcaseItem]:
+    """Every piece an import brought in from `host` (SC37); pieces made in
+    the app have no `source_ref` and never match."""
+    prefix = host.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "/"
+    return (ShowcaseItem.query
+            .filter(ShowcaseItem.company_id == company_id,
+                    ShowcaseItem.source_ref.like(prefix + "%", escape="\\"))
+            .order_by(ShowcaseItem.id).all())
+
+
 def create_item(company_id: int, title: str, *, order_id: int | None = None,
                 category_id: int | None = None,
                 source_ref: str | None = None) -> ShowcaseItem:

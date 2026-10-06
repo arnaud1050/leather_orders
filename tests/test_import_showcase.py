@@ -16,7 +16,7 @@ import pytest
 from PIL import Image
 
 from models import db
-from showcase import services
+from showcase import services, storage
 from showcase.models import ShowcaseCategory, ShowcaseItem, ShowcasePhoto, ShowcaseSpecField
 
 SCRIPT = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "import_showcase_from_site.py"
@@ -184,6 +184,39 @@ def test_imports_are_per_company(company, other_company):
     assert ShowcaseItem.query.filter_by(company_id=other_company.id).count() == 3
 
 
+# --- SC37: removing an import ---------------------------------------------------
+
+def test_remove_deletes_only_this_sites_imports_and_their_photos(company, other_company, tmp_path):
+    importer.run(company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+    importer.run(other_company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+    importer.run(company.id, "https://studio.example.org", apply=True,
+                 fetch=lambda url: FakeSite()(SITE if url == "https://studio.example.org" else url),
+                 log=lambda *_: None)
+    made_here = services.create_item(company.id, "Made in the app")
+    files = [p.stored_filename for p in ShowcasePhoto.query.all()
+             if p.item.company_id == company.id and p.item.source_ref.startswith("studio.example/")]
+    assert len(files) == 4 and all(storage.path_for(company.id, f) for f in files)
+
+    assert importer.remove(company.id, SITE, apply=False, log=lambda *_: None) == (3, 4)
+    assert ShowcaseItem.query.filter_by(company_id=company.id).count() == 7  # dry run
+
+    assert importer.remove(company.id, SITE, apply=True, log=lambda *_: None) == (3, 4)
+    left = ShowcaseItem.query.filter_by(company_id=company.id).all()
+    assert len(left) == 4 and made_here in left  # the .org imports and the app's piece
+    assert ShowcaseItem.query.filter_by(company_id=other_company.id).count() == 3
+    assert ShowcaseCategory.query.filter_by(company_id=company.id).count() == 2
+    assert not any(storage.path_for(company.id, f) for f in files)
+
+
+def test_after_remove_the_import_runs_again_from_scratch(company):
+    importer.run(company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+    importer.remove(company.id, SITE, apply=True, log=lambda *_: None)
+
+    report = importer.run(company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+
+    assert len(report.created) == 3 and ShowcaseItem.query.count() == 3
+
+
 def test_the_command_line(company, capsys, monkeypatch):
     db.session.commit()
     monkeypatch.setattr(importer, "default_fetch", FakeSite())
@@ -198,4 +231,11 @@ def test_the_command_line(company, capsys, monkeypatch):
 
     assert importer.main(["--company", "By Monsieur", "--site", SITE, "--apply"]) == 0
     assert "added 3 piece(s)" in capsys.readouterr().out
+
+    assert importer.main(["--company", "By Monsieur", "--site", SITE, "--remove"]) == 0
+    assert "would delete 3 piece(s) with 4 photo(s)" in capsys.readouterr().out
+    assert ShowcaseItem.query.count() == 3
+    assert importer.main(["--company", "By Monsieur", "--site", SITE, "--remove", "--apply"]) == 0
+    assert "deleted 3 piece(s)" in capsys.readouterr().out
+    assert ShowcaseItem.query.count() == 0
     assert importer.main(["--company", "Nobody", "--site", SITE]) == 2

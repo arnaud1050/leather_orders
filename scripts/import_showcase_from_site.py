@@ -26,6 +26,10 @@ imported is skipped, so a second run only brings in what's new on the site.
 A card whose download fails is left out whole and reported, and the next
 run picks it up.
 
+**--remove undoes it**, to start again: it deletes every piece imported
+from that site, photos included (again a dry run unless --apply). Pieces
+made in the app, and the categories and spec field, are kept.
+
 **It reads the public homepage.** Nothing on the server has to be shared
 between the two apps. If the page's markup changes so that no card can be
 read, it stops and says so rather than importing half a gallery.
@@ -224,6 +228,25 @@ def run(company_id: int, site: str, *, apply: bool, fetch=default_fetch,
     return report
 
 
+def remove(company_id: int, site: str, *, apply: bool, log=print) -> tuple[int, int]:
+    """Delete every piece this script imported from `site`, photos included
+    (SC37), so an import can be run again from scratch. Pieces made in the
+    app, categories and spec fields stay. Dry run unless `apply`. Returns
+    (pieces, photos)."""
+    from showcase import services
+
+    items = services.items_imported_from(company_id, urlparse(site).netloc)
+    photos = 0
+    for item in items:
+        photos += len(item.photos)
+        if not apply:
+            log(f"  would delete  {item.title}")
+            continue
+        services.withdraw(company_id, item)  # SC10: never deleted while published
+        services.delete_item(company_id, item)
+    return len(items), photos
+
+
 def _company(identifier: str):
     from models import Company, db
 
@@ -241,6 +264,9 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", type=int,
                         help="only the first N cards, to try it out. A site that shuffles "
                              "its gallery shows a different first N each time")
+    parser.add_argument("--remove", action="store_true",
+                        help="instead of importing, delete every piece imported from this "
+                             "site (with --apply), to start again")
     args = parser.parse_args(argv)
     # A Windows console can't print every character in a caption; replace
     # what it can't show rather than crash halfway through a run.
@@ -257,6 +283,16 @@ def main(argv=None) -> int:
         if company is None:
             print(f"No company called {args.company!r}.", file=sys.stderr)
             return 2
+        if args.remove:
+            print(f"{'Deleting' if args.apply else 'Dry run'}: pieces imported from "
+                  f"{args.site} in {company.name}")
+            pieces, photos = remove(company.id, args.site, apply=args.apply)
+            verb = "deleted" if args.apply else "would delete"
+            print(f"\n{verb} {pieces} piece(s) with {photos} photo(s). Pieces made in the "
+                  "app, categories and spec fields are kept.")
+            if not args.apply:
+                print("\nNothing was deleted. Run again with --apply to delete.")
+            return 0
         if not features.is_enabled(company.id, "showcase"):
             print(f"Note: {company.name} doesn't have Showcase switched on (Admin -> "
                   "Features); the pieces are imported but won't show until it is.")
