@@ -12,7 +12,30 @@
 
   {# Each section shows the messages its own buttons leave (MOD8). #}
   {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
-  {{ page_notice(notice, ['announcement']) }}
+  {{ page_notice(notice, ['timezone', 'announcement']) }}
+
+  <section class="detail-orders">
+    <h2>Time zone</h2>
+    {{ notice_slot(notice, 'timezone') }}
+    <p class="detail-note">
+      The zone you read and type times in across the admin area — set it to
+      wherever you are. Changing it doesn't move anything already scheduled;
+      the same moment just reads back in the new zone.
+    </p>
+    <form method="post" action="{{ url_for('admin.update_staff_timezone') }}" class="detail-form">
+      {{ notice_field('timezone') }}
+      <label>Time zone
+        <select name="timezone">
+          {% for value, label in time_zones %}
+          <option value="{{ value }}" {% if value == staff_zone %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
 
   <section class="detail-orders">
     <h2>Announcement banner</h2>
@@ -22,6 +45,7 @@
       and anyone not yet signed in. Use it for a maintenance window or
       anything else that isn't one studio's own news.
     </p>
+    <p class="detail-note"><strong>{{ announcement_status }}</strong></p>
     <form method="post" action="{{ url_for('admin.update_announcement') }}" class="detail-form">
       {{ notice_field('announcement') }}
       <label>Message
@@ -31,13 +55,25 @@
       <div class="detail-form__field">
         <label class="checkbox-group__item">
           <input type="checkbox" name="active" value="1" {% if settings.is_active %}checked{% endif %}>
-          Show this banner now
+          Show this banner
         </label>
         <p class="detail-note">
           Saving with the message blank and the banner off just clears the
           draft — turning it on requires a message.
         </p>
       </div>
+      <label>Start (optional)
+        <input type="datetime-local" name="starts_at" value="{{ starts_at_input }}">
+      </label>
+      <label>End (optional)
+        <input type="datetime-local" name="ends_at" value="{{ ends_at_input }}">
+      </label>
+      <p class="detail-note">
+        Times are {{ staff_zone }} (change it under Time zone above). With
+        the banner on, it appears at the start and disappears at the end by
+        itself; leave either blank to show it from now, or until you switch
+        it off.
+      </p>
       <div>
         <button type="submit" class="btn-primary">Save</button>
       </div>

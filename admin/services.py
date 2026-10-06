@@ -9,10 +9,13 @@ themselves — and each belongs back on the form that caused it, not on a
 500 page.
 """
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
 from flask import session
 from flask_login import current_user, login_user
 
-from models import Company, User, db, normalise_email
+from models import DEFAULT_TIMEZONE, Company, User, db, normalise_email
 
 from admin.models import PlatformSettings
 
@@ -399,6 +402,98 @@ def get_platform_settings() -> PlatformSettings:
     return row
 
 
+def _utcnow() -> datetime:
+    """Naive UTC, matching how every timestamp in the app is stored."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _zone_or_none(name: str | None) -> ZoneInfo | None:
+    try:
+        return ZoneInfo(name) if name else None
+    except (ValueError, KeyError):  # ZoneInfoNotFoundError is a KeyError
+        return None
+
+
+def staff_zone() -> ZoneInfo:
+    """The zone platform staff read and type times in.
+
+    `PlatformSettings.timezone`, set on /admin/settings — staff have no
+    company, so there's no `Company.timezone` to borrow. Falls back to the
+    installation default rather than failing the page if the stored name
+    ever stops resolving.
+    """
+    return (_zone_or_none(get_platform_settings().timezone)
+            or ZoneInfo(DEFAULT_TIMEZONE))
+
+
+def set_staff_timezone(name: str) -> str | None:
+    """Save the staff time zone. Returns an error, or None.
+
+    Only the display changes: stored times are UTC, so a saved
+    announcement window keeps the same instants and simply reads back in
+    the new zone.
+    """
+    name = (name or "").strip()
+    if _zone_or_none(name) is None:
+        return "Choose a time zone from the list."
+    get_platform_settings().timezone = name
+    db.session.commit()
+    return None
+
+
+def to_local_input(value: datetime | None) -> str:
+    """A stored UTC time as a `datetime-local` input value, or ""."""
+    if value is None:
+        return ""
+    local = value.replace(tzinfo=timezone.utc).astimezone(staff_zone())
+    return local.strftime("%Y-%m-%dT%H:%M")
+
+
+def format_local(value: datetime) -> str:
+    """A stored UTC time for reading, in the staff zone."""
+    local = value.replace(tzinfo=timezone.utc).astimezone(staff_zone())
+    return local.strftime("%a %d %b %Y, %H:%M %Z")
+
+
+def _parse_local(text: str) -> datetime | None:
+    """A `datetime-local` value typed in the staff zone, as naive UTC.
+    Blank is None ("no bound"); anything unparseable raises ValueError."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    local = datetime.fromisoformat(text).replace(tzinfo=staff_zone())
+    return local.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def announcement_is_showing(settings: PlatformSettings,
+                            now: datetime | None = None) -> bool:
+    """Switched on, has a message, and inside its window (either side of
+    which may be open). Derived on every read — see PlatformSettings."""
+    if not settings.is_active or not settings.announcement:
+        return False
+    now = now or _utcnow()
+    if settings.starts_at is not None and now < settings.starts_at:
+        return False
+    if settings.ends_at is not None and now >= settings.ends_at:
+        return False
+    return True
+
+
+def announcement_status(settings: PlatformSettings) -> str:
+    """One line for the settings page saying what visitors see right now,
+    since with a window "switched on" no longer means "showing"."""
+    if not settings.is_active or not settings.announcement:
+        return "Off — not showing."
+    now = _utcnow()
+    if settings.ends_at is not None and now >= settings.ends_at:
+        return f"Not showing — ended {format_local(settings.ends_at)}."
+    if settings.starts_at is not None and now < settings.starts_at:
+        return f"Scheduled — starts {format_local(settings.starts_at)}."
+    if settings.ends_at is not None:
+        return f"Showing now, until {format_local(settings.ends_at)}."
+    return "Showing now, until switched off."
+
+
 def active_announcement() -> str | None:
     """The banner text to show right now, or None.
 
@@ -409,12 +504,14 @@ def active_announcement() -> str | None:
     a form.
     """
     settings = db.session.get(PlatformSettings, 1)
-    if settings is None or not settings.is_active:
+    if settings is None or not announcement_is_showing(settings):
         return None
-    return settings.announcement or None
+    return settings.announcement
 
 
-def set_announcement(message: str, active: bool) -> str | None:
+def set_announcement(message: str, active: bool,
+                     starts_at: str | None = None,
+                     ends_at: str | None = None) -> str | None:
     """Save the platform announcement. Returns an error, or None.
 
     Refuses "on" with a blank message — a banner with nothing in it isn't
@@ -422,12 +519,26 @@ def set_announcement(message: str, active: bool) -> str | None:
     the installation. Saving a blank message while *off* is allowed: it's
     how a draft gets cleared without also having to remember to switch
     the banner off in the same click.
+
+    `starts_at` / `ends_at` are the raw `datetime-local` strings, typed in
+    `staff_zone()`. None means the form didn't carry the field, so
+    the stored value is left alone (hard rule 9); "" clears it. An end at
+    or before the start is refused — that window can never show.
     """
     message = (message or "").strip()
     if active and not message:
         return "Write a message before turning the announcement on."
     settings = get_platform_settings()
+    try:
+        start = settings.starts_at if starts_at is None else _parse_local(starts_at)
+        end = settings.ends_at if ends_at is None else _parse_local(ends_at)
+    except ValueError:
+        return "Enter the start and end as a date and time."
+    if start is not None and end is not None and end <= start:
+        return "The end has to be after the start."
     settings.announcement = message or None
     settings.is_active = active
+    settings.starts_at = start
+    settings.ends_at = end
     db.session.commit()
     return None

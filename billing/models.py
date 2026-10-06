@@ -173,6 +173,11 @@ class Invoice(db.Model):
     # frozen" marker — an invoice issued before tax existed freezes with
     # zero tax rows, which is exactly what its client received.
     issued_subtotal = db.Column(db.Float)
+    # The discount, frozen alongside: dollars off and how the line read.
+    # `issued_subtotal` is already net of it — it's what tax was charged
+    # on. Null on anything frozen before discounts existed, which is none.
+    issued_discount = db.Column(db.Float)
+    issued_discount_description = db.Column(db.String(80))
 
     tax_rows = db.relationship(
         "InvoiceTaxLine", back_populates="invoice", cascade="all, delete-orphan",

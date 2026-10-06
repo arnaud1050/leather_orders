@@ -52,6 +52,7 @@ def billable_for(order: Order, *, with_urls: bool = False) -> Billable:
         url=url_for("order_page", order_id=order.id) if with_urls else None,
         picked_up=bool(order.picked_up),
         outside_canada=bool(client.outside_canada),
+        discount=order.discount,
     )
 
 

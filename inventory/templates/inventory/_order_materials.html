@@ -125,6 +125,12 @@
   <p class="detail-note">No one-off costs added yet.</p>
   {% endif %}
 
+  {# Totals under the list and the add form last — the Billing tab's Line
+     items order, so the two tabs read the same way. #}
+  <div class="line-totals">
+    <p class="line-totals__total"><span>Total material cost</span> <strong>${{ '%.2f'|format(total_material_cost) }}</strong></p>
+  </div>
+
   <form method="post" action="{{ url_for('inventory.add_other', order_id=order.id) }}" class="detail-form detail-inline-add">
     <input type="hidden" name="return_to" value="{{ request.path }}">
     <label>Description<input type="text" name="description" placeholder="e.g. Replacement buckle" required></label>
@@ -133,10 +139,6 @@
       <button type="submit" class="btn-primary">Add cost</button>
     </div>
   </form>
-
-  <div class="line-totals">
-    <p class="line-totals__total"><span>Total material cost</span> <strong>${{ '%.2f'|format(total_material_cost) }}</strong></p>
-  </div>
 </section>
 
 {# Edit dialogs — one per material/other row, same pre-rendered-modal

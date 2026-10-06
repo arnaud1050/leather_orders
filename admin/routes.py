@@ -322,9 +322,21 @@ def add_platform_admin():
 @bp.route("/settings")
 @platform_admin_required
 def settings():
+    settings = services.get_platform_settings()
+    staff_zone = services.staff_zone().key
+    # The saved zone stays selectable even if it ever drops off the list,
+    # so saving the page can't silently switch it to the first option.
+    time_zones = list(_time_zones)
+    if staff_zone not in {value for value, _ in time_zones}:
+        time_zones.insert(0, (staff_zone, staff_zone))
     return render_template(
         "admin_settings.html",
-        settings=services.get_platform_settings(),
+        settings=settings,
+        announcement_status=services.announcement_status(settings),
+        starts_at_input=services.to_local_input(settings.starts_at),
+        ends_at_input=services.to_local_input(settings.ends_at),
+        staff_zone=staff_zone,
+        time_zones=time_zones,
         notice=session.pop("admin_notice", None),
         section="settings",
         active_view="admin",
@@ -337,8 +349,19 @@ def update_announcement():
     error = services.set_announcement(
         request.form.get("message", ""),
         request.form.get("active") == "1",
+        # None when the form didn't render the field: leave it alone.
+        request.form.get("starts_at"),
+        request.form.get("ends_at"),
     )
     _report(error, "Announcement saved.")
+    return redirect(url_for("admin.settings"))
+
+
+@bp.route("/settings/timezone", methods=["POST"])
+@platform_admin_required
+def update_staff_timezone():
+    error = services.set_staff_timezone(request.form.get("timezone", ""))
+    _report(error, "Time zone saved.")
     return redirect(url_for("admin.settings"))
 
 

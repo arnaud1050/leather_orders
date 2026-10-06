@@ -42,6 +42,13 @@ class Amounts:
     taxed_elsewhere: tuple[str, ...] = ()
     tax_province: str | None = None
     seller_province: str | None = None
+    # Taken off before tax: `subtotal` is already net of it.
+    discount: float = 0.0
+    discount_description: str | None = None
+
+    @property
+    def items_total(self) -> float:
+        return self.subtotal + self.discount
 
     @property
     def tax_total(self) -> float:
@@ -204,9 +211,13 @@ def amounts_for(
     province = _tax_province(billable, issuer)
     registrations = issuer.tax_registrations
     issued = invoice is not None and invoice.status != "draft"
+    discount = billable.discount_amount
+    description = billable.discount.description if discount else None
     if issued and invoice.is_frozen:
         lines = invoice.frozen_tax_lines
         subtotal = invoice.issued_subtotal
+        discount = invoice.issued_discount or 0.0
+        description = invoice.issued_discount_description if discount else None
     elif issued:
         # Issued before freezing existed: it went out with no tax on it.
         lines, subtotal = [], billable.subtotal
@@ -214,6 +225,8 @@ def amounts_for(
         subtotal = billable.subtotal
         lines = tax.taxes_for(province, registrations, subtotal)
     return Amounts(
+        discount=discount,
+        discount_description=description,
         subtotal=subtotal,
         tax_lines=lines,
         amount_paid=billable.amount_paid,
@@ -287,6 +300,8 @@ def document_for(
         taxed_elsewhere=amounts.taxed_elsewhere,
         tax_province=amounts.tax_province,
         seller_province=amounts.seller_province,
+        discount=amounts.discount,
+        discount_description=amounts.discount_description,
     )
 
 
@@ -343,6 +358,10 @@ def freeze(company_id: int, invoice: Invoice, billable: Billable,
     issuer = profile_for(company_id, display_name).issuer
     invoice.apply_issuer(issuer)
     invoice.issued_subtotal = billable.subtotal
+    invoice.issued_discount = billable.discount_amount
+    invoice.issued_discount_description = (
+        billable.discount.description if invoice.issued_discount else None
+    )
     invoice.tax_rows = [
         InvoiceTaxLine(label=line.label, rate=line.rate, amount=line.amount, sort_order=i)
         for i, line in enumerate(

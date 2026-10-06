@@ -20,8 +20,9 @@ from billing import config
 from billing.tax import TaxLine
 
 __all__ = [
-    "Billable", "Branding", "InvoiceDocument", "IssuerDetails", "LineItem",
-    "PartyDetails", "PaymentRecord", "clean_color", "format_address",
+    "DISCOUNT_KINDS", "Billable", "Branding", "Discount", "InvoiceDocument",
+    "IssuerDetails", "LineItem", "PartyDetails", "PaymentRecord", "clean_color",
+    "clean_discount", "format_address",
 ]
 
 _HEX_DIGITS = frozenset("0123456789abcdef")
@@ -192,6 +193,64 @@ class IssuerDetails:
         }
 
 
+# "10% off" or "$20 off" — the two ways a whole-subject discount is given.
+DISCOUNT_KINDS = ("percent", "amount")
+# Long enough for "Returning client — spring promotion", short enough to
+# sit on one line of the totals block.
+DISCOUNT_LABEL_MAX = 60
+
+
+@dataclass(frozen=True)
+class Discount:
+    """One discount on the whole subject, taken off before tax.
+
+    A discount given at the time of sale lowers the amount sales tax is
+    charged on, so it comes off the line items' total and `taxes_for` sees
+    the net. Build one with `clean_discount`, which is what guarantees
+    `kind` and `value` are usable.
+    """
+
+    kind: str  # one of DISCOUNT_KINDS
+    value: float  # a percentage (10 = 10%) or a dollar amount
+    label: str | None = None
+
+    def amount_on(self, items_total: float) -> float:
+        """The dollars taken off `items_total`, rounded to the cent so the
+        printed lines add up, and never more than there is to discount."""
+        raw = items_total * self.value / 100 if self.kind == "percent" else self.value
+        return round(min(max(raw, 0.0), max(items_total, 0.0)), 2)
+
+    @property
+    def description(self) -> str:
+        """How the discount line reads: its label, or "Discount", with the
+        rate after it when it's a percentage — "Returning client (10%)"."""
+        name = self.label or "Discount"
+        if self.kind == "percent":
+            return f"{name} ({self.value:g}%)"
+        return name
+
+
+def clean_discount(kind, value, label=None) -> Discount | None:
+    """A usable `Discount`, or None for "no discount".
+
+    Anything that can't be one — an unknown kind; a missing, zero, negative
+    or non-finite value — is no discount rather than an error, so a host can
+    hand over whatever it stored. A percentage is capped at 100.
+    """
+    if kind not in DISCOUNT_KINDS:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not (0 < value < float("inf")):
+        return None
+    if kind == "percent":
+        value = min(value, 100.0)
+    label = " ".join((label or "").split())[:DISCOUNT_LABEL_MAX] or None
+    return Discount(kind, value, label)
+
+
 @dataclass(frozen=True)
 class Billable:
     """A thing an invoice can be raised against, as billing sees it.
@@ -212,10 +271,21 @@ class Billable:
     url: str | None = None  # host link, e.g. the order's page
     picked_up: bool = False
     outside_canada: bool = False
+    discount: Discount | None = None
+
+    @property
+    def items_total(self) -> float:
+        """The line items at full price, before any discount."""
+        return sum(line.total for line in self.lines)
+
+    @property
+    def discount_amount(self) -> float:
+        return self.discount.amount_on(self.items_total) if self.discount else 0.0
 
     @property
     def subtotal(self) -> float:
-        return sum(line.total for line in self.lines)
+        """What tax is charged on: the line items less the discount."""
+        return self.items_total - self.discount_amount
 
     @property
     def amount_paid(self) -> float:
@@ -252,6 +322,14 @@ class InvoiceDocument:
     taxed_elsewhere: tuple[str, ...] = ()
     tax_province: str | None = None
     seller_province: str | None = None
+    # Dollars taken off before tax, and how that line reads. `subtotal` is
+    # already net of it; `items_total` adds it back for the "Subtotal" row.
+    discount: float = 0.0
+    discount_description: str | None = None
+
+    @property
+    def items_total(self) -> float:
+        return self.subtotal + self.discount
 
     @property
     def tax_total(self) -> float:

@@ -206,7 +206,7 @@
   {% elif section == 'billing' %}
 
   {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
-  {{ page_notice(notice, ['line-items']) }}
+  {{ page_notice(notice, ['line-items', 'discount']) }}
 
   <section class="detail-lines">
     <h2>Line items</h2>
@@ -234,6 +234,9 @@
     </ul>
     <div class="line-totals">
       <p><span>Subtotal</span> <strong>${{ '%.2f'|format(order.subtotal) }}</strong></p>
+      {% if order.discount_amount %}
+      <p><span>{{ order.discount_description }}</span> <strong>&minus;${{ '%.2f'|format(order.discount_amount) }}</strong></p>
+      {% endif %}
       {% for tax in order.tax_lines %}
       <p><span>{{ tax.label }} ({{ tax.rate_percent }}%)</span> <strong>${{ '%.2f'|format(tax.amount) }}</strong></p>
       {% endfor %}
@@ -299,6 +302,41 @@
       <label>Unit price<input type="number" name="unit_price" step="0.01" min="0" required></label>
       <div>
         <button type="submit" class="btn-primary">Add line</button>
+      </div>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="detail-discount">
+    <h2>Discount</h2>
+    {{ notice_slot(notice, 'discount') }}
+    {% if order.is_issued %}
+    {# Locked with the lines (OR7b): it's part of the frozen total. #}
+    <p class="detail-note">
+      {% if order.discount_amount %}
+      {{ order.discount_description }}: &minus;${{ '%.2f'|format(order.discount_amount) }}, as invoiced.
+      {% else %}
+      No discount was given on this invoice.
+      {% endif %}
+    </p>
+    {% else %}
+    <p class="detail-note">Taken off the whole order before tax. Leave the amount empty for no discount.</p>
+    <form method="post" action="{{ url_for('set_order_discount', order_id=order.id) }}" class="detail-form detail-inline-add">
+      {{ notice_field('discount') }}
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <label>Type
+        <select name="discount_kind">
+          <option value="percent" {% if order.discount_kind != 'amount' %}selected{% endif %}>Percentage (%)</option>
+          <option value="amount" {% if order.discount_kind == 'amount' %}selected{% endif %}>Fixed amount ($)</option>
+        </select>
+      </label>
+      <label>Amount<input type="number" name="discount_value" step="0.01" min="0"
+        value="{{ '%g'|format(order.discount.value) if order.discount else '' }}"></label>
+      <label>Label (optional)<input type="text" name="discount_label"
+        maxlength="{{ discount_label_max }}" placeholder="e.g. Returning client"
+        value="{{ order.discount.label or '' if order.discount else '' }}"></label>
+      <div>
+        <button type="submit" class="btn-primary">Save discount</button>
       </div>
     </form>
     {% endif %}

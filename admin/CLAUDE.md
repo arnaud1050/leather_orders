@@ -145,10 +145,10 @@ by design while impersonating. It checks the session key itself.
 `PlatformSettings` (`admin/models.py`) is the first table in this project
 that belongs to neither a company nor a user — a singleton row, `id=1`,
 created lazily on first read the same way `AISettings` and
-`BillingProfile` are, except there's no `company_id` to key it by. It's
-brand new, so `db.create_all()` covers it and there's no `migrations.py`
-here (hard rule 12) — `admin/__init__.py` imports `admin.models` on
-purpose, the same convention `ai/__init__.py` and `inventory/__init__.py`
+`BillingProfile` are, except there's no `company_id` to key it by.
+`db.create_all()` created it; the schedule columns came later and live in
+`admin/migrations.py` (hard rule 12). `admin/__init__.py` imports
+`admin.models` on purpose, the same convention `ai/__init__.py` and `inventory/__init__.py`
 already use, so the table lands in SQLAlchemy's metadata before that
 `create_all()` call runs.
 
@@ -157,6 +157,23 @@ blank means off. The obvious shortcut costs an admin their draft every
 time they turn a recurring maintenance notice off — and a maintenance
 window is exactly the kind of thing that recurs. Keeping the text and the
 switch separate means writing the sentence once.
+
+**The optional start/end window is checked at render time, not run by a
+job.** `announcement_is_showing()` compares the switch, the window and the
+clock on every page; nothing ever writes `is_active = False` when a
+window closes. There's no scheduler in this app to do it, and a stored "is
+showing" would be a copy that can disagree with the clock (hard rule 10).
+It also means an expired notice keeps its text *and* its window, ready to
+have the dates moved for the next occurrence. Times are typed in the
+**staff time zone**, `PlatformSettings.timezone`, its own section of the
+same page: staff have no company and so no `Company.timezone`, and
+whoever runs the installation wants to type times where they are rather
+than think in UTC. It's display only — the window is stored UTC, so
+changing the zone moves no instant. One zone for all staff rather than a
+per-user one, since there's one operator; a second operator elsewhere is
+the cue to move it onto `User`. Since "on"
+no longer means "showing", the settings page prints which of off /
+scheduled / showing / ended applies.
 
 **The banner ignores `current_user.is_authenticated`, and that's
 deliberate, unlike the other two callables on the same context

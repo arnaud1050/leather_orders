@@ -47,6 +47,7 @@ from models import (  # noqa: E402
 # on purpose and the module-boundary tests don't cover it. See
 # admin/__init__.py — it's a package rather than more routes in this file
 # only because this file is long enough already.
+import admin.migrations as admin_migrations  # noqa: E402
 import admin.routes as admin_routes  # noqa: E402
 # Self-contained module: its own model, services, blueprint and templates
 # (see ai/__init__.py). It holds a company's vendor API keys and prompts and
@@ -61,7 +62,7 @@ import billing.migrations as billing_migrations  # noqa: E402
 import billing.routes as billing_routes  # noqa: E402
 import billing_adapter  # noqa: E402
 from billing import config as billing_config  # noqa: E402
-from billing.documents import clean_color  # noqa: E402
+from billing.documents import DISCOUNT_LABEL_MAX, clean_color, clean_discount  # noqa: E402
 from billing.services import invoicing  # noqa: E402
 from billing.tax import PROVINCES  # noqa: E402
 
@@ -215,6 +216,9 @@ with app.app_context():
     # this module's first column migration lands in its own file rather than
     # the root one (hard rule 12).
     ai_migrations.run_migrations()
+    # Not a module, but platform_settings gained columns after it shipped,
+    # and they're kept beside the table that owns them (hard rule 12).
+    admin_migrations.run_migrations()
     # Bootstrap only — one company, its admin user, and the SourceOption /
     # OrderType starter lists. Deliberately no sample clients or orders: a
     # production deployment starts empty. To load the demo dataset in a test
@@ -2021,6 +2025,7 @@ def order_billing(order_id: int):
         order=order,
         payment_method_labels=PAYMENT_METHOD_LABELS,
         invoice_status_labels=INVOICE_STATUS_LABELS,
+        discount_label_max=DISCOUNT_LABEL_MAX,
         return_to=return_to,
         back_label=back_label(return_to),
         today=date.today(),
@@ -2214,6 +2219,37 @@ def delete_order_line(order_id: int, line_id: int):
     if line is not None:
         db.session.delete(line)
         db.session.commit()
+    return redirect(return_to)
+
+
+@app.route("/orders/<int:order_id>/discount", methods=["POST"])
+@login_required
+def set_order_discount(order_id: int):
+    """Set or clear the order's one discount (OR7b).
+
+    An empty or zero amount clears it — there's no separate delete. Locked
+    with the lines once the invoice is out: the discount is part of the
+    frozen total just as they are.
+    """
+    order = get_order_or_404(order_id)
+    return_to = request.form.get("return_to") or url_for("timeline_view")
+    if order.is_issued:
+        done = "voided" if order.invoice.status == "void" else "sent"
+        _flash_order_notice(
+            f"Invoice {order.invoice.number} has been {done}, so this order's "
+            "discount can't change. To correct it, set the invoice back to Draft first.")
+        return redirect(return_to)
+    discount = clean_discount(
+        request.form.get("discount_kind"),
+        _parse_amount(request.form.get("discount_value")),
+        request.form.get("discount_label"),
+    )
+    order.discount_kind = discount.kind if discount else None
+    order.discount_value = discount.value if discount else None
+    order.discount_label = discount.label if discount else None
+    db.session.commit()
+    if discount:
+        track("order.discount_set", kind=discount.kind)
     return redirect(return_to)
 
 

@@ -1151,10 +1151,11 @@ def test_billing_tab_forms_carry_their_own_page_as_return_to(logged_in, order):
     html = logged_in.get(billing_path, query_string={"return_to": "/timeline/2026/1/1"}).get_data(as_text=True)
 
     assert "/payments" in html and "/lines" in html
-    # Every hidden return_to in the Payments/Line items forms should be the
-    # tab's own path (one delete-line, one add-line, one delete-payment, one
-    # add-payment form), never the "/timeline/..." value passed in above.
-    assert html.count(f'name="return_to" value="{billing_path}"') == 4
+    # Every hidden return_to in the Payments/Line items/Discount forms should
+    # be the tab's own path (one delete-line, one add-line, one discount, one
+    # delete-payment, one add-payment form), never the "/timeline/..." value
+    # passed in above.
+    assert html.count(f'name="return_to" value="{billing_path}"') == 5
 
 
 # ---------------------------------------------------------------------------

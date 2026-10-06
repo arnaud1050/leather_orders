@@ -86,7 +86,10 @@
     </div>
 
     <div class="invoice-doc__totals">
-      <p><span>Subtotal</span> <strong>${{ '%.2f'|format(doc.subtotal) }}</strong></p>
+      <p><span>Subtotal</span> <strong>${{ '%.2f'|format(doc.items_total) }}</strong></p>
+      {% if doc.discount %}
+      <p><span>{{ doc.discount_description }}</span> <strong>&minus;${{ '%.2f'|format(doc.discount) }}</strong></p>
+      {% endif %}
       {% for tax in doc.tax_lines %}
       <p><span>{{ tax.label }} ({{ tax.rate_percent }}%)</span> <strong>${{ '%.2f'|format(tax.amount) }}</strong></p>
       {% endfor %}

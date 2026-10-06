@@ -76,6 +76,7 @@ def test_every_mutating_route_is_guarded(logged_in, company, user):
         f"/admin/users/{user.id}/impersonate",
         "/admin/platform-admins",
         "/admin/settings/announcement",
+        "/admin/settings/timezone",
     ]
     for path in posts:
         assert logged_in.post(path, data={}).status_code == 403, path
@@ -860,3 +861,180 @@ def test_a_tenant_user_cannot_change_the_announcement(logged_in):
         "message": "Injected.", "active": "1",
     })
     assert response.status_code == 403
+
+
+# --- PA29a: the announcement's optional start/end window --------------------
+
+def _schedule(admin_client, starts="", ends="", message="Scheduled notice."):
+    return admin_client.post("/admin/settings/announcement", data={
+        "message": message, "active": "1",
+        "starts_at": starts, "ends_at": ends,
+    }, follow_redirects=True)
+
+
+def _pin_clock(monkeypatch, utc):
+    from datetime import datetime
+    monkeypatch.setattr(services, "_utcnow", lambda: datetime.fromisoformat(utc))
+
+
+def test_times_are_typed_in_the_default_zone_and_stored_as_utc(admin_client):
+    """America/Vancouver is UTC-7 in July (daylight time)."""
+    from datetime import datetime
+    from admin.services import get_platform_settings
+
+    _schedule(admin_client, "2026-07-01T09:00", "2026-07-01T17:30")
+
+    settings = get_platform_settings()
+    assert settings.starts_at == datetime(2026, 7, 1, 16, 0)
+    assert settings.ends_at == datetime(2026, 7, 2, 0, 30)
+    # ...and read back into the form exactly as typed.
+    page = admin_client.get("/admin/settings").get_data(as_text=True)
+    assert 'value="2026-07-01T09:00"' in page
+    assert 'value="2026-07-01T17:30"' in page
+
+
+def test_before_the_start_the_banner_is_hidden(admin_client, monkeypatch):
+    _schedule(admin_client, "2026-07-01T09:00", "2026-07-01T17:00")
+    _pin_clock(monkeypatch, "2026-07-01T15:59")
+
+    assert "Scheduled notice." not in admin_client.get(
+        "/admin/companies").get_data(as_text=True)
+    assert "Scheduled — starts" in admin_client.get(
+        "/admin/settings").get_data(as_text=True)
+
+
+def test_inside_the_window_the_banner_shows(admin_client, app, monkeypatch):
+    _schedule(admin_client, "2026-07-01T09:00", "2026-07-01T17:00")
+    _pin_clock(monkeypatch, "2026-07-01T16:00")
+
+    body = signed_out_client(app).get("/login").get_data(as_text=True)
+    assert "Scheduled notice." in body
+    assert "Showing now, until" in admin_client.get(
+        "/admin/settings").get_data(as_text=True)
+
+
+def test_at_the_end_the_banner_takes_itself_down(admin_client, monkeypatch):
+    """Regression guard: the end is exclusive, and nothing writes
+    is_active=False — the switch stays on and the text stays saved."""
+    from admin.services import get_platform_settings
+
+    _schedule(admin_client, "2026-07-01T09:00", "2026-07-01T17:00")
+    _pin_clock(monkeypatch, "2026-07-02T00:00")
+
+    assert "Scheduled notice." not in admin_client.get(
+        "/admin/companies").get_data(as_text=True)
+    settings = get_platform_settings()
+    assert settings.is_active is True
+    assert settings.announcement == "Scheduled notice."
+    assert "Not showing — ended" in admin_client.get(
+        "/admin/settings").get_data(as_text=True)
+
+
+def test_either_side_of_the_window_may_be_open(admin_client, monkeypatch):
+    _schedule(admin_client, starts="", ends="2026-07-01T17:00")
+    _pin_clock(monkeypatch, "2020-01-01T00:00")
+    assert "Scheduled notice." in admin_client.get(
+        "/admin/companies").get_data(as_text=True)
+
+    _schedule(admin_client, starts="2026-07-01T09:00", ends="")
+    _pin_clock(monkeypatch, "2099-01-01T00:00")
+    assert "Scheduled notice." in admin_client.get(
+        "/admin/companies").get_data(as_text=True)
+
+
+def test_switched_off_hides_it_even_inside_the_window(admin_client,
+                                                      monkeypatch):
+    admin_client.post("/admin/settings/announcement", data={
+        "message": "Off anyway.", "active": "0",
+        "starts_at": "2026-07-01T09:00", "ends_at": "2026-07-01T17:00",
+    }, follow_redirects=True)
+    _pin_clock(monkeypatch, "2026-07-01T16:00")
+
+    assert "Off anyway." not in admin_client.get(
+        "/admin/companies").get_data(as_text=True)
+
+
+def test_an_end_before_the_start_is_refused(admin_client):
+    from admin.services import get_platform_settings
+
+    body = _schedule(admin_client, "2026-07-01T17:00",
+                     "2026-07-01T09:00").get_data(as_text=True)
+
+    assert "The end has to be after the start." in body
+    settings = get_platform_settings()
+    assert settings.is_active is False
+    assert settings.starts_at is None and settings.ends_at is None
+
+
+def test_clearing_the_dates_removes_the_window(admin_client):
+    from admin.services import get_platform_settings
+
+    _schedule(admin_client, "2026-07-01T09:00", "2026-07-01T17:00")
+    _schedule(admin_client, "", "")
+
+    settings = get_platform_settings()
+    assert settings.starts_at is None and settings.ends_at is None
+
+
+def test_a_form_without_the_date_fields_leaves_them_alone(admin_client):
+    """Hard rule 9: an absent field means "leave it", not "clear it"."""
+    from admin.services import get_platform_settings
+
+    _schedule(admin_client, "2026-07-01T09:00", "2026-07-01T17:00")
+    admin_client.post("/admin/settings/announcement", data={
+        "message": "Reworded.", "active": "1",
+    }, follow_redirects=True)
+
+    settings = get_platform_settings()
+    assert settings.announcement == "Reworded."
+    assert settings.starts_at is not None and settings.ends_at is not None
+
+
+# --- PA29b: the staff time zone ---------------------------------------------
+
+def test_the_staff_zone_defaults_to_the_installation_default(admin_client):
+    from models import DEFAULT_TIMEZONE
+    assert services.staff_zone().key == DEFAULT_TIMEZONE
+
+
+def test_times_are_typed_in_the_chosen_staff_zone(admin_client):
+    """Europe/Paris is UTC+2 in July."""
+    from datetime import datetime
+    from admin.services import get_platform_settings
+
+    admin_client.post("/admin/settings/timezone", data={
+        "timezone": "Europe/Paris"}, follow_redirects=True)
+    _schedule(admin_client, "2026-07-01T09:00", "2026-07-01T17:00")
+
+    settings = get_platform_settings()
+    assert settings.starts_at == datetime(2026, 7, 1, 7, 0)
+    assert settings.ends_at == datetime(2026, 7, 1, 15, 0)
+
+
+def test_changing_the_zone_moves_no_instant(admin_client):
+    """Display only: the stored UTC window is untouched, and reads back
+    in the new zone (Vancouver 09:00 PDT is Paris 18:00 CEST)."""
+    from admin.services import get_platform_settings
+
+    _schedule(admin_client, "2026-07-01T09:00", "")
+    before = get_platform_settings().starts_at
+
+    admin_client.post("/admin/settings/timezone", data={
+        "timezone": "Europe/Paris"}, follow_redirects=True)
+
+    assert get_platform_settings().starts_at == before
+    page = admin_client.get("/admin/settings").get_data(as_text=True)
+    assert 'value="2026-07-01T18:00"' in page
+    assert "Times are Europe/Paris" in page
+
+
+def test_an_unknown_zone_is_refused(admin_client):
+    from models import DEFAULT_TIMEZONE
+    from admin.services import get_platform_settings
+
+    body = admin_client.post("/admin/settings/timezone", data={
+        "timezone": "Mars/Olympus_Mons"}, follow_redirects=True,
+    ).get_data(as_text=True)
+
+    assert "Choose a time zone from the list." in body
+    assert get_platform_settings().timezone == DEFAULT_TIMEZONE

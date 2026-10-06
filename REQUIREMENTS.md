@@ -561,6 +561,17 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   with a red notice in the Line items section (MOD8). The way through is
   billing F15: set the invoice back to Draft, change the lines, send it
   again. A draft invoice leaves the lines editable.
+- **OR7b.** **One discount per order, set on the Billing tab** — a
+  percentage or a fixed amount, with an optional label for the invoice
+  line, stored as `discount_kind`/`discount_value`/`discount_label` and read
+  through `Order.discount` (billing `DS1`). It comes off the whole order
+  before tax (billing `DS4`), so `Order.total`, and every figure built on
+  it, is net of it; `Order.subtotal` stays the lines at full price, and the
+  totals show the discount as its own row between the two.
+  `set_order_discount()` saves it; an empty or zero amount clears it, so
+  there's no separate delete. It **locks with the lines** (OR7a): once the
+  invoice is sent or void the form is replaced by what was invoiced, and
+  the route refuses with a red notice in the Discount section.
 - **OR8.** `Order.is_settled` compares `balance_due` against a small epsilon
   (`< 0.005`), not exact zero, so floating-point rounding never leaves a
   fully-paid order reading as outstanding.
@@ -1092,6 +1103,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | OR6a | `test_a_payment_amount_that_is_not_a_finite_number_is_ignored`, `test_a_line_price_that_is_not_a_finite_number_is_ignored` (both parametrized over the `inf`/`nan` spellings `float()` accepts) |
 | OR7 | *(non-requirement — see N1)* |
 | OR7a | `test_a_draft_invoice_leaves_the_lines_editable`, `test_adding_a_line_is_refused_once_the_invoice_is_out` (sent and void), `test_deleting_a_line_is_refused_once_the_invoice_is_sent`, `test_a_sent_invoice_hides_the_line_controls_and_says_how_to_unlock`, `test_back_to_draft_unlocks_the_lines` (`tests/test_order_lines.py`); in a browser, `e2e/tests/invoice-lifecycle.spec.ts` |
+| OR7b | `test_saving_a_discount_stores_it`, `test_an_empty_amount_clears_the_discount`, `test_the_discount_is_refused_once_the_invoice_is_out`, `test_a_draft_invoice_leaves_the_discount_editable`, `test_another_tenants_order_is_not_found` (`tests/test_discounts.py`) |
 | OR8 | `test_is_settled_tolerates_a_cent_of_rounding` |
 | PM1 | `test_add_payment_creates_a_row_and_updates_balance` |
 | PM2 | — gap — (the modal-omits-payments UI split isn't asserted, only the route behavior) |

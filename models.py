@@ -29,7 +29,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # at all — so this is safe here even though billing.models imports `db`
 # back out of this file. Anything deeper in billing (services, models) is
 # imported lazily inside methods below, for exactly that reason.
-from billing.documents import format_address
+from billing.documents import clean_discount, format_address
 # Re-exported deliberately: `communications/` needs it to sanitise a province
 # read out of a contact form, and `models` is a file that module already
 # imports. Reaching into `billing.tax` from there would be a module importing
@@ -422,6 +422,13 @@ class Order(db.Model):
     # `pickup_date` or the "ready for pickup" status — every order passes
     # through that status whether it's then collected or shipped.
     picked_up = db.Column(db.Boolean, nullable=False, default=False)
+    # One discount on the whole order, taken off before tax: "percent"
+    # (value 10 = 10%) or "amount" (value in dollars), with an optional
+    # label for the invoice line. Read through `discount`, which turns a
+    # half-filled or nonsense row into "no discount".
+    discount_kind = db.Column(db.String(10))
+    discount_value = db.Column(db.Float)
+    discount_label = db.Column(db.String(60))
     notes = db.Column(db.Text)
     # Optional — a company with no OrderTypes defined never shows the
     # dropdown at all (see new_order()/order_page() in app.py), so this
@@ -542,8 +549,13 @@ class Order(db.Model):
         return (self.is_active or self.status == "tentative") and not self.is_issued
 
     @property
+    def discount(self):
+        """The order's discount as billing understands it, or None."""
+        return clean_discount(self.discount_kind, self.discount_value, self.discount_label)
+
+    @property
     def subtotal(self):
-        """Value of the line items, before tax.
+        """Value of the line items, before discount and tax.
 
         Computed rather than stored (this used to be an Order.price column)
         so it can't drift out of sync with the lines an invoice is actually
@@ -577,6 +589,15 @@ class Order(db.Model):
             invoicing.profile_for(self.client.company_id, self.client.company.name).issuer,
             self.invoice,
         )
+
+    @property
+    def discount_amount(self):
+        """Dollars off before tax: frozen once invoiced, live before that."""
+        return self._amounts.discount
+
+    @property
+    def discount_description(self):
+        return self._amounts.discount_description
 
     @property
     def tax_lines(self):
@@ -757,6 +778,10 @@ _ADDED_COLUMNS = [
     ("orders", "picked_up", "BOOLEAN NOT NULL DEFAULT 0"),
     # Null reads as the default column order, every column shown.
     ("companies", "client_columns", "TEXT"),
+    # Null kind means no discount, which is every order before this existed.
+    ("orders", "discount_kind", "VARCHAR(10)"),
+    ("orders", "discount_value", "FLOAT"),
+    ("orders", "discount_label", "VARCHAR(60)"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.

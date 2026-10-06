@@ -230,6 +230,21 @@ pattern extended to a table with no `company_id` at all).
   support) — Jinja's autoescaping is the only thing standing between an
   admin's typo and a script tag rendered on every page of the
   installation, so nothing here may bypass it.
+- **PA29a.** The banner has an optional display window, `starts_at` /
+  `ends_at` (naive UTC; either may be blank for "no bound on that side"),
+  typed and shown on `/admin/settings` in the staff time zone (`PA29b`). It shows
+  only while switched on, with a message, and `starts_at <= now < ends_at`.
+  That is **derived on every render**, never stored: nothing flips
+  `is_active` when a window opens or closes, so no background job exists
+  and an expired banner keeps its text and window for re-use. An end at or
+  before the start is refused and nothing is written. The settings page
+  states whether the banner is showing, scheduled, ended or off.
+- **PA29b.** `PlatformSettings.timezone` is the zone platform staff read and
+  type times in — staff have no company, so no `Company.timezone` to use.
+  It defaults to `DEFAULT_TIMEZONE`, is set in its own section of
+  `/admin/settings`, and a name that doesn't resolve is refused with
+  nothing written. It is **display only**: stored times stay UTC, so
+  changing it moves no saved instant, which then reads back in the new zone.
 - **PA30.** `/admin/settings` is the third `_admin_nav.html` tab, guarded
   the same way as `/admin/companies` and `/admin/platform-admins`
   (`PA1`, `PA3d`).
@@ -277,7 +292,7 @@ What studios use, read from `usage_events`. The recording rules are
 | PA18–PA23 | `tests/test_admin.py` — impersonation |
 | PA24, PA24a, PA25 | `tests/test_user_migration.py` |
 | PA24b, PA24c | `tests/test_seeding.py` |
-| PA26–PA30 | `tests/test_admin.py` — the announcement banner |
+| PA26–PA30 | `tests/test_admin.py` — the announcement banner (PA29a: its schedule; PA29b: the staff time zone) |
 | PA31–PA33, PA31a, PA32a | `tests/test_usage.py` — `/admin/usage`, excluding a company |
 | PA8 (the usage flag) | `tests/test_usage.py` — excluding a company |
 

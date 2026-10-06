@@ -1397,6 +1397,7 @@ a.btn-secondary {
 .detail-documents h2,
 .detail-payments h2,
 .detail-lines h2,
+.detail-discount h2,
 .detail-invoice h2,
 .detail-lifecycle h2,
 .invoice-admin h2 {
@@ -1706,8 +1707,33 @@ a.btn-secondary {
   max-width: 320px;
 }
 
+/* The order page's Billing and Materials sections don't collapse margins
+   with their last child, so a section ending in its form would otherwise
+   sit .detail-form's 40px *plus* the section's own 40px from the next one.
+   (Materials' two sections are .detail-lines too.) */
+.detail-lines .detail-inline-add,
+.detail-discount .detail-inline-add,
+.detail-invoice .detail-inline-add {
+  margin-bottom: 0;
+}
+
 .detail-form__note {
   margin-top: -6px;
+}
+
+/* A note about the field just above it sits 8px under that field — the
+   Invoicing settings' logo hint spacing — and the form's usual 16px gap
+   from the next one. Spelled out against .detail-note, which is declared
+   later and would otherwise put its own 12px margins on both sides, on
+   top of the gap (28px each way: a note belonging to neither field). */
+.detail-form .detail-note.detail-form__note {
+  margin: -8px 0 0;
+}
+
+/* A note a script fills in later (the Materials tab's cost estimate) takes
+   no room — and no flex gap — until it has something to say. */
+.detail-form__note:empty {
+  display: none;
 }
 
 .line-totals {
@@ -1860,17 +1886,17 @@ button[aria-busy="true"] {
 .detail-documents,
 .detail-payments,
 .detail-lines,
+.detail-discount,
 .detail-invoice,
 .detail-lifecycle,
 .invoice-admin {
   margin-bottom: 40px;
 }
 
-/* Both the order and client pages put this directly under a form's Save
-   button, and .detail-form's own margin isn't enough to stop "This order" /
-   "This client" reading as part of the form it follows. Matches the gap the
-   Documents block already sits at. */
-.detail-lifecycle {
+/* The client page's form is a .settings-form, whose 8px bottom margin
+   would leave "This client" pressed against it — topped up to the same
+   40px every other section sits at. */
+.settings-form + .detail-lifecycle {
   margin-top: 32px;
 }
 

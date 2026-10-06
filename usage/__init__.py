@@ -52,6 +52,7 @@ EVENTS: dict[str, tuple[str, str, bool]] = {
     "order.status_changed": ("Orders", "Order status changed", False),
     "order.rush_toggled": ("Orders", "Rush toggled", False),
     "order.line_added": ("Orders", "Line item added", False),
+    "order.discount_set": ("Orders", "Discount set", False),
     "order.payment_recorded": ("Orders", "Payment recorded", False),
     # Invoicing
     "invoice.created": ("Invoicing", "Invoice created", False),

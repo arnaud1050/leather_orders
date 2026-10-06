@@ -62,8 +62,12 @@ The seam that resolves it:
   `unicodedata` (for folding "Québec") is the only addition to this file's
   stdlib-only allowlist in `test_billing_boundary.py`.
 - **`documents.py`** — `Billable`, `LineItem`, `PaymentRecord`, `PartyDetails`,
-  `IssuerDetails`, `InvoiceDocument`, plus `format_address` (the host imports
-  that one back for `Client.formatted_address`). No database.
+  `IssuerDetails`, `InvoiceDocument`, `Discount`, plus `format_address` (the
+  host imports that one back for `Client.formatted_address`) and
+  `clean_discount`. No database. **`subtotal` means net of the discount
+  everywhere in this module** — it's what tax is charged on (`DS4`);
+  `items_total` is the lines at full price. The host's `Order.subtotal` is
+  the exception: it predates discounts and stays the lines at full price.
 - **`models.py`** — `BillingProfile` (the letterhead, one row per tenant),
   `Invoice`, `InvoiceTaxLine`, `next_invoice_number`.
 - **`services/invoicing.py`** — the public API. Every function takes

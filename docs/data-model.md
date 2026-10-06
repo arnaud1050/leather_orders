@@ -387,12 +387,18 @@ a second, independently written copy of the CRA table, so a typo in `PROVINCE_TA
 fails the suite instead of quietly mis-billing someone. Correct rates in that table
 *and* in the test, from the CRA rather than from each other.
 
-`Order.subtotal` is the pre-tax sum of lines; `Order.tax_lines` / `tax_total` /
-`total` add tax. **`Order.total` is now tax-inclusive**, which flows into
-`balance_due`, `Client.lifetime_value`, the timeline sort and the invoice list.
+`Order.subtotal` is the pre-tax sum of lines, at full price. An order may carry
+one discount (`discount_kind` = `percent`/`amount`, `discount_value`,
+`discount_label`; `Order.discount` cleans them into billing's `Discount`), which
+comes off **before tax** — `Order.discount_amount` is the dollars off, and the
+tax is charged on the net. `Order.tax_lines` / `tax_total` / `total` then add
+tax. **`Order.total` is tax-inclusive and net of the discount**, which flows into
+`balance_due`, `Client.lifetime_value`, the timeline sort, analytics revenue and
+the invoice list. See billing `DS1`–`DS6`.
 
 **Invoice amounts are frozen at issue, exactly like the issuer details.** `freeze()`
-writes `issued_subtotal` plus one `InvoiceTaxLine` per tax, and
+writes `issued_subtotal` (net of the discount), `issued_discount` and
+`issued_discount_description`, plus one `InvoiceTaxLine` per tax, and
 `Invoice.is_frozen` (i.e. `issued_subtotal is not None`) is the marker. Once frozen,
 `Order.total` reports what was billed, so editing line items afterwards **cannot**
 change a number the client has already been given. `InvoiceTaxLine` is a real table

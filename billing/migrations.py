@@ -37,6 +37,8 @@ ADDED_COLUMNS = [
     ("billing_profiles", "footer_background", "VARCHAR(7)"),
     ("billing_profiles", "footer_text_color", "VARCHAR(7)"),
     ("billing_profiles", "footer_text", "VARCHAR(200)"),
+    ("invoices", "issued_discount", "FLOAT"),
+    ("invoices", "issued_discount_description", "VARCHAR(80)"),
 ]
 
 # Letterhead fields that used to live on the host's `companies` table,

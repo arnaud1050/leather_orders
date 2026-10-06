@@ -45,7 +45,9 @@ a tenant page, a staff page, and — the point of the feature —
 message is refused outright while turning it off with one blank just clears
 the draft (nothing lost the next time the same maintenance window comes
 around); and that the message is rendered escaped, checked with a literal
-`<script>` tag that must survive as visible text, never as markup. The
+`<script>` tag that must survive as visible text, never as markup. Its
+optional schedule (`PA29a`) is checked by pinning the clock (`services._utcnow`)
+either side of a window, and by refusing an end before its start. The
 `get_platform_settings()` singleton is checked directly too — two calls in a
 row must return the same row, not create a second one.
 

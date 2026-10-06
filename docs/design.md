@@ -173,6 +173,21 @@ Current tokens (top of `style.css`):
   part; a control that vanishes without explanation is the failure mode the
   whole block was built to avoid.
 
+- **Sections on a detail page sit exactly 40px apart**, whatever they end
+  in — every tab of the order page and the client page. These sections
+  don't collapse margins with their last child, so a section ending in a
+  `.detail-form` would otherwise get the form's 40px *and* its own (80px).
+  The inline add forms inside the Billing and Materials sections drop
+  their margin for that reason. `.detail-lifecycle` once carried an extra
+  `margin-top: 32px` to set it off from the form above (72px); it read as a
+  stray gap next to the 40px under it, and now applies only after a
+  `.settings-form` (the client page), whose 8px margin needs topping up.
+
+- **A note about one field (`.detail-note.detail-form__note`) sits 8px
+  under that field** and the usual 16px gap above the next — the Invoicing
+  settings' logo hint spacing. For a long time `.detail-note`'s own 12px
+  margins silently won over it, leaving the note 28px from both fields.
+
 - **`.detail-form` caps at 360px**, which is right for a name, a date or an
   amount and wrong for prose. Two places override it rather than widening the
   base rule: `.compose-form` (the email reply box) and `.ai-form` (Settings →

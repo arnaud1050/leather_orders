@@ -348,7 +348,10 @@
   </table>
 
   <table class="totals">
-    <tr><td>Subtotal</td><td class="amount">${{ '%.2f'|format(doc.subtotal) }}</td></tr>
+    <tr><td>Subtotal</td><td class="amount">${{ '%.2f'|format(doc.items_total) }}</td></tr>
+    {% if doc.discount %}
+    <tr><td>{{ doc.discount_description }}</td><td class="amount">&minus;${{ '%.2f'|format(doc.discount) }}</td></tr>
+    {% endif %}
     {% for tax in doc.tax_lines %}
     <tr><td>{{ tax.label }} ({{ tax.rate_percent }}%)</td><td class="amount">${{ '%.2f'|format(tax.amount) }}</td></tr>
     {% endfor %}

@@ -13,7 +13,8 @@
   identity to make it possible, and platform staff sit **outside** every
   tenant: no company, no timeline, `/admin` only. `/admin` also carries the
   installation's first genuinely platform-wide setting — a maintenance/
-  announcement banner (`/admin/settings`), shown on every page including
+  announcement banner (`/admin/settings`), optionally scheduled to appear
+  and disappear by itself, shown on every page including
   signed-out ones. See [admin/CLAUDE.md](../admin/CLAUDE.md).
   Still unbuilt, in rough order of likely need: **roles within a company**
   (owner vs. member — today every tenant user can do everything), an **audit

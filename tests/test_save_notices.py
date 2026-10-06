@@ -589,6 +589,13 @@ def test_announcement_saved_shows_in_its_section(admin_client):
     assert located(body, "Announcement saved.") == ("announcement", "success")
 
 
+def test_staff_timezone_saved_shows_in_its_section(admin_client):
+    body = admin_client.post("/admin/settings/timezone", data={
+        "timezone": "Europe/Paris", "notice_section": "timezone",
+    }, follow_redirects=True).get_data(as_text=True)
+    assert located(body, "Time zone saved.") == ("timezone", "success")
+
+
 # --- saves that used to show nothing ------------------------------------------
 #
 # Each of these saved silently before, so a person had to look for the change

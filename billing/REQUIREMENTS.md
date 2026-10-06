@@ -130,7 +130,8 @@ accounting period closes.
   charges no BC PST. This falls out of the data rather than needing a
   separate "do we charge tax" switch.
 - **C3 — Prices are tax-exclusive.** A line's `unit_price` is pre-tax; tax
-  is added on top. Total = subtotal + tax.
+  is added on top. Total = subtotal + tax, where the subtotal is already
+  net of any discount (DS4).
 - **C4 — Charge nothing rather than guess.** A blank or unrecognised
   province yields no tax lines.
 - **C5 — Say why nothing was charged.** `status_for()` returns `ok`,
@@ -159,6 +160,43 @@ accounting period closes.
   draft invoice warn about it. Silent when the seller's province isn't on
   file. Amounts are unaffected — selling into another province can require
   registering there, so the charge may well be right.
+
+## 3a. Discounts (`Discount`, `clean_discount`)
+
+One discount per subject, on the whole of it — not per line.
+
+- **DS1 — Percentage or fixed amount, or nothing.** `Billable.discount` is a
+  `Discount` of kind `percent` (value 10 = 10%) or `amount` (dollars), with
+  an optional label. `clean_discount()` turns anything unusable — an
+  unknown kind; a missing, zero, negative or non-finite value — into
+  `None`, meaning no discount, rather than raising. A percentage is capped
+  at 100; a label is whitespace-collapsed and cut to 60 characters, and a
+  blank one is `None`.
+- **DS2 — The amount is rounded to the cent and never exceeds the lines.**
+  `amount_on()` rounds like a tax line (C6), so the printed rows add up, and
+  clamps a fixed amount larger than the lines to their total — a discount
+  never makes a subject worth less than nothing.
+- **DS3 — How the line reads.** The label, or "Discount" without one, with
+  the rate in brackets for a percentage: "Returning client (10%)",
+  "Discount (12.5%)". A fixed amount prints its label alone.
+- **DS4 — It comes off before tax.** `Billable.subtotal` is the lines less
+  the discount, and that net is what `taxes_for` is given: in Canada a
+  discount given at the time of sale lowers the amount GST/HST/QST/PST is
+  charged on. `items_total` is the lines at full price. Everything
+  downstream of `subtotal` and `total` — balance due, paid-ness, the host's
+  revenue figures — is therefore net of the discount. An early-payment
+  discount, which is taxed on the undiscounted price, is **not** this and
+  isn't supported.
+- **DS5 — Frozen at issue.** `freeze()` writes `issued_discount` (dollars)
+  and `issued_discount_description` (the DS3 text) alongside
+  `issued_subtotal`, which is already net. An issued invoice ignores later
+  changes to the subject's discount; a draft follows them (F1). An invoice
+  frozen before discounts existed has a null `issued_discount` and reads as
+  none — which is what it was.
+- **DS6 — What prints.** The invoice page and both PDF layouts show
+  "Subtotal" as `items_total`, then — only when the discount isn't zero — a
+  row with the DS3 text and the amount as a negative, then the tax lines on
+  the net. No discount, no row.
 
 ## 4. The seller's letterhead (`BillingProfile`)
 
@@ -236,7 +274,8 @@ accounting period closes.
   prevents.
 - **F3 — Freezing writes three things**: the issuer snapshot
   (`issuer_name`/`address`/registrations/`payment_instructions`),
-  `issued_subtotal`, and one `InvoiceTaxLine` row per tax charged.
+  `issued_subtotal` with the discount beside it (DS5), and one
+  `InvoiceTaxLine` row per tax charged.
 - **F4.** An issued invoice ignores later changes to the **seller's**
   details.
 - **F5.** An issued invoice ignores later changes to the subject's **line
@@ -697,7 +736,7 @@ of it; that's a to-do, not a shrug.
 
 Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 `tests/test_invoice_routes.py`, `tests/test_invoice_pdf.py`,
-`tests/test_invoice_logo.py`,
+`tests/test_invoice_logo.py`, `tests/test_discounts.py`,
 `tests/test_addresses.py`, `tests/test_billing_boundary.py`.
 
 | Rule | Test(s) |
@@ -735,6 +774,12 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | C10 | `test_place_of_supply`, `test_a_picked_up_order_is_taxed_in_the_studio_province`, `test_a_picked_up_order_with_no_studio_province_says_so`, `test_an_export_collected_at_the_studio_is_taxed_there`, `test_freezing_uses_the_pickup_province` (`tests/test_place_of_supply.py`) |
 | C11 | `test_status_for_the_new_cases`, `test_an_export_is_charged_nothing_and_says_why` (`tests/test_place_of_supply.py`) |
 | C12 | `test_taxes_elsewhere_flags_pst_for_another_province`, `test_pst_for_another_province_is_charged_but_flagged` (`tests/test_place_of_supply.py`) |
+| DS1 | `test_anything_unusable_is_no_discount`, `test_a_percentage_is_capped_at_a_hundred`, `test_a_blank_label_is_none_and_spaces_collapse` (`tests/test_discounts.py`, as are the rest of DS) |
+| DS2 | `test_a_percentage_rounds_to_the_cent`, `test_a_fixed_amount_never_exceeds_what_there_is_to_discount` |
+| DS3 | `test_the_description_names_the_rate_only_for_a_percentage` |
+| DS4 | `test_tax_is_charged_on_the_discounted_subtotal`, `test_a_fixed_discount_comes_off_before_tax_too`, `test_no_discount_changes_nothing` |
+| DS5 | `test_issuing_freezes_the_discount`, `test_an_issued_invoice_ignores_a_later_discount_change`, `test_a_draft_follows_the_discount_live` |
+| DS6 | `test_both_pdf_layouts_print_the_discount_line`, `test_no_discount_prints_no_discount_line` *(the invoice page's row is unasserted)* |
 | P1 | `test_profiles_are_per_tenant` |
 | P2 | `test_profiles_are_per_tenant` (creation-on-first-use is exercised, not separately asserted) |
 | P3 | `test_the_profile_name_survives_a_plain_query` |
