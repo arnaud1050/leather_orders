@@ -29,7 +29,9 @@ demand — open the one the index points at rather than guessing from memory.
 | AI reply suggestions, image rendering, vendor API keys, prompts | [ai/CLAUDE.md](ai/CLAUDE.md), [ai/REQUIREMENTS.md](ai/REQUIREMENTS.md) |
 | **Platform admin — provisioning companies and users, impersonation, why email replaced usernames.** A host blueprint, *not* a module: it imports host models on purpose | [admin/CLAUDE.md](admin/CLAUDE.md), [admin/REQUIREMENTS.md](admin/REQUIREMENTS.md) |
 | **Feature-usage events — what's tracked, why recording can never break the action, adding an event**, and the `/admin/usage` page that reads them | [usage/CLAUDE.md](usage/CLAUDE.md), [usage/REQUIREMENTS.md](usage/REQUIREMENTS.md) |
+| **The studio's logo** — shared by invoices and catalog mode; upload, storage, the light/dark tone read from its pixels, the move out of billing | [brand/CLAUDE.md](brand/CLAUDE.md), [brand/REQUIREMENTS.md](brand/REQUIREMENTS.md) |
 | **Per-company features — the parts sold separately**, switched on per company from `/admin`; `is_enabled()`, `require()`, `has_feature()` | [features/CLAUDE.md](features/CLAUDE.md), [features/REQUIREMENTS.md](features/REQUIREMENTS.md) |
+| **Showcase — the portfolio of finished pieces** (sold per company): pieces, photos with metadata stripped, the order page's Showcase tab and its reminder, Settings → Showcase, catalog mode and its kiosk links (`/k/<token>/`, no sign-in) | [showcase/CLAUDE.md](showcase/CLAUDE.md), [showcase/REQUIREMENTS.md](showcase/REQUIREMENTS.md) |
 
 **Changing behaviour means changing the matching `REQUIREMENTS.md` rule in the
 same commit.** If a rule and the code disagree, one of them is a bug.
@@ -61,8 +63,8 @@ where it's indexed above; this is the checklist, not the reasoning.
 3. **New routes go in `app.py`**, unless a self-contained module owns them.
    Ask before restructuring into a `routes/` package.
 4. **Module boundaries are one-way.** The app talks to `billing.services`,
-   `communications.services`, `inventory.services` and `ai.services` and
-   nothing deeper; a module never imports host models
+   `communications.services`, `inventory.services`, `ai.services` and
+   `showcase.services` and nothing deeper; a module never imports host models
    (`tests/test_billing_boundary.py` and `tests/test_ai_boundary.py` enforce
    this for `billing/` and `ai/`, which may import only `db` from `models.py`
    — plus, for `ai/` and `communications/`, the root `crypto.py`, the one
@@ -70,7 +72,11 @@ where it's indexed above; this is the checklist, not the reasoning.
    call `from usage import track`: the `usage` package root is just as
    dependency-free, and `usage.store` stays off limits
    (`tests/test_usage.py`). Likewise `import features`, which imports
-   only `db` from the host (`tests/test_features.py`).
+   only `db` from the host (`tests/test_features.py`), and so does
+   `brand/` (`tests/test_brand.py`) — though billing still doesn't import
+   it: the logo reaches billing through `invoicing.set_logo_source`. `showcase/` is as
+   strict as `ai/` (`tests/test_showcase.py`); `showcase_adapter.py` is its
+   seam, like `billing_adapter.py`.
    **`admin/` is not a module and this rule doesn't apply to it** — its
    subject matter *is* `Company` and `User`, so it imports them freely. It's
    a package only because `app.py` is long enough already. See
@@ -204,12 +210,15 @@ models.py              # core SQLAlchemy models + first-boot bootstrap + run_mig
 crypto.py              # shared Fernet SecretBox — the one host helper a module may import
 sample_data.py         # demo clients/orders/invoices — imported by NOTHING at startup
 billing_adapter.py     # the ONLY file that knows billing's "subject" means an Order
+showcase_adapter.py    # the ONLY file that knows a showcase piece can come from an Order
 REQUIREMENTS.md        # core-app rules as numbered, checkable statements
 
 scripts/               # run by hand, never at startup
   seed_sample_data.py  # loads sample_data.py into a dev/demo database
   migrate.py           # applies pending migrations on purpose, and prints the diff
                        # (booting the app already does this — see docs/deployment.md)
+  import_showcase_from_site.py  # copies a website's Recent Commissions into
+                       # Showcase; dry run unless --apply, safe to re-run (SC34)
   backfill_pickup.py   # marks existing orders "picked up"; dry run lists every
                        # uninvoiced order whose total would change, --apply writes
 
@@ -217,8 +226,11 @@ admin/                 # platform admin: companies, users       -> admin/CLAUDE.
                        # NOT a module — imports host models on purpose
 usage/                 # feature-usage events + /admin/usage    -> usage/CLAUDE.md
                        # __init__ = track() for anyone; store.py = host-only
+brand/                 # the studio's logo (invoices + Showcase)  -> brand/CLAUDE.md
+                       # imports only `db`; billing gets the logo via a hook
 features/              # per-company features switched in /admin -> features/CLAUDE.md
                        # any module may import it (only `db` from the host)
+showcase/              # portfolio of finished pieces (a feature) -> showcase/CLAUDE.md
 billing/               # invoicing, Canadian sales tax          -> billing/CLAUDE.md
 communications/        # Gmail + Google Calendar integration    -> communications/CLAUDE.md
 inventory/             # materials & stock tracking             -> inventory/CLAUDE.md
@@ -257,7 +269,10 @@ Every view route is decorated `@login_required` (`Flask-Login`). `/login` (GET s
 the form, POST checks `email`/`password_hash` via `werkzeug.security`),
 `/privacy` and `/terms` are the only unauthenticated routes — the two legal
 pages have to be openable by a signed-out Google OAuth reviewer, so they're
-public on purpose and linked from the footer of every page (REQUIREMENTS `CO4b`). `login_manager.login_view = "login"`,
+public on purpose and linked from the footer of every page (REQUIREMENTS `CO4b`).
+The other exception is Showcase's **kiosk links** (`/k/<token>/…`): a capability
+URL whose token is the permission, so they ignore the session entirely, and
+app.py's staff and password-change redirects skip them (showcase `SC27`–`SC30`). `login_manager.login_view = "login"`,
 so hitting any protected route while logged out redirects to `/login?next=...` and
 bounces back after a successful sign-in.
 

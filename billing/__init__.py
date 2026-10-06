@@ -19,7 +19,8 @@ Layers, and what each is for:
   first and filters on it.
 - **`pdf.py`** — the invoice as a PDF, rendered on the server. Optional at
   runtime: without WeasyPrint the page falls back to the browser's print.
-- **`logos.py`** — the tenant's invoice logo: validation, and bytes on disk.
+- **The logo** isn't billing's: the host registers where it comes from
+  (`invoicing.set_logo_source`), and billing embeds it in the PDF.
 - **`routes.py`** — an optional blueprint with the invoice list, the
   invoice page and its PDF. A host that wants its own UI can ignore it and
   use the services directly.

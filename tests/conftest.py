@@ -44,6 +44,11 @@ os.environ["RUN_SCHEDULER"] = "0"
 # billing/config.py reads this at import, so it has to be set here too:
 # otherwise a test that uploads an invoice logo writes into the real data/.
 os.environ["BILLING_LOGO_DIR"] = tempfile.mkdtemp(prefix="atelier-test-logos-")
+# Same for brand/config.py, where the studio's logo is kept now (billing's
+# old folder above is still read once, by brand's migration).
+os.environ["BRAND_DIR"] = tempfile.mkdtemp(prefix="atelier-test-brand-")
+# Same for showcase/config.py: photos written by a test stay out of data/.
+os.environ["SHOWCASE_DIR"] = tempfile.mkdtemp(prefix="atelier-test-showcase-")
 os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GOOGLE_REDIRECT_URI"] = "http://localhost:5000/integrations/google/callback"

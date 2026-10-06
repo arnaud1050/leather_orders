@@ -75,6 +75,38 @@ rather than reading as off, a retired key kept but ignored, `require()`
 marker field (an empty post changes nothing), and a source-reading check that
 the package imports only `db` from the host, since modules will depend on it.
 
+**`tests/test_showcase.py`** defends the Showcase module
+(`showcase/REQUIREMENTS.md` `SC1`–`SC24`): the feature gate on every page
+and link, the Settings lists and their in-use rules, the order tab's
+availability, prefill and one-piece-per-order, the reminder's window (an
+order delivered before the feature arrived never nags) and its dismissal,
+publishing, withdrawing and deleting, and the photos. The privacy-critical
+check builds a JPEG carrying GPS EXIF and an orientation tag and asserts the
+stored copy has no EXIF at all and came out rotated. Order documents are
+uploaded through `documents.services` into a `tmp_path` (`DOCUMENT_DIR`
+monkeypatched); showcase photos go to the temp `SHOWCASE_DIR` that
+`conftest.py` sets before importing the app. A source-reading test pins the
+boundary (only `db` from the host, no sibling module, no adapter).
+Catalog mode's tests cover what the catalog includes, the payload carrying
+nothing from the order, a kiosk link shown once and stored hashed, every way
+a link stops (deleted, feature off, company deactivated), a kiosk link
+ignoring whoever is signed in (staff, a user owing a password change), and
+a valid link refusing a draft's or a private piece's photo. The catalog
+page's own script and service worker have no automated test; they were
+checked by hand in a browser (see the coverage note in
+`showcase/REQUIREMENTS.md`).
+`test_save_notices.py` covers its message slots separately, with the
+feature switched on.
+
+**`tests/test_import_showcase.py`** covers
+`scripts/import_showcase_from_site.py` (showcase `SC34`–`SC36`) without the
+network: `run()` takes its fetcher, and the tests hand it a fake site whose
+cards mirror bymonsieur.ca's markup. It pins the dry run writing nothing, a
+second run skipping what the first imported (and downloading nothing), a
+card with a failed photo left out whole and retried, and the title/material
+split on real caption shapes. The script is loaded by path with `importlib`,
+since `scripts/` isn't a package.
+
 **`tests/test_user_migration.py`** covers the one migration in the project
 that rebuilds a table rather than extending one — `username` out, `email` in
 (`PA24`, `PA25`). Every fixture builds the *old* schema by hand; testing
@@ -152,12 +184,19 @@ The four money files, and the single rule each exists to defend:
   Windows machine) and only run inside the Docker image — mount `tests/` into
   it and install pytest to exercise them. The route tests swap the renderer
   out, so the tenant boundary and the print fallback are checked everywhere.
-- **`tests/test_invoice_logo.py`** — the invoice logo. The rule it defends:
-  *what is stored is never the upload* — the image is re-encoded, so nothing
-  but pixels survives. Also the per-tenant storage and its path checks, the
-  settings routes, and that every layout prints it. Logos are written to a
-  temp directory set through `BILLING_LOGO_DIR` in `conftest.py`, **before
-  `app` is imported**, for the same reason `DATABASE_URL` is.
+- **`tests/test_brand.py`** — the studio's logo (`brand/`). The rule it
+  defends: *what is stored is never the upload* — the image is re-encoded,
+  so nothing but pixels survives. Also the per-company storage and its path
+  checks, Settings → General → Brand, the light/dark/opaque tone read from
+  the pixels, and the one-time move out of billing (a legacy row and file
+  built by hand, then adopted). Logos are written to a temp `BRAND_DIR`
+  (and the migration reads a temp `BILLING_LOGO_DIR`), both set in
+  `conftest.py` **before `app` is imported**, for the same reason
+  `DATABASE_URL` is. Test logos are frames, not solid blocks: a solid block
+  on transparency is *opaque* once its margins are trimmed.
+- **`tests/test_invoice_logo.py`** — billing's side only: the logo reaches
+  the PDF embedded through the registered source, every layout prints it,
+  and Settings → Invoicing's warning when the saved look would hide it.
 
 - **`tests/test_mail_attachments.py`** — attaching an order document to an
   outgoing email, which spans three parts none of which may import the

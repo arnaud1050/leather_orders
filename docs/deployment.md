@@ -34,9 +34,11 @@ allocated to another container on the host.
   `harfbuzz-subset` for WeasyPrint, and `font-inter` because the image has no fonts
   of its own and the renderer fetches none. Drop one and the app still boots — the
   invoice page just falls back to the browser's print dialog, or prints in a
-  fallback font. Invoice logos are files under `data/billing_logos/` (the
-  same bind-mounted volume as the database, so they survive a rebuild and
-  belong in the same backup). Only
+  fallback font. The studio's logo is a file under `data/brand/`
+  (`BRAND_DIR`; the same bind-mounted volume as the database, so it survives
+  a rebuild and belongs in the same backup). Logos used to live under
+  `data/billing_logos/`; the first boot after the move copies them across
+  and empties that folder (brand BL15). Only
   real difference between the two: bound port (5013 vs 5555, in both `EXPOSE` and the
   gunicorn `--bind` in `CMD`). If you rename the Flask instance variable in `app.py`
   (currently `app`), update the `CMD` line in both to match.
@@ -164,6 +166,26 @@ without it, the OAuth callback saw the request as plain http (what gunicorn
 actually received from nginx) rather than https, and oauthlib refused to
 parse it ("OAuth 2 MUST utilize https"). Re-check this default if a host
 port is ever published again.
+
+**Importing a studio's existing website into Showcase.** For a studio whose
+site already shows its pieces (bymonsieur.ca's Recent Commissions), run
+`scripts/import_showcase_from_site.py` once per deployment, inside the app's
+container so it writes to that deployment's database and photo folder.
+Switch Showcase on for the company first (Admin → company → Features), then
+a dry run, which lists every piece and writes nothing:
+
+```bash
+docker compose exec atelier-orders python scripts/import_showcase_from_site.py --company "By Monsieur" --site https://bymonsieur.ca
+```
+
+then the same with `--apply`. For demo:
+`docker compose -f docker-compose-demo.yml exec demo python scripts/import_showcase_from_site.py …`,
+naming the demo database's own company. Each piece records the card it came
+from, so running it again only adds what's new on the site, and a card whose
+download failed is picked up next time. bymonsieur.ca's full gallery is about
+254 pieces and 346 photos, roughly 120 MB of re-encoded photos per deployment
+(the Showcase cap is 500 MB per company), and a few minutes to download.
+Rules: showcase `SC34`–`SC36`.
 
 To rebuild after changing `requirements.txt` or app code:
 `docker compose up --build` (prod) or

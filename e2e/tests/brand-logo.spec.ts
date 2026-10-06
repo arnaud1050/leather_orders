@@ -3,26 +3,27 @@ import { feature, description } from "allure-js-commons";
 import { SettingsPage } from "../pages/SettingsPage";
 
 /**
- * Invoice appearance — a logo the browser refuses before uploading.
+ * Settings > General > Brand — a logo the browser refuses before uploading.
  *
- * `static/assets/js/invoice-appearance.js` checks a chosen file's type and
- * size and, when it won't do, writes the reason into the section's
- * `[data-logo-error]` box and sends nothing. No test covered that script,
- * and the box now uses the red save-notice style (MOD8) — so this checks
- * the message appears, in the section, in red, and that no upload went out.
+ * The shared `upload-tile.js` checks a chosen file's type and size and,
+ * when it won't do, writes the reason into the section's `#logo-error` box
+ * and sends nothing. The box uses the red save-notice style (MOD8) — so
+ * this checks the message appears, in the section, in red, and that no
+ * upload went out. (The logo moved here from Invoice appearance when it
+ * became the studio's: brand/REQUIREMENTS.md BL11.)
  *
  * Nothing here uploads anything, so the company keeps no logo and the
  * other browser projects see the same "Add logo" tile.
  */
 
 const RED = "rgb(194, 59, 52)";
-const LOGO_MAX_BYTES = 10 * 1024 * 1024; // billing/config.py's default
+const LOGO_MAX_BYTES = 10 * 1024 * 1024; // brand/config.py's default
 
-test.describe("Invoice appearance — a refused logo is explained in its section", () => {
+test.describe("Brand — a refused logo is explained in its section", () => {
   test("a file that isn't an image is refused in red, and nothing is uploaded", async ({
     adminPage,
   }) => {
-    await feature("Invoicing");
+    await feature("Settings");
     await description(
       "Choosing a text file as the logo: the section shows a red message saying a logo needs to be a " +
         "PNG or JPEG, the file input is cleared, and no request reaches the upload route."
@@ -30,12 +31,12 @@ test.describe("Invoice appearance — a refused logo is explained in its section
     const settings = new SettingsPage(adminPage);
     const uploads: string[] = [];
     adminPage.on("request", (request) => {
-      if (request.method() === "POST" && request.url().includes("/settings/invoicing/logo")) {
+      if (request.method() === "POST" && request.url().includes("/settings/brand/logo")) {
         uploads.push(request.url());
       }
     });
 
-    await settings.gotoInvoicing();
+    await settings.gotoGeneral();
     await expect(settings.logoError()).toBeHidden();
     await settings.logoInput().setInputFiles({
       name: "logo.txt", mimeType: "text/plain", buffer: Buffer.from("not an image"),
@@ -47,7 +48,7 @@ test.describe("Invoice appearance — a refused logo is explained in its section
     await expect(error).toHaveClass(/save-notice--error/);
     await expect(error).toHaveCSS("border-left-color", RED);
     await expect(
-      adminPage.locator("section").filter({ has: adminPage.getByRole("heading", { name: "Invoice appearance" }) })
+      adminPage.locator("section").filter({ has: adminPage.getByRole("heading", { name: "Brand" }) })
         .locator("#logo-error")
     ).toBeVisible();
     await expect(settings.logoInput()).toHaveValue("");
@@ -55,7 +56,7 @@ test.describe("Invoice appearance — a refused logo is explained in its section
   });
 
   test("a logo over the size limit is refused before it uploads", async ({ adminPage }) => {
-    await feature("Invoicing");
+    await feature("Settings");
     await description(
       "A PNG one byte over the limit: refused in the browser with the limit named, so a 10 MB upload " +
         "isn't sent only for the server to turn it down."
@@ -63,12 +64,12 @@ test.describe("Invoice appearance — a refused logo is explained in its section
     const settings = new SettingsPage(adminPage);
     const uploads: string[] = [];
     adminPage.on("request", (request) => {
-      if (request.method() === "POST" && request.url().includes("/settings/invoicing/logo")) {
+      if (request.method() === "POST" && request.url().includes("/settings/brand/logo")) {
         uploads.push(request.url());
       }
     });
 
-    await settings.gotoInvoicing();
+    await settings.gotoGeneral();
     const max = Number(await settings.logoInput().getAttribute("data-max-bytes"));
     expect(max, "the page should state the limit it enforces").toBe(LOGO_MAX_BYTES);
     await settings.logoInput().setInputFiles({

@@ -112,13 +112,15 @@ The seam that resolves it:
   background (and crashes on `calc()` there). **Keep the closing block's
   markup free of whitespace between tags** (`PD8a`); `tests/test_invoice_pdf.py` checks the real rendered text with
   `pdftotext`, but only inside the Docker image.
-- **`logos.py`** — the invoice logo: validation and bytes on disk, under
-  `data/billing_logos/<company_id>/` (`BILLING_LOGO_DIR`). Same shape as
-  `documents/storage.py`, but **billing's own copy** — importing a sibling
-  module would break the boundary. The upload is always re-encoded to PNG
-  (`L2`), and reaches the PDF as a `data:` URI on `Branding`, built by
-  `invoicing.branding_for` — **use that, not `profile.branding`, wherever a
-  PDF is rendered**, or the logo silently goes missing.
+- **The logo isn't billing's any more.** It was (`logos.py`, under
+  `data/billing_logos/`) until it became the studio's and moved to
+  [brand/](../brand/CLAUDE.md) on 2026-10-06. Billing now only embeds one:
+  the host registers a source with `invoicing.set_logo_source(fn)` (PNG
+  bytes per company — app.py passes `brand.logo_png`), and
+  `invoicing.branding_for` puts it on `Branding` as a `data:` URI (`L7`) —
+  **use that, not `profile.branding`, wherever a PDF is rendered**, or the
+  logo silently goes missing. `billing_profiles.logo_filename` and
+  `config.LOGO_DIR` remain only for brand's one-time migration.
 - **The URL fetcher is WeasyPrint-version-specific.** `pdf._fetcher` is a
   `URLFetcher` subclass, the API of WeasyPrint 70; older releases took a
   plain function returning a dict, and 70 rejects that with an assertion

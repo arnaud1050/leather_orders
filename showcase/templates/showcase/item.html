@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ sc.item.title }} — Showcase — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <a class="back-link" href="{{ url_for('showcase.showcase_list') }}">&larr; Showcase</a>
+
+  <header class="detail-header">
+    <h1>{{ sc.item.title }}</h1>
+    <p class="detail-subtitle">
+      {% if sc.order %}From the order <a href="{{ sc.order.showcase_url }}?return_to={{ request.path|urlencode }}">{{ sc.order.item }}</a> for {{ sc.order.client_name }}
+      {% else %}A piece with no order{% endif %}
+    </p>
+  </header>
+
+  {% from "_save_notice.html" import page_notice %}
+  {{ page_notice(notice, ['photos', 'details', 'piece']) }}
+
+  {% include "showcase/_editor.html" %}
+
+</div>
+{% endblock %}

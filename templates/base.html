@@ -56,6 +56,16 @@
         {% if client_mail %}<span class="nav-badge nav-badge--mail" title="{{ client_mail }} unread email{{ 's' if client_mail != 1 }} from clients">{{ client_mail }}</span>{% endif %}
       </a>
       <a href="{{ url_for('orders_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'orders' else '' }}">Orders</a>
+      {# Sold per company (features/). Purple: delivered orders nobody has
+         decided about yet — "worth knowing", from showcase/routes.py's
+         context processor (SC21). #}
+      {% if has_feature('showcase') %}
+      <a href="{{ url_for('showcase.showcase_list') }}" class="view-switch__link {{ 'is-active' if active_view == 'showcase' else '' }}">
+        Showcase
+        {% set showcase_waiting = showcase_awaiting_count() %}
+        {% if showcase_waiting %}<span class="nav-badge nav-badge--new" title="{{ showcase_waiting }} delivered order{{ 's' if showcase_waiting != 1 }} waiting for a showcase decision">{{ showcase_waiting }}</span>{% endif %}
+      </a>
+      {% endif %}
       {# Badge count comes from the inventory module's own context processor
          (inventory/routes.py's _inject_nav_badge) — same "available on every
          page without each route passing it" shape as the two badges below. #}
@@ -138,7 +148,7 @@
        screen: Google's OAuth verification checks that both are reachable
        without signing in. #}
     <p class="site-footer__legal">
-      <span class="site-footer__version">v1.3.0</span>
+      <span class="site-footer__version">v1.4.0</span>
       <span aria-hidden="true">·</span>
       <a href="{{ url_for('privacy') }}">Privacy Policy</a>
       <span aria-hidden="true">·</span>

@@ -51,7 +51,30 @@ Company(id, name, timezone, is_active,                          # tenant boundar
         order_columns, client_columns, exclude_from_usage)      # to billing.BillingProfile, see below
 UsageEvent(id, created_at, company_id, user_id, event, props)   # usage/store.py — see usage/CLAUDE.md
 CompanyFeature(id, company_id, feature_key, enabled_at)         # features/ — a row means "on"; keys
-                                                                # from features.FEATURES (FE1–FE9)
+                                                                # from features.FEATURES (FE1–FE10)
+CompanyBrand(company_id, logo_filename)                         # brand/ — the studio's logo, file under
+                                                                # data/brand/<company_id>/ (BL1–BL15);
+                                                                # billing_profiles.logo_filename is legacy
+                                                                # and NULL after brand's migration
+# showcase/ — see showcase/CLAUDE.md. No foreign key into orders: order_id
+# is a plain integer resolved only through showcase_adapter.py.
+ShowcaseSettings(company_id, default_visibility)                # lazily created, "public" by default
+ShowcaseCategory(id, company_id, label, sort_order, is_active)  # hide-don't-delete, like OrderType
+ShowcaseSpecField(id, company_id, label, sort_order, is_active) # the studio's fixed spec labels
+ShowcaseItem(id, company_id, order_id, title, description,      # one piece; ≤1 per order; status
+             category_id, visibility, status, published_at,     # draft/published/withdrawn,
+             created_at, updated_at, source_ref)                # visibility private/in_person/public;
+                                                                # source_ref: the website card an
+                                                                # import copied it from (SC34)
+ShowcaseSpecValue(id, item_id, field_id, value)                 # blank = not shown
+ShowcasePhoto(id, company_id, item_id, stored_filename,         # re-encoded copy, EXIF stripped;
+              thumbnail_filename, width, height, size_bytes,    # position 0 is the cover
+              position, source_document_id, created_at)
+ShowcaseDismissal(id, company_id, order_id, dismissed_at,       # "Not showcasing this one"
+                  dismissed_by)
+ShowcaseExcludedOrderType(id, company_id, order_type_id)        # order types never showcased
+ShowcaseKioskLink(id, company_id, name, token_hash,             # catalog mode on one device; only
+                  created_at, last_used_at, revoked_at)         # the token's SHA-256 is stored
 User(id, company_id, email, full_name, password_hash,           # email is the login identity, and
      signature, is_active, is_platform_admin)                   # the only globally unique column
                                                                 # company_id is NULL for platform

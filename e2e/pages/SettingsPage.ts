@@ -30,6 +30,12 @@ export class SettingsPage extends BasePage {
     });
   }
 
+  async gotoGeneral(): Promise<void> {
+    await step("Go to Settings > General", async () => {
+      await gotoPath(this.page, "/settings/general");
+    });
+  }
+
   async gotoInvoicing(): Promise<void> {
     await step("Go to Settings > Invoicing", async () => {
       await gotoPath(this.page, "/settings/invoicing");
@@ -49,10 +55,10 @@ export class SettingsPage extends BasePage {
     });
   }
 
-  /** Invoice appearance's logo file input — one id whether the section
-   * shows the "Add logo" tile or a saved logo's Replace button. */
+  /** The Brand section's logo file input (Settings > General) — one id
+   * whether it shows the "Add logo" tile or a saved logo's Replace button. */
   logoInput(): Locator {
-    return this.page.locator("#invoice-logo-input");
+    return this.page.locator("#brand-logo-input");
   }
 
   /** Where the shared upload-tile.js reports a logo it refused before any

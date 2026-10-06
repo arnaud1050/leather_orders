@@ -58,8 +58,8 @@ class Branding:
 
     template: str | None = None
     primary_color: str | None = None
-    # The logo, already as a `data:` URI — built by the service from bytes
-    # this module re-encoded itself (billing/logos.py), so a template can
+    # The logo, already as a `data:` URI — built by the service from the
+    # PNG bytes the host hands it (`set_logo_source`), so a template can
     # put it straight into an <img> and the renderer has nothing to fetch.
     logo_data_uri: str | None = None
     # The optional page footer. The text is printed as HTML (escaped),

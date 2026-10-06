@@ -184,20 +184,6 @@ def preview_pdf():
     )
 
 
-@bp.route("/invoices/logo.png")
-@login_required
-def logo():
-    """The signed-in tenant's own logo, for the settings page to show.
-
-    No id in the URL: whose logo it is comes from the session, so there is
-    nothing to guess at. Never cached — a replaced logo has to show at once.
-    """
-    path = invoicing.logo_path(current_user.company_id)
-    if path is None:
-        abort(404)
-    return send_file(path, mimetype="image/png", max_age=0)
-
-
 @bp.route("/subjects/<int:subject_id>/invoice", methods=["POST"])
 @login_required
 def create(subject_id: int):

@@ -17,14 +17,13 @@ from datetime import date
 
 from models import db
 
-from billing import config, logos, tax
+from billing import config, tax
 from billing.documents import Billable, Branding, InvoiceDocument, IssuerDetails
-from billing.logos import LogoError
 from billing.models import BillingProfile, Invoice, InvoiceTaxLine, next_invoice_number
 
 __all__ = [
-    "Amounts", "LogoError", "amounts_for", "branding_for", "clean_notes", "create_invoice",
-    "document_for", "documents_for", "logo_path", "remove_logo", "set_logo",
+    "Amounts", "amounts_for", "branding_for", "clean_notes", "create_invoice",
+    "document_for", "documents_for", "set_logo_source",
     "get_invoice", "invoice_for_subject", "list_invoices", "next_number",
     "profile_for", "set_status", "update_profile",
 ]
@@ -118,52 +117,34 @@ def update_profile(company_id: int, display_name: str = "", **fields) -> Billing
     return profile
 
 
+# The tenant's logo, as PNG bytes, from wherever the host keeps it (the
+# studio's brand, brand/ in this app). Billing doesn't own a logo any more:
+# it only embeds one. Unset, invoices simply print without a logo.
+_logo_source = None
+
+
+def set_logo_source(fn) -> None:
+    """Register `fn(company_id) -> bytes | None`, the tenant's logo as PNG
+    bytes. The host must hand over PNG it re-encoded itself: the PDF
+    renderer accepts an embedded PNG and nothing else (PD4)."""
+    global _logo_source
+    _logo_source = fn
+
+
 def branding_for(company_id: int) -> Branding:
     """How this tenant's invoices look — always the live setting, for every
     invoice however long ago it was issued.
 
-    Includes the logo, embedded. A logo whose file has gone missing is
-    simply left off: an invoice without its logo is still an invoice.
+    Includes the logo, embedded (L7). No logo, or one whose file has gone
+    missing, is simply left off: an invoice without its logo is still an
+    invoice.
     """
-    profile = profile_for(company_id)
-    branding = profile.branding
-    png = logos.read(company_id, profile.logo_filename)
-    if png is None:
+    branding = profile_for(company_id).branding
+    png = _logo_source(company_id) if _logo_source else None
+    if not png:
         return branding
     encoded = base64.b64encode(png).decode("ascii")
     return replace(branding, logo_data_uri=f"data:image/png;base64,{encoded}")
-
-
-def set_logo(company_id: int, data: bytes, display_name: str = "") -> BillingProfile:
-    """Replace this tenant's logo with an uploaded image.
-
-    Raises `LogoError` — with a message meant for the person uploading — if
-    the bytes aren't a usable PNG or JPEG, and in that case leaves the
-    existing logo exactly as it was.
-    """
-    png = logos.normalise(data)
-    profile = profile_for(company_id, display_name)
-    previous = profile.logo_filename
-    profile.logo_filename = logos.save(company_id, png)
-    db.session.flush()
-    logos.delete(company_id, previous)
-    return profile
-
-
-def remove_logo(company_id: int) -> BillingProfile:
-    """Take the logo off. A real delete, not a hide: the look is live, so
-    no invoice holds a reference to the old file."""
-    profile = profile_for(company_id)
-    previous = profile.logo_filename
-    profile.logo_filename = None
-    db.session.flush()
-    logos.delete(company_id, previous)
-    return profile
-
-
-def logo_path(company_id: int) -> str | None:
-    """Where this tenant's logo file is, for serving it — or None."""
-    return logos.path_for(company_id, profile_for(company_id).logo_filename)
 
 
 def next_number(company_id: int, display_name: str = "", today: date | None = None) -> str:

@@ -242,10 +242,11 @@ for the reminder.
 
 ### Settings → Showcase (one-time setup per studio)
 
-- **Categories**: add, rename, drag to reorder, hide.
-- **Spec fields**: add, rename, drag to reorder, hide. Starts **empty**
-  (hard rule 16: a fresh tenant gets no dataset); `sample_data.py` can load
-  leather-flavoured fields for demos.
+- **Categories**: add, drag to reorder, hide (delete while unused).
+- **Spec fields**: add, drag to reorder, hide (delete while unused).
+  Starts **empty** (hard rule 16: a fresh tenant gets no dataset).
+  *As built:* no rename for either, matching every other company list in
+  the app — hide the old label and add the new one.
 - **Order types never showcased**: a checkbox per order type.
   Sampling/NDA and Subcontract/white-label are the obvious ones to tick: an
   NDA forbids it, and a white-label piece's brand isn't the studio's to
@@ -271,7 +272,12 @@ page, and the nav's **Showcase** item carries a purple count of them
 ("worth knowing", hard rule 7, no new badge weight). The badge stays until
 the studio either creates the item or presses **"Not showcasing this
 one"**. The dismissal is reversible from the order's Showcase tab, in case
-the client later agrees.
+the client later agrees. *As built:* only orders delivered (pickup date,
+else due date) on or after the day Showcase was switched on nag, or the
+first day would flood the badge with every order ever delivered; older ones
+can still be showcased from their tab. Until a piece exists, the tab asks
+**"Showcase this piece"** / **"Not showcasing this one"** first, and the
+form below appears once the prefilled draft exists.
 
 **Order page → new "Showcase" tab** (fourth, after Details / Materials /
 Billing; present only when the flag is on, the order is delivered and its
@@ -340,6 +346,14 @@ edit their content, since the next sync would overwrite it.
 **Backfill:** a one-time script imports bymonsieur's existing Recent
 Commissions into the Showcase (as published items with no order, already
 linked to their website cards), so catalog mode isn't empty on day one.
+*Built ahead of step 4* (2026-10-06): `scripts/import_showcase_from_site.py`
+(SC34–SC36) reads the public homepage, so it needed nothing of the sync.
+Each piece records its card in `ShowcaseItem.source_ref`
+("bymonsieur.ca/uploads/<first photo>.webp"). **Step 4 must use it:** the
+receiver should match an incoming piece with a `source_ref` to the existing
+website product whose first photo is that file, and adopt that product
+(regroup it as `showcase-<id>`) instead of creating a second card — or the
+first sync duplicates the whole gallery.
 
 ### Sharing to social media (by hand)
 
@@ -415,14 +429,27 @@ first loses nothing. Undecided as of 2026-10-05.
 ### Build order
 
 1. ~~The per-company feature mechanism and the `/admin` toggle.~~
-   *Done* — `features/` (FE1–FE9) and the company page's Features section
+   *Done* — `features/` (FE1–FE10) and the company page's Features section
    (admin `PA8a`). The `showcase` key exists in the catalog; switching it
    on has no visible effect until step 2 lands.
-2. Module skeleton: data, Settings → Showcase, the item form (order tab +
-   Showcase page), photo copying with EXIF stripping, the nagging reminder.
-3. Catalog mode and kiosk links: useful immediately, touches no website.
+2. ~~Module skeleton: data, Settings → Showcase, the item form (order tab +
+   Showcase page), photo copying with EXIF stripping, the nagging reminder.~~
+   *Done* — `showcase/` (SC1–SC24), `showcase_adapter.py`, and the order
+   guide's after-delivery step. Beyond the plan: a star button to make a
+   photo the cover without dragging (drag does nothing on a touch screen),
+   and the main nav now wraps instead of overflowing. Not yet: the
+   `sample_data.py` demo lists, and `ShowcasePublication`, which arrives
+   with step 4.
+3. ~~Catalog mode and kiosk links: useful immediately, touches no website.~~
+   *Done* — `showcase/kiosk.py`, `/showcase/present`, Settings → Showcase's
+   Catalog mode section (SC25–SC33). As specced, plus: a deactivated
+   company's links stop too; links show when they were last opened; the
+   QR code is drawn server-side (`qrcode`, a new pure-Python dependency).
+   The catalog page's script and service worker are checked by hand, not
+   by the test suite.
 4. Webhook sender, `showcase_receiver.py` in `website_modules`,
-   bymonsieur's mapping and "Managed in Atelier" cards, the backfill script.
+   bymonsieur's mapping and "Managed in Atelier" cards, adopting the cards
+   the import already brought in (by `source_ref`, see Backfill above).
 5. The Share button.
 
 Each step ships with its tests and its `REQUIREMENTS.md` rules, and the

@@ -172,6 +172,51 @@ def _invoice_for(test_client, order):
     return Invoice.query.one()
 
 
+def test_every_showcase_page_is_wired(logged_in, company, order):
+    """Sold per company, so off for `studio`: switched on here, with a
+    delivered order (the tab before and after its piece exists), a piece
+    with no order, and something in every Settings list."""
+    from datetime import date
+
+    import features
+    from showcase import services as showcase_services
+    from showcase.models import ShowcaseCategory, ShowcaseSpecField
+
+    features.set_enabled(company.id, "showcase", True)
+    order.status, order.pickup_date = "delivered", date.today()
+    db.session.add(OrderType(company_id=company.id, label="Custom Order", sort_order=0))
+    showcase_services.add_row(ShowcaseCategory, company.id, "Bags")
+    showcase_services.add_row(ShowcaseSpecField, company.id, "Leather")
+    loose = showcase_services.create_item(company.id, "Loose piece")
+    db.session.commit()
+
+    tab = f"/orders/{order.id}/showcase"
+    pages = [(url, "showcase_notice") for url in
+             ("/showcase", "/settings/showcase", f"/showcase/items/{loose.id}", tab)]
+    named = _check_wiring(logged_in, pages)
+    logged_in.post(f"/showcase/orders/{order.id}/start", data={"next": tab})
+    named += _check_wiring(logged_in, [(tab, "showcase_notice")])
+    assert named >= 10
+
+
+def test_a_showcase_save_reports_in_its_section(logged_in, company):
+    import features
+    from showcase import services as showcase_services
+
+    features.set_enabled(company.id, "showcase", True)
+    item = showcase_services.create_item(company.id, "Tote")
+    db.session.commit()
+    url = f"/showcase/items/{item.id}"
+    body = logged_in.post(url, data={"title": "Tote", "visibility": "public", "next": url,
+                                     "notice_section": "details"},
+                          follow_redirects=True).get_data(as_text=True)
+    assert located(body, "Saved.") == ("details", "success")
+    body = logged_in.post(url, data={"title": "Tote", "visibility": "public", "next": url,
+                                     "action": "publish", "notice_section": "details"},
+                          follow_redirects=True).get_data(as_text=True)
+    assert located(body, "Add at least one photo before publishing.") == ("details", "error")
+
+
 def test_every_admin_page_is_wired(admin_client, company, user):
     pages = [(url.format(company=company.id), key) for url, key in ADMIN_PAGES]
     assert _check_wiring(admin_client, pages) >= 8
@@ -184,7 +229,7 @@ def test_every_admin_page_is_wired(admin_client, company, user):
 LEAVES_A_NOTICE = re.compile(
     r"\b(_flash|_report|_flash_settings_notice|_flash_order_notice|_refuse_locked_lines|_thread_action|_event_refused)\(")
 NAMES_ITS_OWN_SECTION = {"communications.google_connect"}
-TEMPLATE_DIRS = ["templates", "communications", "ai", "inventory", "admin"]
+TEMPLATE_DIRS = ["templates", "communications", "ai", "inventory", "admin", "showcase"]
 FORM = re.compile(r"<form\b[^>]*?url_for\('([\w.]+)'.*?</form>", re.S)
 
 
@@ -712,8 +757,15 @@ def test_invoice_appearance_reports_in_its_section(logged_in, company):
     body = _post(logged_in, "/settings/invoicing/appearance", {"primary_color": "nope"})
     assert located(body, "wasn't recognised") == ("appearance", "error")
 
-    body = _post(logged_in, "/settings/invoicing/logo/delete", {})
-    assert located(body, "Logo removed.") == ("appearance", "success")
+
+def test_brand_saves_report_in_the_brand_section(logged_in, company):
+    """The logo moved to Settings → General → Brand; its routes name the
+    slot themselves, since upload-tile.js posts the moment a file is chosen."""
+    body = _post(logged_in, "/settings/brand/logo/delete", {})
+    assert located(body, "Logo removed.") == ("brand", "success")
+
+    body = _post(logged_in, "/settings/brand/logo", {})
+    assert located(body, "Choose an image file first.") == ("brand", "error")
 
 
 def test_unit_saves_report_under_units(logged_in, studio):

@@ -37,11 +37,17 @@ them is a bug. [CLAUDE.md](CLAUDE.md) explains the *why*.
   `usage.store` — so depending on it costs a module nothing of its
   boundary (hard rule 4).
 
+- **FE10 — When a feature began.** `enabled_since(company_id, key)` is the
+  start of the company's current spell of the feature (naive UTC), or None
+  without it. Switching off and on again starts a new spell. A feature may
+  use it to scope itself to what happened after it arrived (Showcase's
+  reminder does, `SC20`).
+
 Switching features is a platform-admin action: see admin `PA8a`.
 
 ## Test coverage map
 
 | Rules | Where |
 | --- | --- |
-| FE1–FE9 | `tests/test_features.py` |
+| FE1–FE10 | `tests/test_features.py` |
 | admin PA8a | `tests/test_features.py` — the admin toggle; `tests/test_admin.py` — the route is guarded |

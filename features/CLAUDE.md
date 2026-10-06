@@ -11,9 +11,9 @@ does that from the company's page in `/admin` (a **Features** section, one
 checkbox per catalog entry), and this package is the one place the rest of
 the app asks "does this studio have X?".
 
-The first entry is `showcase` (the portfolio / website sync / catalog
-mode planned in [docs/roadmap.md](../docs/roadmap.md)). Until that module
-ships, switching it on changes nothing a studio can see.
+The first entry is `showcase` — the portfolio module in
+[showcase/](../showcase/CLAUDE.md), which also uses `enabled_since()` so
+its reminder only covers orders delivered after the feature arrived.
 
 ## Shape, and why
 

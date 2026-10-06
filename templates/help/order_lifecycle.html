@@ -349,7 +349,12 @@
         <p class="stage__name">Delivered</p>
         <span class="stage__tag">Closed</span>
         <p class="stage__body">The client has the piece. Nothing more is owed. It keeps its place on the schedule — those weeks were genuinely spent on it — and simply scrolls out of view as time moves on. It stays in the orders list and on the client's record for good.</p>
+        {% if has_feature is defined and has_feature('showcase') %}
+        <p class="stage__body">With Showcase, a delivered order also gets a <strong>Showcase</strong> tab, and a purple reminder on it and on the menu until you decide: showcase the piece (pick its photos, write a few lines, choose where it's shown) or say you're not showcasing this one. Order types you've excluded in Settings → Showcase never ask.</p>
+        <p class="stage__next"><strong>Next:</strong> for the order, nothing — this is the end of the road. The piece can live on in the showcase.</p>
+        {% else %}
         <p class="stage__next"><strong>Next:</strong> nothing — this is the end of the road.</p>
+        {% endif %}
       </div>
 
       <div class="stage stage--cancelled">

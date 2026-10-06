@@ -1,0 +1,49 @@
+{# The order page's Showcase tab, included by order_page.html. Context: `sc`
+   (routes.order_tab_context). Until the order has a piece, the tab asks the
+   question the reminder is about (SC21): showcase it, or say it won't be.
+   Slot: decision; the editor brings photos, details and piece. #}
+{% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+
+{% if sc.item %}
+  {% set notice = sc.notice %}
+  {{ page_notice(notice, ['photos', 'details', 'piece']) }}
+  {% include "showcase/_editor.html" %}
+{% else %}
+  {{ page_notice(sc.notice, ['decision']) }}
+  <section class="detail-lifecycle">
+    <h2>Showcase this piece?</h2>
+    {{ notice_slot(sc.notice, 'decision') }}
+    <p class="detail-note">
+      {% if sc.dismissed %}
+      You decided not to showcase this one. Change your mind any time.
+      {% else %}
+      Add <strong>{{ sc.order_summary.item }}</strong> to the studio's portfolio:
+      pick its photos, write a few lines and choose where it's shown. Nothing is
+      published until you say so.
+      {% endif %}
+    </p>
+    <div class="lifecycle-actions">
+      <form method="post" action="{{ url_for('showcase.start_for_order', order_id=sc.order_summary.id) }}">
+        {{ notice_field('decision') }}
+        <input type="hidden" name="next" value="{{ sc.next_url }}">
+        <button type="submit" class="btn-primary">Showcase this piece</button>
+      </form>
+      {% if sc.dismissed %}
+      <form method="post" action="{{ url_for('showcase.undismiss_order', order_id=sc.order_summary.id) }}">
+        {{ notice_field('decision') }}
+        <input type="hidden" name="next" value="{{ sc.next_url }}">
+        <button type="submit" class="btn-secondary">Remind me again</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('showcase.dismiss_order', order_id=sc.order_summary.id) }}">
+        {{ notice_field('decision') }}
+        <input type="hidden" name="next" value="{{ sc.next_url }}">
+        <button type="submit" class="btn-secondary">Not showcasing this one</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if sc.awaiting %}
+    <p class="detail-note">This order stays on the Showcase reminder until you choose one.</p>
+    {% endif %}
+  </section>
+{% endif %}

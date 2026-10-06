@@ -36,3 +36,7 @@ google-genai>=1.0     # image rendering ("nano banana"), a Google AI Studio key
 # is missing — a stock Windows machine — the app boots and the invoice page
 # falls back to the browser's print dialog.
 weasyprint>=70.0
+
+# Showcase (see showcase/): the QR code for a catalog-mode link, so a tablet
+# can open it by camera. Pure Python, SVG output, no system library.
+qrcode>=7.4

@@ -81,6 +81,16 @@ EVENTS: dict[str, tuple[str, str, bool]] = {
     "sender_rule.created": ("Mail & calendar", "Sender rule created", False),
     "calendar.event_created": ("Mail & calendar", "Calendar event created", False),
     "calendar.event_updated": ("Mail & calendar", "Calendar event edited", False),
+    # Showcase — sold per company (features/), so its counts also say
+    # whether the tier is worth selling
+    "view.showcase": ("Showcase", "Showcase page", True),
+    "showcase.item_created": ("Showcase", "Piece created", False),
+    "showcase.photo_added": ("Showcase", "Photo added", False),
+    "showcase.item_published": ("Showcase", "Piece published", False),
+    "showcase.item_withdrawn": ("Showcase", "Piece withdrawn", False),
+    "showcase.order_dismissed": ("Showcase", "Order not showcased", False),
+    "view.catalog": ("Showcase", "Catalog mode opened", True),
+    "showcase.kiosk_link_created": ("Showcase", "Device link created", False),
     # Settings — one event, the section says which
     "settings.changed": ("Settings", "Settings changed", False),
 }

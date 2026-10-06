@@ -46,6 +46,9 @@ VIEW_ENDPOINTS: dict[str, tuple[str, dict]] = {
     "communications.client_emails": ("view.client_emails", {}),
     "order_lifecycle_help": ("view.help", {"page": "orders"}),
     "client_lifecycle_help": ("view.help", {"page": "clients"}),
+    "showcase.showcase_list": ("view.showcase", {}),
+    # Signed-in only: a kiosk link has no user to count (US4).
+    "showcase.present": ("view.catalog", {}),
     # Not views in the dashboard sense, but GETs with nothing to decide:
     # serving the file is the use.
     "billing.invoice_pdf": ("invoice.pdf_downloaded", {}),

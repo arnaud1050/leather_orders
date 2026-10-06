@@ -285,9 +285,9 @@ carrying `return_to` like everything else. `invoice_page()` renders one invoice:
 the server by `billing/pdf.py` from its own standalone template, not this page.
 Its layout, colour and logo are the company's choice, under **Settings → Invoicing →
 Invoice appearance** (`update_invoice_appearance()`; a "Preview saved look" link
-there opens a sample at `/invoices/preview.pdf`), along with a logo
-(`upload_invoice_logo()` / `delete_invoice_logo()`, shown on the page on the
-company's primary colour, as the Banded layout prints it) — and that choice applies to
+there opens a sample at `/invoices/preview.pdf`); the logo is the studio's, set
+under **Settings → General → Brand** (`upload_logo()` / `delete_logo()`, shown
+on white and on near-black) — and that choice applies to
 every invoice, issued or not, since only what an invoice says is frozen.
 Where that renderer can't load (a Windows dev machine), the button is instead
 "Print / save as PDF" (`window.print()`), which produces the document alone via
@@ -356,16 +356,16 @@ for anything else.
   line via `.field-row`, which wraps rather than squeezing) and **Invoicing**
   (`update_invoicing_settings()` — number prefix, which also shows what the next
   number will be, plus payment instructions), and **Invoice appearance**
-  (top to bottom: a **Logo** tile, `upload_invoice_logo()` /
-  `delete_invoice_logo()`, uploading on choose or drop like an order's "Add
-  file"; the **Layout** as two radio cards, Classic and Banded, each with a
+  (top to bottom: a **Logo** line pointing to Settings → General → Brand,
+  where the logo is uploaded, with an amber warning when the saved layout and
+  colour would hide it; the **Layout** as two radio cards, Classic and Banded, each with a
   miniature invoice; and the **Accent colour**, shown only for Banded: a
   swatch that opens a picker the page draws itself, beside a hex box; and the
   **Footer**: a checkbox, then (while ticked) its text and two more pickers,
   for its background and text colours — all saved by
   `update_invoice_appearance()`, with a "Preview saved look" link. The
-  script is `static/assets/js/invoice-appearance.js`; the miniatures and the
-  logo tile follow the colour live through `--look-primary`. Every route
+  script is `static/assets/js/invoice-appearance.js`; the miniatures follow
+  the colour live through `--look-primary`. Every route
   shows its refusals inside the section, and the page reopens there — see
   "Saving keeps your place" below). The first two are frozen onto an invoice when it's
   issued; appearance never is, and the page says so. Grouped together because all
@@ -592,7 +592,26 @@ bottom of `timeline.html`. Each modal has a link out to a full page:
   section, and the payments section, i.e. everything money-related grouped together,
   see [docs/data-model.md](data-model.md)). All three render `order_page.html`, switched on a `section`
   context var ("details" / "materials" / "billing"), and all tab links carry
-  `return_to` through.
+  `return_to` through. **A fourth tab, "Showcase"** (`order_showcase()` at
+  `/orders/<id>/showcase`), appears only for a company with the Showcase
+  feature, on a delivered order of an allowed type or one that already has a
+  piece — its contents and every form in it belong to the `showcase/` module
+  ([showcase/CLAUDE.md](../showcase/CLAUDE.md)), and it carries a purple dot
+  while the order waits for a showcase decision.
+
+**Showcase pages** (`showcase/`, sold per company): `/showcase` lists the
+delivered orders waiting for a decision, then every piece as a card grid
+filtered by category, status and visibility, with **+ New piece** for work
+that has no order; `/showcase/items/<id>` is the piece editor (photos,
+details beside a live preview of the public card, then This piece:
+withdraw or delete); `/settings/showcase` is a Settings tab (categories,
+spec fields, order types never showcased, default visibility, and catalog
+mode's device links). The nav's Showcase link sits after Orders, with a
+purple count of orders waiting. **Catalog mode** is a standalone dark page
+with no app nav — gallery, piece viewer, slideshow — opened by **Present**
+(`/showcase/present`, signed in, with an Exit back) or by a device's kiosk
+link (`/k/<token>/`, signed out, works offline); see
+[showcase/CLAUDE.md](../showcase/CLAUDE.md).
 
 The **client modal deliberately omits the billing address and the Notes field**
 (both are only on the full client page). `edit_client()` therefore checks

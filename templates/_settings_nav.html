@@ -9,6 +9,10 @@
   <a href="{{ url_for('settings_orders') }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
   <a href="{{ url_for('settings_inventory') }}" class="settings-nav__link {{ 'is-active' if section == 'inventory' else '' }}">Inventory</a>
   <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
+  {# Only for a company with the feature (features/, SC1). #}
+  {% if has_feature('showcase') %}
+  <a href="{{ url_for('showcase.settings') }}" class="settings-nav__link {{ 'is-active' if section == 'showcase' else '' }}">Showcase</a>
+  {% endif %}
   {# Reads "Email/Calendar" rather than "Integrations": it was the only
      integration when it was named, and stopped being one once AI arrived
      beside it. Both halves are in the label because this page configures

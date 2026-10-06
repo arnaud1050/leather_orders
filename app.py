@@ -32,7 +32,7 @@ else:
 from datetime import date, timedelta  # noqa: E402 — must follow load_dotenv
 from calendar import Calendar, month_name  # noqa: E402
 
-from flask import Flask, render_template, request, redirect, url_for, abort, session  # noqa: E402
+from flask import Flask, render_template, request, redirect, url_for, abort, send_file, session  # noqa: E402
 from flask_login import (  # noqa: E402
     LoginManager, current_user, login_required, login_user, logout_user,
 )
@@ -112,6 +112,21 @@ from usage import track  # noqa: E402
 # create_all() so its table exists; register() below gives templates
 # has_feature().
 import features  # noqa: E402
+
+# The studio's brand — its logo, used on invoices and in catalog mode
+# (brand/CLAUDE.md). Moved out of billing, which now only embeds it: the
+# source is registered below. Imported before create_all() for its table.
+import brand  # noqa: E402
+import brand.migrations as brand_migrations  # noqa: E402
+from brand import config as brand_config  # noqa: E402
+
+# Self-contained module, sold per company (the `showcase` feature): the
+# studio's portfolio of finished pieces (showcase/__init__.py). It never
+# sees a host model — showcase_adapter.py hands it orders and their images
+# through hooks registered below.
+import showcase.migrations as showcase_migrations  # noqa: E402
+import showcase.routes as showcase_routes  # noqa: E402
+import showcase_adapter  # noqa: E402
 
 app = Flask(__name__)
 
@@ -225,6 +240,13 @@ with app.app_context():
     # Not a module, but platform_settings gained columns after it shipped,
     # and they're kept beside the table that owns them (hard rule 12).
     admin_migrations.run_migrations()
+    # Same arrangement as the other modules; empty until its first column.
+    showcase_migrations.run_migrations()
+    # The logo moved from billing to the studio's brand: move any old
+    # invoice logo across, once (BL15). After billing's own migrations, so
+    # billing_profiles is in its final shape.
+    brand_migrations.run_migrations()
+    brand_migrations.adopt_billing_logos(billing_config.LOGO_DIR)
     # Bootstrap only — one company, its admin user, and the SourceOption /
     # OrderType starter lists. Deliberately no sample clients or orders: a
     # production deployment starts empty. To load the demo dataset in a test
@@ -404,6 +426,18 @@ inventory_routes.register(app, resolve_order=get_order_or_404)
 # file without a circular import, and the list belongs to the app.
 admin_routes.register(app, time_zones=TIME_ZONES)
 features.register(app)
+# Billing embeds the studio's logo in every invoice PDF; brand keeps it.
+invoicing.set_logo_source(brand.logo_png)
+showcase_routes.register(
+    app,
+    delivered_orders=showcase_adapter.delivered_orders,
+    order_summary=showcase_adapter.order_summary,
+    order_images=showcase_adapter.order_images,
+    load_order_image=showcase_adapter.load_order_image,
+    order_types=showcase_adapter.order_types,
+    studio_brand=showcase_adapter.studio_brand,
+    company_active=showcase_adapter.company_active,
+)
 
 
 def _attachable_documents(company_id: int, client_id: int) -> dict:
@@ -851,6 +885,10 @@ def back_label(return_to: str) -> str:
         return "Back to client"
     if return_to.startswith("/orders/"):
         return "Back to order"
+    if return_to.startswith("/showcase/items/"):
+        return "Back to piece"
+    if return_to == "/showcase":
+        return "Back to showcase"
     return "Back"
 
 
@@ -878,6 +916,11 @@ def get_client_or_404(client_id: int) -> Client:
 # `company_id` to answer at all — "which orders?" has no meaning for
 # somebody who isn't in a studio.
 _COMPANYLESS_ENDPOINTS = {"login", "logout", "privacy", "terms", "static"}
+
+# Showcase kiosk links (/k/<token>/…): authorised by the token in the URL,
+# not by whoever happens to be signed in on that browser, so neither guard
+# below may redirect them (showcase SC30).
+_KIOSK_PREFIX = "showcase_kiosk."
 
 
 def _landing_page() -> str:
@@ -908,7 +951,8 @@ def _keep_staff_out_of_tenant_routes():
     # a deleted route look like it still half-exists.
     if endpoint is None:
         return None
-    if endpoint in _COMPANYLESS_ENDPOINTS or endpoint.startswith("admin."):
+    if (endpoint in _COMPANYLESS_ENDPOINTS or endpoint.startswith("admin.")
+            or endpoint.startswith(_KIOSK_PREFIX)):
         return None
     return redirect(url_for("admin.companies"))
 
@@ -938,7 +982,8 @@ def _force_password_change():
             and current_user.must_change_password):
         return None
     endpoint = request.endpoint
-    if endpoint is None or endpoint in _PASSWORD_CHANGE_EXEMPT_ENDPOINTS:
+    if (endpoint is None or endpoint in _PASSWORD_CHANGE_EXEMPT_ENDPOINTS
+            or endpoint.startswith(_KIOSK_PREFIX)):
         return None
     return redirect(url_for("settings_account"))
 
@@ -2066,6 +2111,27 @@ def order_materials(order_id: int):
     )
 
 
+@app.route("/orders/<int:order_id>/showcase")
+@login_required
+def order_showcase(order_id: int):
+    """The order page's "Showcase" tab — the module owns what's inside it
+    (showcase/_order_tab.html) and every form there; this route only frames
+    it, same split as order_materials(). 404 when the company doesn't have
+    the feature or the tab isn't offered for this order (SC6)."""
+    order = get_order_or_404(order_id)
+    return_to = request.args.get("return_to") or url_for("timeline_view")
+    next_url = url_for("order_showcase", order_id=order.id, return_to=return_to)
+    return render_template(
+        "order_page.html",
+        section="showcase",
+        order=order,
+        sc=showcase_routes.order_tab_context(order.id, next_url),
+        return_to=return_to,
+        back_label=back_label(return_to),
+        active_view=None,
+    )
+
+
 @app.route("/orders/<int:order_id>/edit", methods=["POST"])
 @login_required
 def edit_order(order_id: int):
@@ -2399,14 +2465,91 @@ def settings():
 @app.route("/settings/general")
 @login_required
 def settings_general():
+    company_id = current_user.company_id
     return render_template(
         "settings.html",
         section="general",
-        company=db.session.get(Company, current_user.company_id),
+        company=db.session.get(Company, company_id),
         time_zones=TIME_ZONES,
+        brand_logo=brand.logo_filename(company_id),
+        logo_look=brand.appearance(company_id),
+        logo_max_bytes=brand_config.LOGO_MAX_BYTES,
         notice=_take_settings_notice(),
         active_view="settings",
     )
+
+
+# What each invoice layout prints the logo on: Classic on white paper,
+# Banded on the accent colour (billing L8).
+def _invoice_logo_warning(look: dict | None, branding) -> str | None:
+    """A standing condition for Settings → Invoicing (BL14): the saved
+    layout and colour would hide the saved logo. None when it reads."""
+    if look is None:
+        return None
+    if branding.template_key == "classic":
+        if brand.readable_on(look, "#ffffff"):
+            return None
+        return ("Your logo is light, and Classic prints it on white paper, where it "
+                "won't show. Choose Banded with a dark accent colour, or upload a "
+                "darker logo in Settings → General.")
+    if brand.readable_on(look, branding.primary):
+        return None
+    if look["tone"] == "light":
+        return ("Your logo is light and so is your accent colour: on the Banded "
+                "header it won't stand out. Choose a darker accent colour.")
+    return ("Your logo is dark and so is your accent colour: on the Banded header "
+            "it won't stand out. Choose a lighter accent colour, or Classic.")
+
+
+@app.route("/settings/brand/logo", methods=["POST"])
+@login_required
+def upload_logo():
+    """Set or replace the studio's logo — invoices and catalog mode alike.
+
+    brand/ decides what counts as a usable image and stores its own
+    re-encoded copy; a refusal comes back as a message in the Brand
+    section, with the existing logo untouched (BL4, BL10).
+    """
+    upload = request.files.get("logo")
+    # One byte past the cap is enough to know it's over, without reading a
+    # 200MB body (the app-wide limit) into memory to find out.
+    data = upload.read(brand_config.LOGO_MAX_BYTES + 1) if upload else b""
+    try:
+        brand.set_logo(current_user.company_id, data)
+    except brand.LogoError as error:
+        # Nothing to roll back: the image is checked before anything is
+        # written, so a refusal has touched neither the row nor the disk.
+        _flash_settings_notice(str(error), section="brand")
+    else:
+        db.session.commit()
+        track("settings.changed", section="logo")
+        _flash_settings_notice("Logo uploaded.", "success", section="brand")
+    return redirect(url_for("settings_general"))
+
+
+@app.route("/settings/brand/logo/delete", methods=["POST"])
+@login_required
+def delete_logo():
+    brand.remove_logo(current_user.company_id)
+    db.session.commit()
+    track("settings.changed", section="logo")
+    _flash_settings_notice("Logo removed.", "success", section="brand")
+    return redirect(url_for("settings_general"))
+
+
+@app.route("/settings/brand/logo.png")
+@login_required
+def brand_logo():
+    """The signed-in studio's own logo, for the settings pages to show.
+
+    No id in the URL: whose logo it is comes from the session, so there is
+    nothing to guess at. Never cached — a replaced logo has to show at once
+    (BL9).
+    """
+    path = brand.logo_path(current_user.company_id)
+    if path is None:
+        abort(404)
+    return send_file(path, mimetype="image/png", max_age=0)
 
 
 @app.route("/settings/orders")
@@ -2498,7 +2641,8 @@ def settings_invoicing():
         next_number=invoicing.next_number(company.id, company.name),
         invoice_templates=billing_config.INVOICE_TEMPLATES,
         branding=profile.branding,
-        logo_max_bytes=billing_config.LOGO_MAX_BYTES,
+        brand_logo=brand.logo_filename(company.id),
+        logo_warning=_invoice_logo_warning(brand.appearance(company.id), profile.branding),
         footer_text_max=billing_config.FOOTER_TEXT_MAX_LENGTH,
         notice=_take_settings_notice(),
         active_view="settings",
@@ -2970,47 +3114,10 @@ def update_invoice_appearance():
     return _back_to_appearance()
 
 
-@app.route("/settings/invoicing/logo", methods=["POST"])
-@login_required
-def upload_invoice_logo():
-    """Set or replace the logo printed on the company's invoice PDFs.
-
-    The billing module decides what counts as a usable image and stores its
-    own re-encoded copy; a refusal comes back as a message for the notice,
-    with the existing logo untouched.
-    """
-    company = db.session.get(Company, current_user.company_id)
-    upload = request.files.get("logo")
-    # One byte past the cap is enough to know it's over, without reading a
-    # 200MB body (the app-wide limit) into memory to find out.
-    data = upload.read(billing_config.LOGO_MAX_BYTES + 1) if upload else b""
-    try:
-        invoicing.set_logo(company.id, data, company.name)
-    except invoicing.LogoError as error:
-        # Nothing to roll back: the image is checked before anything is
-        # written, so a refusal has touched neither the row nor the disk.
-        _flash_appearance_notice(str(error))
-    else:
-        db.session.commit()
-        track("settings.changed", section="logo")
-        _flash_settings_notice("Logo uploaded.", "success", section="appearance")
-    return _back_to_appearance()
-
-
-@app.route("/settings/invoicing/logo/delete", methods=["POST"])
-@login_required
-def delete_invoice_logo():
-    invoicing.remove_logo(current_user.company_id)
-    db.session.commit()
-    track("settings.changed", section="logo")
-    _flash_settings_notice("Logo removed.", "success", section="appearance")
-    return _back_to_appearance()
-
-
 def _flash_appearance_notice(message: str) -> None:
-    """A refusal from the appearance or logo form, shown in that section's
-    slot (MOD8). Named here rather than by the forms: a logo is uploaded by
-    invoice-appearance.js the moment it's chosen."""
+    """A refusal from the appearance form, shown in that section's slot
+    (MOD8). (The logo used to be uploaded here too; it's the studio's now,
+    under Settings → General → Brand.)"""
     _flash_settings_notice(message, section="appearance")
 
 

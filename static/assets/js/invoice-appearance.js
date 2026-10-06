@@ -2,10 +2,10 @@
  * Settings → Invoicing → Invoice appearance.
  *
  * Enhances markup that already works on its own (two radio buttons, a hex
- * text field). The logo tile isn't here: uploading on choose and drop, and
- * the checks before sending, are the shared upload-tile.js (website_modules).
+ * text field). The logo isn't uploaded here any more: it's the studio's,
+ * under Settings → General → Brand.
  *
- *  - the layout cards' thumbnails and the logo tile follow the colour as
+ *  - the layout cards' thumbnails follow the colour as
  *    it changes, through the section's --look-primary / --look-on-primary;
  *  - clicking a colour swatch (the accent colour, or the footer's
  *    background and text) opens a picker — a saturation / brightness area

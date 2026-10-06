@@ -58,12 +58,12 @@ accounting period closes.
 ## 1. What this module owns
 
 - **W1.** Three tables: `billing_profiles` (the seller's letterhead, one
-  row per tenant), `invoices`, `invoice_tax_lines` — and one directory of
-  files, the tenants' invoice logos (§14).
+  row per tenant), `invoices`, `invoice_tax_lines`. No files: the logo is
+  the studio's (brand/), and billing only embeds what it's handed (§14).
 - **W2.** Invoice numbering (§4), issuing and freezing (§5), tax
   calculation (§2–§3), and the derived money on a document (§6).
 - **W3.** An optional blueprint (`/invoices`, `/invoices/<id>`,
-  `/invoices/<id>/pdf`, `/invoices/preview.pdf`, `/invoices/logo.png`,
+  `/invoices/<id>/pdf`, `/invoices/preview.pdf`,
   `POST /subjects/<id>/invoice`, `POST /invoices/<id>/status`) the host opts
   into via `routes.register()`. A host wanting its own UI ignores it and
   drives the services directly.
@@ -561,8 +561,8 @@ reason being that a stored copy can disagree with the rows it describes.
   /settings/invoicing/appearance`) refuses an unknown layout or a malformed
   colour, **leaves the stored value as it was**, says so in a notice shown
   **inside the appearance section**, and still saves the fields that were
-  valid. A field the form didn't send is left alone. Every appearance and
-  logo route returns to `/settings/invoicing`, which reopens where it was
+  valid. A field the form didn't send is left alone. Every appearance
+  route returns to `/settings/invoicing`, which reopens where it was
   (the host's MOD7), scrolled to that notice when there is one.
 - **BR8 — The preview.** `GET /invoices/preview.pdf` renders a sample
   invoice — the tenant's real letterhead and next number, an invented
@@ -572,7 +572,9 @@ reason being that a stored copy can disagree with the rows it describes.
 - **BR9.** Branding is per tenant: one company's choice never shows on
   another's invoices.
 - **BR10 — The settings section, top to bottom: logo, layout, accent
-  colour, footer** (FT6), under a two-sentence introduction. The layouts are radio
+  colour, footer** (FT6), under a two-sentence introduction. "Logo" is a
+  pointer to Settings → General → Brand, where the logo is set (brand
+  BL10), plus brand's warning when the saved look would hide it (BL14). The layouts are radio
   buttons drawn as cards, each with a miniature of the invoice; no
   dropdown. The **accent colour** is a swatch beside a `#rrggbb` text box:
   clicking the swatch opens a picker the page draws itself (a
@@ -582,7 +584,7 @@ reason being that a stored copy can disagree with the rows it describes.
   submitted, so the page works without JavaScript; the script
   (`static/assets/js/invoice-appearance.js`) only adds the picker, shows
   the accent colour only while Banded is selected, and makes the
-  miniatures and the logo tile follow the colour live.
+  miniatures follow the colour live.
 
 ### The footer
 
@@ -618,72 +620,23 @@ reason being that a stored copy can disagree with the rows it describes.
   Switching off keeps the stored text and colours. The layout miniatures
   show the band, in its colours, while it's on.
 
-## 14. The logo (`billing/logos.py`)
+## 14. The logo on the invoice
 
-- **L1 — PNG or JPEG, decided by the bytes.** An upload is a logo only if
-  it decodes as a PNG or JPEG image — **including a JPEG that Pillow reports
-  as MPO**, which is what phones and cameras save (a JPEG carrying a second
-  embedded picture). The filename and the browser's content type are
-  ignored. GIF, WebP, BMP, TIFF and **SVG** are refused.
-- **L2 — What is stored is never the upload.** The image is decoded and
-  written back out as a PNG of this module's making, so metadata and
-  anything appended to the file are left behind. This is why SVG is out:
-  it can't be made inert without rasterising it.
-- **L3 — Capped three ways.** The upload may be at most
-  `config.LOGO_MAX_BYTES` (10 MB by default, `BILLING_LOGO_MAX_BYTES` —
-  the same as nginx's `client_max_body_size`, so nginx never refuses a file
-  the app would have explained, and a photo off a phone fits); an
-  image declaring more than 40 megapixels is refused before it is decoded;
-  the stored copy is scaled down so its longest edge is at most 1200px,
-  keeping its proportions and its transparency, and never scaled up.
-- **L3b — Camera orientation is applied.** A JPEG's orientation tag is
-  applied before storing, so a logo photographed sideways prints upright.
-- **L3a — Transparent margins are trimmed.** Fully transparent space around
-  the mark is cropped away before storing, so a logo exported with padding
-  doesn't print smaller than one without. An entirely transparent image is
-  left as it is.
-- **L4 — A refusal changes nothing.** `set_logo` raises `LogoError`, whose
-  message is written for the person uploading, and the existing logo —
-  row and file — is left exactly as it was.
-- **L5 — One logo per tenant, in a per-tenant directory**
-  (`<LOGO_DIR>/<company_id>/`), named by the module (a fresh random name per
-  upload), never from the upload. A stored name is re-checked for path
-  containment before any file is opened, so one tenant's filename opens
-  nothing in another's directory and a tampered row opens nothing at all.
-- **L6 — Replacing or removing deletes the old file.** A real delete, not a
-  hide: the look is live (PD12), so no invoice references an old logo.
-- **L7 — It reaches the PDF embedded.** `branding_for()` returns the logo as
-  a `data:image/png;base64,…` URI on `Branding`; `profile.branding` alone
-  does not carry it. A logo whose file has gone missing is simply left off
-  — it must not stop an export.
+The logo itself — what an upload must be, where it's kept, the settings
+form — is the studio's brand since 2026-10-06: `brand/REQUIREMENTS.md`
+BL1–BL15, which took over this section's old `L1`–`L6` and `L9`–`L11`.
+Billing keeps only what happens on the document.
+
+- **L7 — It reaches the PDF embedded.** The host registers where the logo
+  comes from (`invoicing.set_logo_source(fn)`, `fn(company_id) -> PNG bytes
+  | None`); `branding_for()` returns it as a `data:image/png;base64,…` URI on
+  `Branding`, and `profile.branding` alone does not carry it. No source, no
+  logo, or a file gone missing: the invoice simply prints without one — it
+  must not stop an export. The source must hand over PNG it re-encoded
+  itself, since the renderer accepts an embedded PNG and nothing else (PD4).
 - **L8 — Both layouts print it, and still name the seller in words.**
   `classic` puts it above the company name; `banded` puts it in the band in
   place of the name, which moves to the head of the address block.
-- **L9 — Served only to its own company.** `GET /invoices/logo.png` takes no
-  id: it serves the signed-in tenant's logo or a 404, requires a login, and
-  is never cached.
-- **L10 — The settings form** (the host's, `POST /settings/invoicing/logo`
-  and `…/logo/delete`) reads at most one byte past the cap, shows a refusal
-  inside the appearance section (BR7), touches nothing else on the profile,
-  and offers removal as a button reading **"Delete"** in a
-  `.settings-source-list` — the app's convention, never "Remove".
-- **L11 — Upload like an order document.** With no logo, an **"Add logo"**
-  tile (the order page's "Add file" tile) opens the file picker and also
-  takes a dropped image; with a logo, it shows on the chosen colour with
-  **Replace** and **Delete**. Choosing or dropping a file uploads it at
-  once, after the same type and size checks in the browser, which show
-  their refusal without leaving the page, in the box at the top of the
-  section, in this page's own words ("A logo needs to be a PNG or JPEG
-  image.", "That file is too large…", "Drop one image at a time."). With a
-  logo, the whole row takes a dropped replacement. The picker lists `.png`, `.jpg`
-  and `.jpeg` as well as the two MIME types, for systems that give a JPEG
-  no type. Without JavaScript, a plain Upload button does the same job.
-  All of it is the shared `upload-tile.js` (website_modules, UT1–UT12),
-  as on the order page. Its "or drop an image here" hint is the documents
-  tile's own `.doc-explorer__add-hint`, shown only where a drop can work.
-  While an image is over the tile it turns solid ink on the recessed grey (louder, never
-  faded), and an image dropped just beside it is ignored rather than opened
-  by the browser in place of the page.
 
 ## 15. Explicit non-requirements
 
@@ -896,23 +849,13 @@ Files: `tests/test_tax.py`, `tests/test_invoicing.py`,
 | BR4 | `test_branding_with_nothing_chosen_is_the_default_look` |
 | BR5 | `test_text_on_the_band_stays_readable` |
 | BR6 | every document test in `test_invoice_pdf.py` runs once per layout (the `look` fixture) |
-| BR7 | `test_update_appearance_saves_the_layout_and_the_colour`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_a_refusal_is_shown_inside_the_appearance_section`, `test_saving_returns_to_the_same_page_without_choosing_a_place`, `test_the_logo_routes_return_to_the_settings_page` (settings tests in `tests/test_settings_company.py`) |
+| BR7 | `test_update_appearance_saves_the_layout_and_the_colour`, `test_update_appearance_refuses_a_colour_that_is_not_plain_hex`, `test_update_appearance_refuses_an_unknown_layout`, `test_update_appearance_leaves_alone_what_the_form_did_not_send`, `test_update_appearance_does_not_touch_the_letterhead`, `test_update_appearance_requires_a_login`, `test_a_refusal_is_shown_inside_the_appearance_section`, `test_saving_returns_to_the_same_page_without_choosing_a_place` (settings tests in `tests/test_settings_company.py`) |
 | BR8 | `test_the_preview_shows_a_sample_in_the_saved_look`, `test_the_preview_uses_up_no_invoice_number`, `test_the_preview_requires_a_login`, `test_without_a_renderer_the_preview_goes_somewhere_that_works`, `test_the_sample_is_the_sellers_own_document`, `test_a_sample_from_an_unregistered_seller_charges_no_tax`, `test_the_preview_link_appears_only_where_a_pdf_can_be_rendered` |
 | BR9 | `test_update_appearance_is_per_company` |
 | BR10 | `test_the_logo_comes_before_the_layout`, `test_the_introduction_is_short`, `test_the_layouts_are_radio_buttons_named_classic_and_banded`, `test_each_layout_has_a_thumbnail`, `test_the_saved_layout_is_the_checked_one`, `test_the_page_shows_the_saved_colour`, `test_the_page_shows_the_defaults_before_anything_is_chosen`, `test_the_accent_colour_is_a_swatch_that_opens_a_picker` — gap: opening and closing the picker, dragging, keyboard control, the live miniatures and the Banded-only accent colour are script behaviour, checked by hand in a browser (desktop and phone width), not by the suite |
-| L1 | `test_a_png_is_accepted`, `test_a_jpeg_is_accepted_and_stored_as_png`, `test_other_image_formats_are_refused`, `test_anything_that_is_not_a_readable_png_or_jpeg_is_refused`, `test_the_file_name_does_not_make_it_an_image`, `test_a_phone_jpeg_is_accepted` |
-| L2 | `test_what_is_stored_is_a_fresh_encoding_not_the_upload` |
-| L3 | `test_an_upload_over_the_size_cap_is_refused`, `test_an_image_with_enormous_dimensions_is_refused_before_decoding`, `test_a_large_image_is_scaled_down_keeping_its_shape`, `test_a_small_image_is_not_scaled_up`, `test_transparency_survives`, `test_a_photo_sized_jpeg_is_accepted`, `test_the_upload_cap_matches_what_nginx_lets_through` |
-| L3b | `test_a_sideways_photo_is_stored_the_right_way_up` |
-| L3a | `test_transparent_margins_are_trimmed`, `test_an_opaque_image_is_not_cropped`, `test_a_fully_transparent_image_is_left_alone` |
-| L4 | `test_a_refused_upload_leaves_the_existing_logo_alone`, `test_a_refused_upload_keeps_the_logo_already_there` |
-| L5 | `test_setting_a_logo_stores_a_file_for_that_company`, `test_the_stored_name_is_generated_never_taken_from_anyone`, `test_logos_are_per_company`, `test_one_companys_filename_does_not_open_anothers_file`, `test_a_stored_name_that_points_elsewhere_opens_nothing` |
-| L6 | `test_replacing_a_logo_removes_the_old_file`, `test_removing_a_logo_deletes_the_file`, `test_removing_a_logo_that_is_not_there_is_harmless` |
-| L7 | `test_branding_carries_the_logo_embedded`, `test_branding_without_a_logo_has_none`, `test_a_logo_whose_file_has_gone_is_simply_left_off`, `test_the_logo_keeps_the_layout_and_colours_beside_it`, `test_a_real_pdf_renders_with_a_logo` *(skipped without WeasyPrint)* |
+| L1–L6, L9–L11 | moved to brand/ as BL1–BL11 — see `brand/REQUIREMENTS.md` |
+| L7 | `tests/test_invoice_logo.py`: `test_branding_carries_the_logo_embedded`, `test_branding_without_a_logo_has_none`, `test_a_logo_whose_file_has_gone_is_simply_left_off`, `test_without_a_source_invoices_print_no_logo`, `test_the_logo_keeps_the_layout_and_colour_beside_it`, `test_a_real_pdf_renders_with_a_logo` *(skipped without WeasyPrint)* |
 | L8 | `test_every_layout_prints_the_logo`, `test_the_seller_is_still_named_in_words_beside_a_logo`, `test_no_logo_no_image` |
-| L9 | `test_the_logo_is_served_to_its_own_company`, `test_no_logo_is_a_404`, `test_another_companys_logo_is_never_served`, `test_the_logo_requires_a_login` |
-| L10 | `test_uploading_a_logo_saves_it`, `test_uploading_something_else_says_why_and_saves_nothing`, `test_uploading_nothing_says_so`, `test_an_oversized_upload_is_refused`, `test_deleting_the_logo`, `test_uploading_does_not_touch_the_rest_of_the_look`, `test_the_logo_routes_require_a_login`, `test_a_logo_refusal_is_shown_beside_the_logo`, `test_the_settings_page_shows_the_logo_with_replace_and_delete` |
-| L11 | `test_the_settings_page_offers_an_add_logo_tile_when_there_is_none`, `test_the_file_picker_takes_jpg_files_by_extension_too`, `test_the_logo_tile_says_it_takes_drops_and_checks_with_its_own_words` — upload-on-choose, drag-and-drop and the in-browser refusals are the shared upload-tile.js, tested in a browser in `website_modules/tests/test_upload_tile_js.py` |
 | Z1–Z10 | *(non-requirements — nothing to test)* |
 
 ### The tax-collected report

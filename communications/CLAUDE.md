@@ -235,7 +235,9 @@ Polling, not webhooks (Phase 1). Rules are `SY-*` and `L-*`; the code:
   `L-19`, `L-20`).
 
 **Where the module reaches furthest into the host:** field mapping imports
-`SourceOption` alongside `Client`. Same existing dependency, one model wider.
+`SourceOption` alongside `Client` (plus `normalize_province`, a function
+`models.py` re-exports from `billing.tax`). Same existing dependency, one
+model wider.
 Anything beyond client details — an `Order` — must go through a host-registered
 hook instead; see REQUIREMENTS §12.
 

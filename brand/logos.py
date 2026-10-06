@@ -1,17 +1,18 @@
 """
-A tenant's invoice logo: checking an upload, and keeping its bytes on disk.
+A studio's logo: checking an upload, and keeping its bytes on disk.
 
-Same shape as `documents/storage.py` — the profile row holds an opaque
-filename and only this file knows it means a path under `config.LOGO_DIR`
-— but billing keeps its own copy rather than importing a sibling module.
+Moved here from `billing/logos.py` when the logo stopped being an invoice
+setting and became the studio's (invoices, catalog mode). Same shape as
+`documents/storage.py`: the `company_brands` row holds an opaque filename
+and only this file knows it means a path under `config.BRAND_DIR`.
 
 **What is stored is never the upload.** `normalise()` decodes the image and
-writes a fresh PNG, capped in size, so what later gets embedded in a PDF is
-bytes this module produced: no metadata, no trailing payload, no format
+writes a fresh PNG, capped in size, so what later gets embedded in a PDF or
+shown in catalog mode is bytes this module produced: no metadata, no trailing payload, no format
 other than PNG. That is also why SVG isn't accepted — it can't be
 re-encoded into something inert without rasterising it.
 
-Files are namespaced per company (`<LOGO_DIR>/<company_id>/...`) and named
+Files are namespaced per company (`<BRAND_DIR>/<company_id>/...`) and named
 by this module, never from the upload.
 """
 
@@ -19,7 +20,7 @@ import io
 import os
 import uuid
 
-from billing import config
+from brand import config
 
 __all__ = ["LogoError", "delete", "normalise", "path_for", "read", "save"]
 
@@ -43,8 +44,8 @@ class LogoError(ValueError):
 
 def normalise(data: bytes) -> bytes:
     """Check an upload and return it re-encoded as a size-capped PNG."""
-    # Lazy, like the module's other heavy imports: billing stays importable
-    # without Pillow, and only uploading a logo finds out.
+    # Lazy: the package stays importable without Pillow, and only
+    # uploading a logo finds out.
     from PIL import Image, ImageOps
 
     if not data:
@@ -88,7 +89,7 @@ def normalise(data: bytes) -> bytes:
 
 
 def _root_for(company_id: int) -> str:
-    path = os.path.join(config.LOGO_DIR, str(int(company_id)))
+    path = os.path.join(config.BRAND_DIR, str(int(company_id)))
     os.makedirs(path, exist_ok=True)
     return path
 

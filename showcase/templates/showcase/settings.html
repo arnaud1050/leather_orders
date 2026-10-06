@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon_grip %}
+{% block title %}Showcase — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Settings</h1>
+    <p class="detail-subtitle">Company preferences</p>
+  </header>
+
+  {% include "_settings_nav.html" %}
+
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['categories', 'spec-fields', 'order-types', 'visibility', 'catalog']) }}
+
+  {% macro labelled_list(kind, rows, noun, placeholder) %}
+  <ul class="settings-source-list" data-reorder-url="{{ url_for('showcase.reorder_list', kind=kind) }}">
+    {% for row in rows %}
+    <li class="settings-source-list__item {% if not row.is_active %}settings-source-list__item--hidden{% endif %}" draggable="true" data-row-id="{{ row.id }}">
+      <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">{{ icon_grip() }}</span>
+      <span class="settings-source-list__label">
+        {{ row.label }}
+        {% if not row.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+      </span>
+      <div class="settings-source-list__actions">
+        <form method="post" action="{{ url_for('showcase.toggle_list_row', kind=kind, row_id=row.id) }}">
+          {{ notice_field(kind) }}
+          <button type="submit" class="btn-secondary">{{ 'Unhide' if not row.is_active else 'Hide' }}</button>
+        </form>
+        {% if row.can_delete %}
+        <form method="post" action="{{ url_for('showcase.delete_list_row', kind=kind, row_id=row.id) }}">
+          {{ notice_field(kind) }}
+          <button type="submit" class="btn-secondary">Delete</button>
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('showcase.add_list_row', kind=kind) }}" class="detail-form settings-source-add">
+    {{ notice_field(kind) }}
+    <label>Add a {{ noun }}<input type="text" name="label" maxlength="80" placeholder="{{ placeholder }}" required></label>
+    <div>
+      <button type="submit" class="btn-primary">Add</button>
+    </div>
+  </form>
+  {% endmacro %}
+
+  <section class="detail-orders">
+    <h2>Categories</h2>
+    {{ notice_slot(notice, 'categories') }}
+    <p class="detail-note">
+      How pieces are grouped, in catalog mode and on the website, in the order
+      set here. Drag a row by its handle to reorder. A category a piece uses
+      can't be deleted, only hidden.
+    </p>
+    {{ labelled_list('categories', categories, 'category', 'e.g. Bags') }}
+  </section>
+
+  <section class="detail-orders">
+    <h2>Spec fields</h2>
+    {{ notice_slot(notice, 'spec-fields') }}
+    <p class="detail-note">
+      The details every piece is described with, in this order: Dimensions,
+      Leather, Hardware… Each piece fills in the ones that apply, and a blank
+      one isn't shown. Hiding a field hides it on every piece but keeps what
+      was written, so unhiding brings it back.
+    </p>
+    {{ labelled_list('spec-fields', spec_fields, 'spec field', 'e.g. Dimensions') }}
+  </section>
+
+  <section class="detail-orders">
+    <h2>Order types never showcased</h2>
+    {{ notice_slot(notice, 'order-types') }}
+    {% if order_types %}
+    <p class="detail-note">
+      Orders of a ticked type never get a Showcase tab or a reminder: work
+      under an NDA, or a white-label run whose brand isn't the studio's to show.
+    </p>
+    <form method="post" action="{{ url_for('showcase.save_excluded_types') }}" class="detail-form">
+      {{ notice_field('order-types') }}
+      <input type="hidden" name="order_types_shown" value="1">
+      <div class="checkbox-group">
+        {% for type in order_types %}
+        <label class="checkbox-group__item">
+          <input type="checkbox" name="excluded" value="{{ type.id }}" {% if type.id in excluded %}checked{% endif %}>
+          {{ type.label }}{% if not type.is_active %} <span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
+        </label>
+        {% endfor %}
+      </div>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="detail-note">
+      There are no order types yet, so every delivered order can be showcased.
+      Add types in <a href="{{ url_for('settings_orders') }}">Settings → Orders</a>
+      to exclude some.
+    </p>
+    {% endif %}
+  </section>
+
+  <section class="detail-orders">
+    <h2>Default visibility</h2>
+    {{ notice_slot(notice, 'visibility') }}
+    <p class="detail-note">Where a new piece is shown until you change it on the piece itself.</p>
+    <form method="post" action="{{ url_for('showcase.save_default_visibility') }}" class="detail-form">
+      {{ notice_field('visibility') }}
+      <div class="checkbox-group">
+        {% for value in visibilities %}
+        <label class="checkbox-group__item">
+          <input type="radio" name="visibility" value="{{ value }}" {% if value == default_visibility %}checked{% endif %}>
+          {{ visibility_labels[value] }}
+          <span class="detail-note">
+            {%- if value == 'public' %} — catalog mode and the website
+            {%- elif value == 'in_person' %} — catalog mode only, never online
+            {%- else %} — kept here, shown nowhere{% endif -%}
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      <div>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Catalog mode</h2>
+    {{ notice_slot(notice, 'catalog') }}
+    <p class="detail-note">
+      A full-screen gallery and slideshow of the {{ catalog_count }} published
+      piece{{ 's' if catalog_count != 1 }} that are public or in person only,
+      for client meetings and markets. Open it here with
+      <a href="{{ url_for('showcase.present') }}">Present</a>, or give a
+      tablet its own link: it opens the catalog and nothing else, without
+      signing in, and keeps working when the wifi drops.
+    </p>
+
+    {% if new_link_url %}
+    <div class="showcase-new-link">
+      <div class="showcase-new-link__qr">{{ new_link_qr }}</div>
+      <div class="showcase-new-link__text">
+        <p class="showcase-new-link__title">Open this on the device now</p>
+        <p class="detail-note">
+          Scan the code with the tablet's camera, or copy the link to it. It's
+          shown only this once: anyone with it can see the catalog, so don't
+          post it anywhere. Lose the device, and delete its link below.
+        </p>
+        <div class="showcase-new-link__copy">
+          <input type="text" readonly value="{{ new_link_url }}" id="showcase-new-link-url" aria-label="The new link">
+          <button type="button" class="btn-secondary" data-copy="showcase-new-link-url">Copy</button>
+        </div>
+        <p class="detail-note">
+          On the tablet, use <strong>Add to Home Screen</strong> so it opens full
+          screen. On an iPad, <strong>Guided Access</strong> (Settings →
+          Accessibility) keeps visitors from leaving it.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if kiosk_links %}
+    <ul class="settings-source-list">
+      {% for link in kiosk_links %}
+      <li class="settings-source-list__item">
+        <span class="settings-source-list__label">
+          {{ link.name }}
+          <span class="detail-note">
+            created {{ link.created_at|local_datetime('%b %d, %Y')|replace(' 0', ' ') }} ·
+            {% if link.last_used_at %}last opened {{ link.last_used_at|local_datetime('%b %d, %Y')|replace(' 0', ' ') }}{% else %}never opened{% endif %}
+          </span>
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('showcase.delete_kiosk_link', link_id=link.id) }}">
+            {{ notice_field('catalog') }}
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('showcase.create_kiosk_link') }}" class="detail-form settings-source-add">
+      {{ notice_field('catalog') }}
+      <label>New device link<input type="text" name="name" maxlength="80" placeholder="e.g. Market iPad"></label>
+      <div>
+        <button type="submit" class="btn-primary">Create link</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+<script>
+  (function () {
+    document.querySelectorAll('[data-copy]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var input = document.getElementById(button.dataset.copy);
+        input.select();
+        var done = function () { button.textContent = 'Copied'; };
+        if (navigator.clipboard) navigator.clipboard.writeText(input.value).then(done, function () {});
+        else if (document.execCommand('copy')) done();
+      });
+    });
+    document.querySelectorAll('.settings-source-list[data-reorder-url]').forEach(function (list) {
+      var dragged = null;
+      list.addEventListener('dragstart', function (e) {
+        var item = e.target.closest('.settings-source-list__item');
+        if (!item) return;
+        dragged = item;
+        item.classList.add('settings-source-list__item--dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', item.dataset.rowId);
+      });
+      list.addEventListener('dragover', function (e) {
+        if (!dragged) return;
+        e.preventDefault();
+        var target = e.target.closest('.settings-source-list__item');
+        if (!target || target === dragged || target.parentNode !== list) return;
+        var rect = target.getBoundingClientRect();
+        var before = (e.clientY - rect.top) < rect.height / 2;
+        list.insertBefore(dragged, before ? target : target.nextSibling);
+      });
+      list.addEventListener('drop', function (e) { e.preventDefault(); });
+      list.addEventListener('dragend', function () {
+        if (!dragged) return;
+        dragged.classList.remove('settings-source-list__item--dragging');
+        dragged = null;
+        var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
+          .map(function (item) { return parseInt(item.dataset.rowId, 10); });
+        fetch(list.dataset.reorderUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order: order }),
+        });
+      });
+    });
+  })();
+</script>
+{% endblock %}

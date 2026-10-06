@@ -17,13 +17,95 @@
 
   {# Each section shows the messages its own buttons leave (MOD8). #}
   {% from "_save_notice.html" import notice_field, notice_slot, page_notice, save_notice %}
-  {% set slots = {'general': ['timezone'], 'account': ['password', 'signature'],
+  {% set slots = {'general': ['brand', 'timezone'], 'account': ['password', 'signature'],
                   'orders': ['order-types', 'order-columns'], 'clients': ['sources', 'client-columns'],
                   'inventory': ['units', 'inventory-types', 'inventory-columns'],
                   'invoicing': ['company-details', 'invoicing', 'appearance']} %}
   {{ page_notice(notice, slots.get(section, [])) }}
 
   {% if section == 'general' %}
+
+  {# The studio's logo (brand/, BL1–BL14): one image for invoices and
+     catalog mode. Uploading on choose and drop is the shared upload-tile.js
+     (website_modules, UT1–UT12), as on the order page; the box below the
+     heading is where it reports a file it refused before sending. #}
+  <section class="detail-orders brand" id="brand">
+    <h2>Brand</h2>
+    {{ notice_slot(notice, 'brand') }}
+    <p class="save-notice save-notice--error" role="alert" id="logo-error" hidden></p>
+    <p class="detail-note">
+      Your logo, used on your invoices and in Showcase's catalog mode.
+    </p>
+
+    <h3 class="settings-subheading">Logo</h3>
+    {% if brand_logo %}
+    <ul class="settings-source-list brand__logo-list">
+      {# The whole row takes a dropped replacement, like the empty tile does. #}
+      <li class="settings-source-list__item" data-upload-zone data-upload-status="logo-error">
+        <span class="brand__previews">
+          {# Shown on both, since it's used on both: white paper (a Classic
+             invoice) and a dark page (catalog mode). #}
+          <span class="brand__preview brand__preview--light">
+            <img src="{{ url_for('brand_logo', v=brand_logo) }}" alt="Your logo on a light background">
+          </span>
+          <span class="brand__preview brand__preview--dark">
+            <img src="{{ url_for('brand_logo', v=brand_logo) }}" alt="Your logo on a dark background">
+          </span>
+        </span>
+        <div class="settings-source-list__actions">
+          <form method="post" action="{{ url_for('upload_logo') }}" enctype="multipart/form-data" class="brand__upload">
+            {{ notice_field('brand') }}
+            <label class="btn-secondary" for="brand-logo-input">Replace</label>
+            <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="brand-logo-input" class="brand__file" data-max-bytes="{{ logo_max_bytes }}"
+                   data-type-error="A logo needs to be a PNG or JPEG image." data-size-error="That file is too large. A logo can be up to {max}." data-count-error="Drop one image at a time.">
+            <button type="submit" class="btn-secondary" data-upload-fallback>Upload</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_logo') }}">
+            {{ notice_field('brand') }}
+            <button type="submit" class="btn-secondary">Delete</button>
+          </form>
+        </div>
+      </li>
+    </ul>
+    {% if logo_look %}
+    <p class="detail-note brand__tone">
+      {% if logo_look.tone == 'light' %}
+      A light logo: it reads on dark backgrounds. Catalog mode shows it as it
+      is; a Classic invoice, printed on white, won't show it.
+      {% elif logo_look.tone == 'dark' %}
+      A dark logo: it reads on light backgrounds. Catalog mode puts it on a
+      light plate so it shows on its dark page.
+      {% else %}
+      Your logo fills its own background, so it shows the same everywhere.
+      {% endif %}
+    </p>
+    {% endif %}
+    {% else %}
+    <form method="post" action="{{ url_for('upload_logo') }}" enctype="multipart/form-data" class="brand__upload brand__add" data-upload-zone data-upload-status="logo-error">
+      {{ notice_field('brand') }}
+      {# Same tile as an order's "Add file": the label opens the picker, and
+         choosing a file uploads it — no separate button once JS is on. #}
+      <label class="doc-explorer__add-trigger" for="brand-logo-input">
+        <span class="doc-explorer__add-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <path d="M10 4v12M4 10h12"/>
+          </svg>
+        </span>
+        <span class="doc-explorer__add-label">Add logo</span>
+        <span class="doc-explorer__add-hint" data-upload-hint hidden>or drop an image here</span>
+      </label>
+      <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="brand-logo-input" class="brand__file" data-max-bytes="{{ logo_max_bytes }}"
+             data-type-error="A logo needs to be a PNG or JPEG image." data-size-error="That file is too large. A logo can be up to {max}." data-count-error="Drop one image at a time.">
+      <button type="submit" class="btn-secondary" data-upload-fallback>Upload</button>
+    </form>
+    {% endif %}
+    <p class="detail-note brand__hint">
+      PNG or JPEG, up to {{ (logo_max_bytes / 1048576)|round|int }} MB. A logo
+      on a transparent background suits both; the app works out whether it's
+      light or dark and places it accordingly.
+    </p>
+  </section>
+  <script src="{{ url_for('static', filename='assets/js/upload-tile.js') }}" defer></script>
 
   <section class="detail-orders">
     <h2>Time zone</h2>
@@ -390,10 +472,8 @@
 
   {# Invoice appearance: logo, then layout, then colour, top to bottom in
      the order they're noticed on the page. Everything here works without
-     JavaScript (a plain file input with its own button, real radio
-     buttons, a hex text field). The shared upload-tile.js (website_modules,
-     rules UT1-UT12) turns the logo forms into an upload-on-choose, drop-on
-     tile; static/assets/js/invoice-appearance.js does the live thumbnails
+     JavaScript (real radio buttons, a hex text field);
+     static/assets/js/invoice-appearance.js does the live thumbnails
      and the colour picker. Branding hands out only checked #rrggbb values, so the inline
      colours below can't carry anything else. #}
   {# One colour picker: a swatch that opens a saturation/brightness area
@@ -429,65 +509,25 @@
            style="--look-primary: {{ branding.primary }}; --look-on-primary: {{ branding.on_primary }}; --look-footer-bg: {{ branding.footer_bg }}; --look-footer-fg: {{ branding.footer_fg }};"
            data-invoice-look>
     <h2>Invoice appearance</h2>
-    {# The routes name this slot themselves (MOD8). The empty box below it is
-       where upload-tile.js reports a file it refused before uploading: both
-       logo zones name it (data-upload-status), so a refusal lands where the
-       section's other messages do (UT12). #}
+    {# The routes name this slot themselves (MOD8). #}
     {{ notice_slot(notice, 'appearance') }}
-    <p class="save-notice save-notice--error" role="alert" id="logo-error" hidden></p>
     <p class="detail-note">
       How your invoices look when you download them as a PDF. A change here
       applies to every invoice straight away, including ones already sent.
     </p>
 
+    {# The logo is the studio's now (Settings → General → Brand, brand/);
+       this section only says where it is and whether the saved layout and
+       colour would hide it (BL14) — a standing condition, so amber. #}
     <h3 class="settings-subheading">Logo</h3>
-    {% if profile.has_logo %}
-    <ul class="settings-source-list invoice-look__logo-list">
-      {# The whole row takes a dropped replacement, like the empty tile does. #}
-      <li class="settings-source-list__item" data-upload-zone data-upload-status="logo-error">
-        {# On the chosen colour, as the Banded layout prints it — a white
-           logo on this page's pale background would be invisible. #}
-        <span class="invoice-look__logo-tile">
-          <img src="{{ url_for('billing.logo', v=profile.logo_filename) }}" alt="Your invoice logo">
-        </span>
-        <div class="settings-source-list__actions">
-          <form method="post" action="{{ url_for('upload_invoice_logo') }}" enctype="multipart/form-data" class="invoice-look__upload">
-            {{ notice_field('appearance') }}
-            <label class="btn-secondary" for="invoice-logo-input">Replace</label>
-            <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="invoice-logo-input" class="invoice-look__file" data-max-bytes="{{ logo_max_bytes }}"
-                   data-type-error="A logo needs to be a PNG or JPEG image." data-size-error="That file is too large. A logo can be up to {max}." data-count-error="Drop one image at a time.">
-            <button type="submit" class="btn-secondary" data-upload-fallback>Upload</button>
-          </form>
-          <form method="post" action="{{ url_for('delete_invoice_logo') }}">
-            {{ notice_field('appearance') }}
-            <button type="submit" class="btn-secondary">Delete</button>
-          </form>
-        </div>
-      </li>
-    </ul>
-    {% else %}
-    <form method="post" action="{{ url_for('upload_invoice_logo') }}" enctype="multipart/form-data" class="invoice-look__upload invoice-look__add" data-upload-zone data-upload-status="logo-error">
-      {{ notice_field('appearance') }}
-      {# Same tile as an order's "Add file": the label opens the picker, and
-         choosing a file uploads it — no separate button once JS is on. #}
-      <label class="doc-explorer__add-trigger" for="invoice-logo-input">
-        <span class="doc-explorer__add-icon" aria-hidden="true">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-            <path d="M10 4v12M4 10h12"/>
-          </svg>
-        </span>
-        <span class="doc-explorer__add-label">Add logo</span>
-        <span class="doc-explorer__add-hint" data-upload-hint hidden>or drop an image here</span>
-      </label>
-      <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="invoice-logo-input" class="invoice-look__file" data-max-bytes="{{ logo_max_bytes }}"
-             data-type-error="A logo needs to be a PNG or JPEG image." data-size-error="That file is too large. A logo can be up to {max}." data-count-error="Drop one image at a time.">
-      <button type="submit" class="btn-secondary" data-upload-fallback>Upload</button>
-    </form>
-    {% endif %}
-    <p class="detail-note invoice-look__hint">
-      PNG or JPEG, up to {{ (logo_max_bytes / 1048576)|round|int }} MB. A white
-      logo on a transparent background suits Banded; Classic prints it on white.
+    <p class="detail-note">
+      {% if brand_logo %}Your invoices print your logo{% else %}No logo yet{% endif %}:
+      it's set in <a href="{{ url_for('settings_general') }}#brand">Settings → General</a>,
+      where it's shared with Showcase.
     </p>
+    {% if logo_warning %}
+    <p class="warning-note invoice-look__logo-warning">{{ logo_warning }}</p>
+    {% endif %}
 
     <form method="post" action="{{ url_for('update_invoice_appearance') }}" class="invoice-look__form">
       {{ notice_field('appearance') }}
@@ -506,8 +546,8 @@
                show this company's own colour and logo as they change. #}
             <span class="layout-thumb layout-thumb--{{ key }}" aria-hidden="true">
               <span class="layout-thumb__head">
-                {% if profile.has_logo %}
-                <img class="layout-thumb__logo" src="{{ url_for('billing.logo', v=profile.logo_filename) }}" alt="">
+                {% if brand_logo %}
+                <img class="layout-thumb__logo" src="{{ url_for('brand_logo', v=brand_logo) }}" alt="">
                 {% else %}
                 <span class="layout-thumb__name"></span>
                 {% endif %}
@@ -573,8 +613,6 @@
         {% endif %}
       </div>
     </form>
-    {# upload-tile.js is a synced copy from website_modules: never edit it here. #}
-    <script src="{{ url_for('static', filename='assets/js/upload-tile.js') }}" defer></script>
     <script src="{{ url_for('static', filename='assets/js/invoice-appearance.js') }}" defer></script>
   </section>
 

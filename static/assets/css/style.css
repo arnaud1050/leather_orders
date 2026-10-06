@@ -89,14 +89,20 @@ body {
   border-color: var(--ink);
 }
 
+/* Wraps onto a second row between the phone menu (680px) and the width the
+   whole row needs, rather than running off the page: a per-company feature
+   (Showcase) adds a link, and badges add width too. Each link stays on one
+   line, its badge beside it. */
 .view-switch__links {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   flex: 1;
 }
 
 .view-switch__link {
+  white-space: nowrap;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -1530,7 +1536,7 @@ a.btn-secondary {
 /* Files are being dragged over an uploadable grid (data-upload-zone). The grid
    gets an ink outline so it's clear the whole area takes the drop, and its
    "Add file" tile turns into the same solid-ink drop target as the invoice
-   logo tile (.invoice-look__add.is-drop-target) — louder, never faded. */
+   logo tile (.brand__add.is-drop-target) — louder, never faded. */
 .doc-explorer.is-drop-target {
   outline: 1px solid var(--ink);
   outline-offset: 6px;
@@ -2903,13 +2909,15 @@ button[aria-busy="true"] {
    changes, so the thumbnails and the logo tile follow the picker.
    --------------------------------------------------------------------- */
 
-.invoice-look__hint {
+/* Settings → General → Brand: the studio's logo (brand/, BL10–BL13). Moved
+   here from Invoice appearance when the logo became the studio's. */
+.brand__hint {
   margin-top: 8px;
 }
 
 /* The upload tile when there's no logo yet — the order page's "Add file"
    tile, wider, and a drop target. */
-.invoice-look__add {
+.brand__add {
   display: flex;
   max-width: 480px;
   min-height: 110px;
@@ -2922,26 +2930,26 @@ button[aria-busy="true"] {
    ink frame, the ground deepens and the label goes to full ink, so it reads
    as "let go here". Its own class rather than .is-dragging, which fades
    whatever it's on (see analytics). */
-.invoice-look__add.is-drop-target {
+.brand__add.is-drop-target {
   border-style: solid;
   border-color: var(--ink);
   background: var(--paper-deep);
 }
 
-.invoice-look__add.is-drop-target .doc-explorer__add-trigger {
+.brand__add.is-drop-target .doc-explorer__add-trigger {
   color: var(--ink);
 }
 
 /* With a logo, the whole row takes a dropped replacement: the same louder
    state on the row's own frame. */
-.invoice-look__logo-list .settings-source-list__item.is-drop-target {
+.brand__logo-list .settings-source-list__item.is-drop-target {
   border-color: var(--ink);
   background: var(--paper-deep);
 }
 
 /* The native file input stays in the tab order and reachable by keyboard
    and screen readers; it just isn't what's drawn. */
-.invoice-look__file {
+.brand__file {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2949,40 +2957,62 @@ button[aria-busy="true"] {
   overflow: hidden;
 }
 
-.invoice-look__upload {
+.brand__upload {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.invoice-look__upload label.btn-secondary {
+.brand__upload label.btn-secondary {
   display: inline-block;
   font-size: 0.76rem;
 }
 
-.invoice-look__logo-list {
+.brand__logo-list {
+  max-width: 640px;
   margin: 10px 0 0;
 }
 
 /* On a phone the buttons drop under the logo rather than off the edge. */
-.invoice-look__logo-list .settings-source-list__item {
+.brand__logo-list .settings-source-list__item {
   flex-wrap: wrap;
 }
 
-.invoice-look__logo-tile {
+/* The logo twice: on white paper (a Classic invoice) and on catalog mode's
+   near-black — the two places it's used, so the studio sees both. */
+.brand__previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   min-width: 0;
-  max-width: 100%;
-  display: inline-flex;
-  align-items: center;
-  padding: 10px 14px;
-  border-radius: var(--radius);
-  background: var(--look-primary);
 }
 
-.invoice-look__logo-tile img {
+.brand__preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  padding: 12px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+
+.brand__preview--light { background: #ffffff; }
+.brand__preview--dark { background: #111111; border-color: #111111; }
+
+.brand__preview img {
   display: block;
   max-width: min(200px, 100%);
   max-height: 48px;
+}
+
+.brand__tone {
+  margin-top: 8px;
+}
+
+/* Invoice appearance: the saved layout or colour would hide the logo. */
+.invoice-look__logo-warning {
+  margin-top: 8px;
 }
 
 .invoice-look__form {
@@ -3887,4 +3917,273 @@ button.chip--event:hover .chip__title {
   text-transform: none;
   letter-spacing: normal;
   font-weight: 400;
+}
+
+/* ---------------------------------------------------------------------------
+   Showcase (showcase/) — the portfolio module, sold per company.
+   Built from what's already here: the photo grid is a .doc-explorer, the
+   lists are .settings-source-list, the statuses are .pill. What's new is the
+   piece card (list page and the editor's preview) and the editor's
+   form-beside-preview layout.
+   --------------------------------------------------------------------------- */
+
+.pill--published { --pill-color: var(--status-delivered); }
+.pill--withdrawn { --pill-color: var(--ink-soft); }
+
+.showcase-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 24px;
+}
+
+/* A photo card is dragged to reorder; the first is the cover. */
+.showcase-photo {
+  cursor: grab;
+}
+
+.showcase-photo--dragging {
+  opacity: 0.4;
+}
+
+.showcase-photo__thumb {
+  height: 120px;
+}
+
+.showcase-picker {
+  margin: 8px 0 0;
+}
+
+.showcase-picker__title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 0 0 8px;
+}
+
+.showcase-picker__item {
+  cursor: pointer;
+}
+
+.showcase-picker__item .checkbox-group__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Form on the left, the public card it produces on the right; stacked on a
+   phone. The form runs wide for the description, its short fields capped
+   back to 360px — the .ai-form arrangement (docs/design.md). */
+.showcase-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 32px;
+  align-items: start;
+}
+
+.showcase-form {
+  max-width: none;
+}
+
+.showcase-form__field {
+  max-width: 360px;
+}
+
+.showcase-form textarea {
+  width: 100%;
+}
+
+.showcase-preview {
+  position: sticky;
+  top: 16px;
+}
+
+.showcase-preview__label {
+  margin: 0 0 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* The piece card: list page grid, and the editor's preview. */
+.showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.showcase-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper);
+  overflow: hidden;
+  color: var(--ink);
+}
+
+.showcase-card--link {
+  text-decoration: none;
+}
+
+.showcase-card--link:hover {
+  border-color: var(--ink);
+}
+
+.showcase-card__cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  background: var(--paper-deep);
+}
+
+.showcase-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.showcase-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+
+.showcase-card__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.showcase-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.showcase-card__text {
+  margin: 0;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.showcase-card__specs {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+}
+
+.showcase-card__specs dt {
+  color: var(--ink-soft);
+}
+
+.showcase-card__specs dd {
+  margin: 0;
+}
+
+/* The list page's filters: three selects in the legend row, like the
+   timeline's sort control. */
+.showcase-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.showcase-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.showcase-filters select {
+  font-family: inherit;
+  font-size: 0.76rem;
+  color: var(--ink);
+  padding: 5px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+@media (max-width: 680px) {
+  .showcase-details {
+    grid-template-columns: 1fr;
+  }
+
+  .showcase-preview {
+    position: static;
+  }
+}
+
+/* Settings → Showcase: a kiosk link just created, shown this once with its
+   QR code (showcase SC27). Green-edged like a done .save-notice, because it
+   is one — with the one thing to do next inside it. */
+.showcase-new-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+  max-width: 720px;
+  margin: 0 0 24px;
+  padding: 20px;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--status-delivered);
+  border-radius: var(--radius);
+}
+
+.showcase-new-link__qr {
+  flex: 0 0 auto;
+  padding: 6px;
+  background: #fff;
+  border-radius: var(--radius);
+}
+
+.showcase-qr {
+  display: block;
+  width: 168px;
+  height: 168px;
+}
+
+.showcase-new-link__text {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.showcase-new-link__title {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.showcase-new-link__copy {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.showcase-new-link__copy input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--paper-deep);
+  color: var(--ink);
 }

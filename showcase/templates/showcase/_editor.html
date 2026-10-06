@@ -1,0 +1,289 @@
+{# The item editor — one form, two homes: the item page (showcase/item.html)
+   and an order's Showcase tab (showcase/_order_tab.html). Context: `sc`
+   (routes._editor_context) and `notice`. Every form carries `next`, the page
+   it sits on, so a save comes back to the tab or page it was made from,
+   return_to and all (hard rule 14). Slots: photos, details, piece. #}
+{% from "_save_notice.html" import notice_field, notice_slot %}
+{% from "_icons.html" import icon_trash, icon_grip %}
+{% set item = sc.item %}
+
+<p class="detail-note showcase-status">
+  <span class="pill pill--{{ item.status }}">{{ item.status_label }}</span>
+  {% if item.status == 'draft' %}
+  Not shown anywhere yet. Publish it when the photos and details are ready.
+  {% elif item.status == 'published' %}
+  {# Stored UTC; shown in the company's zone by the app-wide filter. #}
+  Published{% if item.published_at %} {{ item.published_at|local_datetime('%b %d, %Y')|replace(' 0', ' ') }}{% endif %} ·
+  {% if item.visibility == 'public' %}shown in catalog mode, and on your website once it's connected.
+  {% elif item.visibility == 'in_person' %}shown in catalog mode only, never online.
+  {% else %}private: kept here, shown nowhere.{% endif %}
+  {% else %}
+  Out of the catalog{{ ' and off the website' if item.visibility == 'public' else '' }}. Nothing was deleted; publish it again any time.
+  {% endif %}
+</p>
+
+{# ---------------------------------------------------------------- photos #}
+<section class="detail-documents">
+  <h2>Photos</h2>
+  {{ notice_slot(notice, 'photos') }}
+  <p class="detail-note">
+    The first photo is the cover: drag to reorder, or press the star on a
+    photo to make it the cover. Every photo is saved again
+    as a new copy without its hidden data, so a phone's location never leaves
+    with it. Up to {{ sc.max_photos }} per piece.
+  </p>
+
+  <div class="doc-explorer showcase-photos"{% if item.photos|length < sc.max_photos %} data-upload-zone{% endif %}
+       id="showcase-photos" data-reorder-url="{{ url_for('showcase.reorder_photos', item_id=item.id) }}">
+    {% if item.photos|length < sc.max_photos %}
+    <form method="post" action="{{ url_for('showcase.upload_photos', item_id=item.id) }}" enctype="multipart/form-data" class="doc-explorer__item doc-explorer__add">
+      {{ notice_field('photos') }}
+      <input type="hidden" name="next" value="{{ sc.next_url }}">
+      <label class="doc-explorer__add-trigger" for="showcase-photo-input">
+        <span class="doc-explorer__add-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg>
+        </span>
+        <span class="doc-explorer__add-label">Add photos</span>
+        <span class="doc-explorer__add-hint" data-upload-hint hidden>or drop them here</span>
+      </label>
+      <input type="file" name="photos" multiple accept="{{ sc.accept }}" id="showcase-photo-input" class="doc-explorer__upload-input">
+      <button type="submit" class="btn-secondary" data-upload-fallback>Upload</button>
+    </form>
+    {% endif %}
+    {% for photo in item.photos %}
+    <div class="doc-explorer__item showcase-photo" draggable="true" data-photo-id="{{ photo.id }}">
+      <div class="doc-explorer__thumb showcase-photo__thumb">
+        <img src="{{ url_for('showcase.photo_thumbnail', photo_id=photo.id) }}" alt="">
+      </div>
+      <span class="doc-explorer__size">{% if loop.first %}<strong>Cover</strong> · {% endif %}{{ photo.width }}×{{ photo.height }}</span>
+      <div class="doc-explorer__actions">
+        <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">{{ icon_grip() }}</span>
+        <a class="icon-btn" href="{{ url_for('showcase.photo', photo_id=photo.id) }}" target="_blank" rel="noopener" title="Open" aria-label="Open photo {{ loop.index }}">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 10S5 4.5 10 4.5 17.5 10 17.5 10 15 15.5 10 15.5 2.5 10 2.5 10Z"/><circle cx="10" cy="10" r="2.3"/></svg>
+        </a>
+        {% if not loop.first %}
+        {# Dragging needs a mouse; this works by touch too. #}
+        <form method="post" action="{{ url_for('showcase.make_cover', item_id=item.id, photo_id=photo.id) }}" class="doc-explorer__delete-form">
+          <input type="hidden" name="next" value="{{ sc.next_url }}">
+          <button type="submit" class="icon-btn" title="Make cover" aria-label="Make photo {{ loop.index }} the cover">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3.2l2 4.3 4.6.5-3.4 3.1 1 4.6L10 13.4l-4.2 2.3 1-4.6L3.4 8l4.6-.5z"/></svg>
+          </button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('showcase.delete_photo', item_id=item.id, photo_id=photo.id) }}" class="doc-explorer__delete-form">
+          {{ notice_field('photos') }}
+          <input type="hidden" name="next" value="{{ sc.next_url }}">
+          <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete photo {{ loop.index }}">{{ icon_trash() }}</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if sc.order_images %}
+  <form method="post" action="{{ url_for('showcase.add_order_photos', item_id=item.id) }}" class="showcase-picker">
+    {{ notice_field('photos') }}
+    <input type="hidden" name="next" value="{{ sc.next_url }}">
+    <h3 class="showcase-picker__title">From this order's documents</h3>
+    <div class="doc-explorer">
+      {% for image in sc.order_images %}
+      <label class="doc-explorer__item showcase-picker__item">
+        <span class="doc-explorer__thumb"><img src="{{ image.preview_url }}" alt=""></span>
+        <span class="checkbox-group__item">
+          <input type="checkbox" name="document_id" value="{{ image.id }}">
+          <span class="doc-explorer__filename" title="{{ image.filename }}">{{ image.filename }}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn-secondary">Add selected</button>
+  </form>
+  {% endif %}
+</section>
+
+{# --------------------------------------------------------------- details #}
+<section class="detail-orders">
+  <h2>Details</h2>
+  {{ notice_slot(notice, 'details') }}
+  <div class="showcase-details">
+    <form method="post" action="{{ url_for('showcase.save_item', item_id=item.id) }}" class="detail-form showcase-form">
+      {{ notice_field('details') }}
+      <input type="hidden" name="next" value="{{ sc.next_url }}">
+      <label class="showcase-form__field">Title
+        <input type="text" name="title" value="{{ item.title }}" maxlength="160" required>
+      </label>
+
+      <label class="showcase-form__field">Category
+        <select name="category_id">
+          <option value="">—</option>
+          {% for category in sc.categories %}
+          <option value="{{ category.id }}" {% if category.id == item.category_id %}selected{% endif %}>{{ category.label }}{% if not category.is_active %} (hidden){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if not sc.has_categories %}
+      <p class="detail-note detail-form__note">No categories yet: add them in <a href="{{ url_for('showcase.settings') }}">Settings → Showcase</a>.</p>
+      {% endif %}
+
+      <label>Description
+        <textarea name="description" rows="4" maxlength="4000" placeholder="Two or three sentences about the piece.">{{ item.description or '' }}</textarea>
+      </label>
+
+      <fieldset class="showcase-form__field">
+        <legend>Specs</legend>
+        {% for field, value in sc.spec_rows %}
+        <label>{{ field.label }}<input type="text" name="spec_{{ field.id }}" value="{{ value }}" maxlength="200"></label>
+        {% else %}
+        <p class="detail-note">
+          {% if sc.has_spec_fields %}Every spec field is hidden.{% else %}No spec fields yet.{% endif %}
+          Set the studio's list (Dimensions, Leather, Hardware…) in <a href="{{ url_for('showcase.settings') }}">Settings → Showcase</a>.
+        </p>
+        {% endfor %}
+        <p class="detail-note">Leave a spec blank and it isn't shown.</p>
+      </fieldset>
+
+      <fieldset class="showcase-form__field">
+        <legend>Visibility</legend>
+        <div class="checkbox-group">
+          {% for value in sc.visibilities %}
+          <label class="checkbox-group__item">
+            <input type="radio" name="visibility" value="{{ value }}" {% if item.visibility == value %}checked{% endif %}>
+            {{ sc.visibility_labels[value] }}
+            <span class="detail-note">
+              {%- if value == 'public' %} — catalog mode and the website
+              {%- elif value == 'in_person' %} — catalog mode only, never online
+              {%- else %} — kept here, shown nowhere{% endif -%}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="lifecycle-actions">
+        {% if item.status == 'published' %}
+        <button type="submit" name="action" value="save" class="btn-primary">Save</button>
+        {% else %}
+        <button type="submit" name="action" value="save" class="btn-secondary">Save draft</button>
+        <button type="submit" name="action" value="publish" class="btn-primary">Publish</button>
+        {% endif %}
+      </div>
+    </form>
+
+    {# What can leave the app: never a price, a client or an order (SC5). #}
+    <aside class="showcase-preview" aria-label="Preview">
+      <p class="showcase-preview__label">Preview</p>
+      <div class="showcase-card">
+        <div class="showcase-card__cover">
+          {% if item.cover %}<img src="{{ url_for('showcase.photo_thumbnail', photo_id=item.cover.id) }}" alt="">{% else %}<span class="doc-explorer__ext">No photo yet</span>{% endif %}
+        </div>
+        <div class="showcase-card__body">
+          <p class="showcase-card__title">{{ item.title }}</p>
+          {% if item.category %}<p class="showcase-card__meta">{{ item.category.label }}</p>{% endif %}
+          {% if item.description %}<p class="showcase-card__text">{{ item.description }}</p>{% endif %}
+          {% if sc.shown_specs %}
+          <dl class="showcase-card__specs">
+            {% for label, value in sc.shown_specs %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
+          </dl>
+          {% endif %}
+        </div>
+      </div>
+      <p class="detail-note">Shows what's saved. No price or client details ever leave the app.</p>
+    </aside>
+  </div>
+</section>
+
+{# ------------------------------------------------------------ this piece #}
+<section class="detail-lifecycle">
+  <h2>This piece</h2>
+  {{ notice_slot(notice, 'piece') }}
+  <div class="lifecycle-actions">
+    {% if item.status == 'published' %}
+    <form method="post" action="{{ url_for('showcase.withdraw_item', item_id=item.id) }}">
+      {{ notice_field('piece') }}
+      <input type="hidden" name="next" value="{{ sc.next_url }}">
+      <button type="submit" class="btn-secondary">Withdraw</button>
+    </form>
+    {% else %}
+    <button type="button" class="btn-secondary" data-open-lifecycle="delete-piece-modal">Delete</button>
+    {% endif %}
+    {% if sc.order and request.endpoint == 'showcase.item_page' %}
+    <a class="btn-secondary" href="{{ sc.order.showcase_url }}?return_to={{ request.path|urlencode }}">Open the order</a>
+    {% endif %}
+  </div>
+  <p class="detail-note">
+    {% if item.status == 'published' %}
+    Withdrawing takes it out of the catalog{{ ' and off the website' if item.visibility == 'public' else '' }} and keeps everything, so it can be published again. A published piece can't be deleted: withdraw it first.
+    {% else %}
+    Deleting removes the piece and its photos for good.{% if sc.order %} The order's own documents aren't touched, and the order asks again whether to showcase it.{% endif %}
+    {% endif %}
+  </p>
+</section>
+
+{% if item.status != 'published' %}
+<dialog id="delete-piece-modal" class="modal">
+  <form method="post" action="{{ url_for('showcase.delete_item', item_id=item.id) }}" class="modal__form">
+    {{ notice_field('piece') }}
+    <input type="hidden" name="next" value="{{ sc.next_url }}">
+    <h2 class="modal__title">Delete this piece?</h2>
+    <p class="modal__subtitle">{{ item.title }}</p>
+    <p class="modal__hint">Its {{ item.photos|length }} photo{{ 's' if item.photos|length != 1 }} and details are removed for good.{% if sc.order %} The order and its documents stay as they are.{% endif %}</p>
+    <div class="modal__actions">
+      <div class="modal__buttons">
+        <button type="button" class="btn-secondary" data-close-modal>Keep it</button>
+        <button type="submit" class="btn-primary">Delete</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+
+<script src="{{ url_for('static', filename='assets/js/upload-tile.js') }}" defer></script>
+<script>
+  (function () {
+    document.querySelectorAll('[data-open-lifecycle="delete-piece-modal"]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var modal = document.getElementById('delete-piece-modal');
+        if (modal) modal.showModal();
+      });
+    });
+    document.querySelectorAll('#delete-piece-modal [data-close-modal]').forEach(function (el) {
+      el.addEventListener('click', function () { el.closest('dialog').close(); });
+    });
+
+    // Drag to reorder photos; the first is the cover. Same shape as the
+    // settings lists' drag handler, posting the new order as JSON.
+    var grid = document.getElementById('showcase-photos');
+    if (!grid) return;
+    var dragged = null;
+    grid.addEventListener('dragstart', function (e) {
+      var card = e.target.closest('.showcase-photo');
+      if (!card) return;
+      dragged = card;
+      card.classList.add('showcase-photo--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.dataset.photoId);
+    });
+    grid.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      var target = e.target.closest('.showcase-photo');
+      if (!target || target === dragged) return;
+      var rect = target.getBoundingClientRect();
+      var before = (e.clientX - rect.left) < rect.width / 2;
+      grid.insertBefore(dragged, before ? target : target.nextSibling);
+    });
+    grid.addEventListener('drop', function (e) { if (dragged) e.preventDefault(); });
+    grid.addEventListener('dragend', function () {
+      if (!dragged) return;
+      dragged.classList.remove('showcase-photo--dragging');
+      dragged = null;
+      var order = [].slice.call(grid.querySelectorAll('.showcase-photo'))
+        .map(function (card) { return parseInt(card.dataset.photoId, 10); });
+      fetch(grid.dataset.reorderUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: order }),
+      }).then(function () { window.location.reload(); });
+    });
+  })();
+</script>

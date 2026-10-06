@@ -65,8 +65,10 @@ changes made:
     place the "Delete" button appears outside a `.settings-source-list`: it
     deletes a whole record rather than a row in a list, so neither container
     applies, and it takes the label rather than inventing a third look.
-    It's also the only delete in the app behind a confirm dialog, because
-    it's the only one that isn't a single row someone can re-add.
+    It's also behind a confirm dialog, because it isn't a single row
+    someone can re-add — and for the same reason so is the second one, a
+    Showcase piece's **Delete** in its own "This piece" block (photos and
+    writing go with it). Those two are the only confirmed deletes.
     **Never introduce a text "Remove" button** — the order
     page's Line items and Payments sections, and three sender-rule buttons in
     `communications/templates/integrations.html`, used to read "Remove" and
@@ -247,6 +249,18 @@ Current tokens (top of `style.css`):
   `button[aria-busy="true"]`), and its result half is a green or red notice
   in an empty slot next to the button that was pressed. A request whose
   success shows itself (a render appearing, a card going) says nothing.
+
+- **The main nav wraps rather than overflowing.** Between the phone menu
+  (680px) and the width the whole row needs, `.view-switch__links` wraps
+  onto a second row, each link kept on one line with its badge beside it.
+  A per-company feature (Showcase) adds a link, so the row's width isn't
+  fixed any more; before this, a tenth link pushed Log out off the page.
+
+- **Showcase's statuses reuse `.pill`**: draft and withdrawn in
+  `--ink-soft` (nothing is showing), published in `--status-delivered`
+  green. Its piece card (`.showcase-card`) is the one new component: a 4:3
+  cover over title, category and specs, used for the list grid and for the
+  editor's preview so the two can't drift apart.
 
 **When extending the UI:** match the current restrained, high-contrast, no-flourish
 look. Don't add serif/display fonts, decorative stitching, or brownish/muted accent

@@ -86,6 +86,23 @@ def test_one_companys_feature_is_not_anothers(company, other_company):
     assert features.enabled_by_company() == {company.id: {"showcase"}}
 
 
+# --- FE10: when the current spell began -----------------------------------
+
+def test_enabled_since_tracks_the_current_spell(company):
+    assert features.enabled_since(company.id, "showcase") is None
+    assert features.enabled_since(None, "showcase") is None
+    features.set_enabled(company.id, "showcase", True)
+    db.session.commit()
+    first = features.enabled_since(company.id, "showcase")
+    assert first is not None and first.tzinfo is None
+
+    features.set_enabled(company.id, "showcase", False)
+    db.session.commit()
+    assert features.enabled_since(company.id, "showcase") is None
+    with pytest.raises(KeyError):
+        features.enabled_since(company.id, "showcse")
+
+
 # --- FE6: a key that left the catalog reads as off ------------------------
 
 def test_a_retired_key_is_kept_but_reads_as_off(company):

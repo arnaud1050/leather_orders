@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+{# Catalog mode (SC25–SC33): the full-screen gallery and slideshow. Standalone
+   on purpose — no base.html, no app nav — because a kiosk link must show the
+   catalog and nothing else: a visitor handed the tablet is never one tap from
+   the invoices. Everything it shows comes from `payload` (services.
+   catalog_payload), rendered by static/assets/js/showcase-catalog.js; the
+   markup here is the empty frame. Dark on purpose: it's a presentation
+   surface, and photos read best on near-black. #}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {# The token is in this page's URL: never send it anywhere as a referrer. #}
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#111111">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="{{ studio or 'Showcase' }}">
+  <title>{{ studio or 'Showcase' }}</title>
+  {% if manifest_url %}<link rel="manifest" href="{{ manifest_url }}">{% endif %}
+  {% if logo_url %}<link rel="apple-touch-icon" href="{{ logo_url }}">{% endif %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/showcase-catalog.css') }}">
+</head>
+<body class="catalog">
+
+  <header class="catalog__bar">
+    <div class="catalog__brand">
+      {% if logo_url %}<span class="catalog__logo{{ ' catalog__logo--plate' if logo_plate }}"><img src="{{ logo_url }}" alt="{{ studio }}"></span>
+      {% else %}<span class="catalog__studio">{{ studio }}</span>{% endif %}
+    </div>
+    <nav class="catalog__chips" id="catalog-chips" aria-label="Categories" hidden></nav>
+    <div class="catalog__actions">
+      <button type="button" class="catalog__button" id="catalog-play">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" fill="currentColor"/></svg>
+        Slideshow
+      </button>
+      <button type="button" class="catalog__button" id="catalog-fullscreen" hidden>Full screen</button>
+      {% if exit_url %}<a class="catalog__button catalog__button--quiet" href="{{ exit_url }}">Exit</a>{% endif %}
+    </div>
+  </header>
+
+  <p class="catalog__offline" id="catalog-offline" role="status" hidden>
+    Offline — showing the pieces saved on this device.
+  </p>
+
+  <main class="catalog__grid" id="catalog-grid" aria-label="Pieces"></main>
+  <p class="catalog__empty" id="catalog-empty" hidden>
+    No pieces to show yet. Publish a piece as public or in person only and it appears here.
+  </p>
+
+  <div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-labelledby="viewer-title" hidden>
+    <div class="viewer__stage" id="viewer-stage">
+      <img class="viewer__photo" id="viewer-photo" alt="">
+      <button type="button" class="viewer__nav viewer__nav--prev" id="viewer-prev" aria-label="Previous photo">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button type="button" class="viewer__nav viewer__nav--next" id="viewer-next" aria-label="Next photo">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="viewer__dots" id="viewer-dots" aria-hidden="true"></div>
+    </div>
+    <aside class="viewer__info">
+      <button type="button" class="viewer__close" id="viewer-close" aria-label="Close">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <p class="viewer__category" id="viewer-category"></p>
+      <h1 class="viewer__title" id="viewer-title"></h1>
+      <p class="viewer__text" id="viewer-text"></p>
+      <dl class="viewer__specs" id="viewer-specs"></dl>
+      <div class="viewer__pieces">
+        <button type="button" class="catalog__button catalog__button--quiet" id="viewer-prev-piece">&larr; Previous piece</button>
+        <button type="button" class="catalog__button catalog__button--quiet" id="viewer-next-piece">Next piece &rarr;</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="cinema" id="cinema" hidden>
+    <div class="cinema__slide" id="cinema-a"><img alt=""></div>
+    <div class="cinema__slide" id="cinema-b"><img alt=""></div>
+    <div class="cinema__caption">
+      <p class="cinema__title" id="cinema-title"></p>
+      <p class="cinema__category" id="cinema-category"></p>
+    </div>
+    <div class="cinema__brand">
+      {% if logo_url %}<span class="catalog__logo{{ ' catalog__logo--plate' if logo_plate }}"><img src="{{ logo_url }}" alt=""></span>
+      {% else %}{{ studio }}{% endif %}
+    </div>
+    <p class="cinema__paused" id="cinema-paused" hidden>Paused · tap to look closer</p>
+  </div>
+
+  <script type="application/json" id="catalog-data">{{ payload|tojson }}</script>
+  <script src="{{ url_for('static', filename='assets/js/showcase-catalog.js') }}"></script>
+</body>
+</html>

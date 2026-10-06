@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Showcase — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Showcase</h1>
+    <p class="detail-subtitle">The studio's portfolio of finished pieces</p>
+  </header>
+
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['awaiting', 'items']) }}
+
+  {% if awaiting %}
+  <section class="detail-orders">
+    <h2>Waiting for a decision</h2>
+    {{ notice_slot(notice, 'awaiting') }}
+    <p class="detail-note">
+      Delivered since Showcase was switched on. Each stays here until it's
+      showcased or you say it won't be.
+    </p>
+    <ul class="settings-source-list">
+      {% for order in awaiting %}
+      <li class="settings-source-list__item">
+        <span class="settings-source-list__label">
+          {{ order.item }}
+          <span class="detail-note">{{ order.client_name }} · delivered {{ order.delivered_on.strftime('%b') }} {{ order.delivered_on.day }}</span>
+        </span>
+        <div class="settings-source-list__actions">
+          <a class="btn-primary" href="{{ order.showcase_url }}?return_to={{ request.path|urlencode }}">Showcase</a>
+          <form method="post" action="{{ url_for('showcase.dismiss_order', order_id=order.id) }}">
+            {{ notice_field('awaiting') }}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button type="submit" class="btn-secondary">Not showcasing this one</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="detail-orders">
+    <h2>Pieces</h2>
+    {{ notice_slot(notice, 'items') }}
+
+    <div class="legend-row">
+      <form method="get" class="showcase-filters" id="showcase-filters">
+        <label>Category
+          <select name="category">
+            <option value="">All</option>
+            {% for category in categories %}
+            <option value="{{ category.id }}" {% if category.id == category_id %}selected{% endif %}>{{ category.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Status
+          <select name="status">
+            <option value="">All</option>
+            {% for key, label in status_labels.items() %}
+            <option value="{{ key }}" {% if key == status %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Visibility
+          <select name="visibility">
+            <option value="">All</option>
+            {% for key, label in visibility_labels.items() %}
+            <option value="{{ key }}" {% if key == visibility %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <noscript><button type="submit" class="btn-secondary">Filter</button></noscript>
+      </form>
+      <div class="legend__actions">
+        <a class="btn-secondary" href="{{ url_for('showcase.present') }}">Present</a>
+        <form method="post" action="{{ url_for('showcase.create_item') }}">
+          {{ notice_field('items') }}
+          <button type="submit" class="btn-primary">+ New piece</button>
+        </form>
+      </div>
+    </div>
+
+    {% if items %}
+    <div class="showcase-grid">
+      {% for item in items %}
+      <a class="showcase-card showcase-card--link" href="{{ url_for('showcase.item_page', item_id=item.id) }}">
+        <div class="showcase-card__cover">
+          {% if item.cover %}<img src="{{ url_for('showcase.photo_thumbnail', photo_id=item.cover.id) }}" alt="" loading="lazy">{% else %}<span class="doc-explorer__ext">No photo yet</span>{% endif %}
+        </div>
+        <div class="showcase-card__body">
+          <p class="showcase-card__title">{{ item.title }}</p>
+          <p class="showcase-card__meta">
+            <span class="pill pill--{{ item.status }}">{{ item.status_label }}</span>
+            {{ item.visibility_label }}{% if item.category %} · {{ item.category.label }}{% endif %}
+          </p>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% elif category_id or status or visibility %}
+    <p class="detail-note">No pieces match these filters.</p>
+    {% else %}
+    <p class="detail-note">
+      No pieces yet. Delivered orders offer a Showcase tab; pieces made for
+      stock or a market start from <strong>+ New piece</strong>.
+    </p>
+    {% endif %}
+  </section>
+
+</div>
+<script>
+  (function () {
+    var form = document.getElementById('showcase-filters');
+    if (!form || !form.requestSubmit) return;
+    form.querySelectorAll('select').forEach(function (select) {
+      select.addEventListener('change', function () { form.requestSubmit(); });
+    });
+  })();
+</script>
+{% endblock %}

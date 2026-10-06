@@ -15,6 +15,9 @@ The allowances are wider than billing's, and deliberately enumerated:
   model wider than billing, no wider. Anything about an **order** must
   arrive through a host-registered hook, never an import (§12) — which is
   exactly the temptation the order-from-enquiry work will bring.
+- `normalize_province` — a pure function from `billing.tax`, re-exported by
+  `models.py` so field mapping can sanitise a form's province without this
+  module importing `billing` directly (see communications/CLAUDE.md).
 """
 
 import ast
@@ -25,7 +28,9 @@ import pytest
 COMMS = pathlib.Path(__file__).resolve().parent.parent / "communications"
 
 # The only names allowed to cross from the host's models.py into this module.
-SANCTIONED_MODEL_IMPORTS = {"db", "Client", "SourceOption", "DEFAULT_TIMEZONE"}
+SANCTIONED_MODEL_IMPORTS = {
+    "db", "Client", "SourceOption", "DEFAULT_TIMEZONE", "normalize_province",
+}
 
 # Order/billing domain models. Importing any of these — by whatever path —
 # is the specific coupling §12 exists to prevent.

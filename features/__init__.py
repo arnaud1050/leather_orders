@@ -70,6 +70,20 @@ def is_enabled(company_id: int | None, key: str) -> bool:
     return key in enabled_keys(company_id)
 
 
+def enabled_since(company_id: int | None, key: str) -> datetime | None:
+    """When this company's current spell of the feature began (naive UTC),
+    or None when it doesn't have it (FE10). A feature switched off and on
+    again starts a new spell."""
+    _check(key)
+    if company_id is None:
+        return None
+    return (
+        db.session.query(CompanyFeature.enabled_at)
+        .filter_by(company_id=company_id, feature_key=key)
+        .scalar()
+    )
+
+
 def enabled_by_company() -> dict[int, set[str]]:
     """Every company's features at once, for the admin roster — one query
     rather than one per row."""

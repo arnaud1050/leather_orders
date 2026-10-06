@@ -73,7 +73,8 @@ class BillingProfile(db.Model):
     # that version still carry it, unused and harmless.)
     invoice_template = db.Column(db.String(20))
     primary_color = db.Column(db.String(7))    # "#rrggbb"
-    # Opaque name of the logo file; only billing/logos.py knows it's a path.
+    # Legacy: the logo moved to the studio's brand (brand/, BL15). Kept only
+    # so that one-time migration can find old logos; always NULL after it.
     logo_filename = db.Column(db.String(80))
     # The optional page footer (see config.DEFAULT_FOOTER_*).
     footer_enabled = db.Column(db.Boolean, nullable=False, default=False)
@@ -82,13 +83,9 @@ class BillingProfile(db.Model):
     footer_text = db.Column(db.String(config.FOOTER_TEXT_MAX_LENGTH))
 
     @property
-    def has_logo(self) -> bool:
-        return bool(self.logo_filename)
-
-    @property
     def branding(self) -> Branding:
-        """Layout and colours. The logo isn't on it: that needs the file
-        read, which is `services.invoicing.branding_for`'s job."""
+        """Layout and colours. The logo isn't on it: it comes from the host,
+        which is `services.invoicing.branding_for`'s job."""
         return Branding(
             template=self.invoice_template,
             primary_color=self.primary_color,

@@ -55,18 +55,13 @@ DEFAULT_FOOTER_TEXT_COLOR = "#666666"
 # bottom margin, which has a fixed height.
 FOOTER_TEXT_MAX_LENGTH = 200
 
-# Where invoice logos are kept (see billing/logos.py). The same data/
-# directory as the SQLite file and the order documents — the bind-mounted
-# volume in both Docker deployments, so a logo survives a rebuild.
-# Env-overridable, same convention as documents/config.py.
+# Where invoice logos *used* to be kept. The logo is the studio's now
+# (brand/, BRAND_DIR) and billing only embeds it (L7); this path is read
+# once more, by brand's one-time migration that moves old logos out
+# (BL15). Nothing in billing writes here any more.
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO_DIR = os.environ.get(
     "BILLING_LOGO_DIR", os.path.join(_BASE_DIR, "data", "billing_logos"))
-# Cap on the *upload*. What's stored is a re-encoded, downscaled copy and is
-# normally far smaller, so this only has to admit a photo straight off a
-# phone. 10 MB matches nginx's client_max_body_size (server_config), which
-# would otherwise refuse a bigger file before the app could explain why.
-LOGO_MAX_BYTES = int(os.environ.get("BILLING_LOGO_MAX_BYTES", 10 * 1024 * 1024))
 
 # An invoice's notes print in a box three lines tall above the payment
 # instructions (see the PDF templates), so that block sits at the same
