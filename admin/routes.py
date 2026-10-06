@@ -418,6 +418,9 @@ def usage():
         sort_by=sort_by,
         sort_dir=sort_dir,
         sort_defaults={key: d for key, (_, d) in usage_store.FEATURE_SORTS.items()},
+        # Stored UTC, read in the staff zone set on /admin/settings (PA29b).
+        to_local=services.to_staff_local,
+        staff_zone=services.staff_zone().key,
         section="usage",
         active_view="admin",
     )

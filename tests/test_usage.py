@@ -519,6 +519,21 @@ def test_a_form_without_the_box_leaves_the_flag_alone(staff, company):
     assert (row.name, row.exclude_from_usage) == ("Renamed", True)
 
 
+def test_last_use_reads_in_the_staff_zone(staff, company, committed):
+    """PA32b: 03:00 UTC on 2 July is still 1 July, 20:00 in Vancouver (PDT)."""
+    from datetime import datetime
+    db.session.add(UsageEvent(company_id=company.id, user_id=committed.id,
+                              event="mail.sent", created_at=datetime(2026, 7, 2, 3, 0)))
+    db.session.commit()
+    staff.post("/admin/settings/timezone", data={"timezone": "America/Vancouver"})
+
+    page = staff.get("/admin/usage?period=all").get_data(as_text=True)
+    assert "Last used (America/Vancouver)" in page
+    assert "Last active (America/Vancouver)" in page
+    assert "2026-07-01 20:00" in page
+    assert "2026-07-02" not in page
+
+
 # ---------------------------------------------------------------------------
 # Sorting and filtering the feature table (PA32a)
 # ---------------------------------------------------------------------------

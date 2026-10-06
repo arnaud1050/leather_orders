@@ -277,6 +277,9 @@ What studios use, read from `usage_events`. The recording rules are
   what a filter was for. Sorting and filters combine and survive each
   other's changes; an unknown value falls back to the default. The companies table shows
   features used as "x / catalog size".
+- **PA32b.** Last used and Last active are shown in the staff time zone
+  (`PA29b`), named in their column headers — not UTC. Display only: the
+  stored times, and sorting by them, are unchanged.
 - **PA33.** Counts only. The page names features and companies, never a
   client, order, invoice, message or any figure from a studio's records.
 
@@ -293,7 +296,7 @@ What studios use, read from `usage_events`. The recording rules are
 | PA24, PA24a, PA25 | `tests/test_user_migration.py` |
 | PA24b, PA24c | `tests/test_seeding.py` |
 | PA26–PA30 | `tests/test_admin.py` — the announcement banner (PA29a: its schedule; PA29b: the staff time zone) |
-| PA31–PA33, PA31a, PA32a | `tests/test_usage.py` — `/admin/usage`, excluding a company |
+| PA31–PA33, PA31a, PA32a, PA32b | `tests/test_usage.py` — `/admin/usage`, excluding a company |
 | PA8 (the usage flag) | `tests/test_usage.py` — excluding a company |
 
 **Not covered by tests:** the templates' own markup (no page here has logic

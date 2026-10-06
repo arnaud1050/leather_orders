@@ -89,7 +89,7 @@
             <th class="is-numeric">Sign-ins</th>
             <th class="is-numeric">Features used</th>
             <th class="is-numeric">Actions</th>
-            <th>Last active (UTC)</th>
+            <th>Last active ({{ staff_zone }})</th>
           </tr>
         </thead>
         <tbody>
@@ -103,7 +103,7 @@
             <td class="is-numeric">{{ row.logins }}</td>
             <td class="is-numeric">{{ row.features }} / {{ feature_count }}</td>
             <td class="is-numeric">{{ row.events }}</td>
-            <td>{{ row.last_seen.strftime('%Y-%m-%d %H:%M') if row.last_seen else '—' }}</td>
+            <td>{{ to_local(row.last_seen).strftime('%Y-%m-%d %H:%M') if row.last_seen else '—' }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -133,7 +133,7 @@
             {% if not company %}<th class="is-numeric">{{ sort_link('companies', 'Companies', numeric=True) }}</th>{% endif %}
             <th class="is-numeric">{{ sort_link('people', 'People', numeric=True) }}</th>
             <th class="is-numeric">{{ sort_link('uses', 'Uses', numeric=True) }}</th>
-            <th>{{ sort_link('last_used', 'Last used (UTC)') }}</th>
+            <th>{{ sort_link('last_used', 'Last used (' ~ staff_zone ~ ')') }}</th>
             <th>Breakdown</th>
           </tr>
         </thead>
@@ -148,7 +148,7 @@
             {% if not company %}<td class="is-numeric">{{ row.companies }}</td>{% endif %}
             <td class="is-numeric">{{ row.users }}</td>
             <td class="is-numeric">{{ row.uses }}</td>
-            <td>{{ row.last_used.strftime('%Y-%m-%d') if row.last_used else '—' }}</td>
+            <td>{{ to_local(row.last_used).strftime('%Y-%m-%d') if row.last_used else '—' }}</td>
             <td class="usage-breakdown">
               {% for description, uses in row.breakdown %}{{ description }} ({{ uses }}){% if not loop.last %} · {% endif %}{% endfor %}
             </td>

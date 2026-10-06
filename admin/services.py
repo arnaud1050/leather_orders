@@ -441,6 +441,11 @@ def set_staff_timezone(name: str) -> str | None:
     return None
 
 
+def to_staff_local(value: datetime) -> datetime:
+    """A stored (naive UTC) time as an aware datetime in the staff zone."""
+    return value.replace(tzinfo=timezone.utc).astimezone(staff_zone())
+
+
 def to_local_input(value: datetime | None) -> str:
     """A stored UTC time as a `datetime-local` input value, or ""."""
     if value is None:
