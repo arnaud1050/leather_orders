@@ -82,6 +82,14 @@ must hold true*.
   both when creating a company (off by default) and on its page. The edit
   form marks that it rendered the box (`exclude_from_usage_shown`), so a
   post without the marker leaves the flag alone (hard rule 9).
+- **PA8a.** A company's page has a **Features** section: one checkbox per
+  entry in `features.FEATURES`, with its description, saved by its own
+  form (`/admin/companies/<id>/features`). Saving makes the company's
+  features exactly the ticked ones; a key not in the catalog is ignored.
+  The form carries `features_shown`, and a post without it changes nothing
+  (hard rule 9). Switching a feature off deletes nothing the feature
+  stored (`FE5`). The Companies list names each company's features after
+  its time zone. See [features/REQUIREMENTS.md](../features/REQUIREMENTS.md).
 
 ## 3. Identity
 
@@ -298,6 +306,7 @@ What studios use, read from `usage_events`. The recording rules are
 | PA26–PA30 | `tests/test_admin.py` — the announcement banner (PA29a: its schedule; PA29b: the staff time zone) |
 | PA31–PA33, PA31a, PA32a, PA32b | `tests/test_usage.py` — `/admin/usage`, excluding a company |
 | PA8 (the usage flag) | `tests/test_usage.py` — excluding a company |
+| PA8a | `tests/test_features.py` — the Features section and its route |
 
 **Not covered by tests:** the templates' own markup (no page here has logic
 worth asserting on beyond what the route tests already render), and the

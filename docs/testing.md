@@ -67,6 +67,14 @@ the shortcut implementation (`current_user.is_platform_admin` instead of the
 session key) passes whenever the impersonated user happens to hold the flag,
 and fails open silently.
 
+**`tests/test_features.py`** defends per-company features
+(`features/REQUIREMENTS.md` `FE1`–`FE9`) and their admin toggle (`PA8a`): off
+by default and per company, a null company having none, unknown keys raising
+rather than reading as off, a retired key kept but ignored, `require()`
+404ing and `has_feature()` answering for the signed-in company, the toggle's
+marker field (an empty post changes nothing), and a source-reading check that
+the package imports only `db` from the host, since modules will depend on it.
+
 **`tests/test_user_migration.py`** covers the one migration in the project
 that rebuilds a table rather than extending one — `username` out, `email` in
 (`PA24`, `PA25`). Every fixture builds the *old* schema by hand; testing

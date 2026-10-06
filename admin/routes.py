@@ -21,6 +21,7 @@ from flask import (
 )
 from flask_login import current_user, login_required, logout_user
 
+import features
 from admin import services
 from models import DEFAULT_TIMEZONE, User, db
 from usage import store as usage_store
@@ -143,6 +144,8 @@ def companies():
         "admin_companies.html",
         companies=services.companies(),
         user_counts=services.user_counts(),
+        catalog=features.FEATURES,
+        company_features=features.enabled_by_company(),
         time_zones=_time_zones,
         default_timezone=DEFAULT_TIMEZONE,
         notice=session.pop("admin_notice", None),
@@ -205,6 +208,8 @@ def company(company_id: int):
     return render_template(
         "admin_company.html",
         company=row,
+        catalog=features.FEATURES,
+        enabled_features=features.enabled_keys(row.id),
         users=services.users_of(row.id),
         time_zones=_time_zones,
         notice=session.pop("admin_notice", None),
@@ -228,6 +233,19 @@ def update_company(company_id: int):
         exclude_from_usage=exclude,
     )
     _report(error, "Company saved.")
+    return redirect(url_for("admin.company", company_id=row.id))
+
+
+@bp.route("/companies/<int:company_id>/features", methods=["POST"])
+@platform_admin_required
+def update_company_features(company_id: int):
+    row = _company_or_404(company_id)
+    # Same marker as `exclude_from_usage_shown`: unticked boxes post
+    # nothing, so without proof the form rendered them, an empty post
+    # means "leave alone" (hard rule 9), not "switch everything off".
+    if "features_shown" in request.form:
+        error = services.set_company_features(row, set(request.form.getlist("feature")))
+        _report(error, "Features saved.")
     return redirect(url_for("admin.company", company_id=row.id))
 
 

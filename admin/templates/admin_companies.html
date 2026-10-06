@@ -36,6 +36,9 @@
           <span class="detail-note">
             {{ user_counts.get(row.id, 0) }} active user{{ 's' if user_counts.get(row.id, 0) != 1 }}
             · {{ row.timezone }}
+            {%- for key, (label, _) in catalog.items() if key in company_features.get(row.id, ()) %}
+            · {{ label }}
+            {%- endfor %}
           </span>
         </span>
         <div class="settings-source-list__actions">

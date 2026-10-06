@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from flask import session
 from flask_login import current_user, login_user
 
+import features
 from models import DEFAULT_TIMEZONE, Company, User, db, normalise_email
 
 from admin.models import PlatformSettings
@@ -206,6 +207,19 @@ def update_company(
     company.timezone = timezone
     if exclude_from_usage is not None:
         company.exclude_from_usage = exclude_from_usage
+    db.session.commit()
+    return None
+
+
+def set_company_features(company: Company, chosen: set[str]) -> str | None:
+    """Make the company's features exactly the catalog keys in `chosen`.
+
+    Every catalog feature not ticked is switched off; an unknown key in
+    `chosen` is ignored rather than refused, since only a hand-made post
+    can contain one. Nothing a feature stored is touched either way (FE5).
+    """
+    for key in features.FEATURES:
+        features.set_enabled(company.id, key, key in chosen)
     db.session.commit()
     return None
 

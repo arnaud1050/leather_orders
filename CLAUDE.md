@@ -29,6 +29,7 @@ demand — open the one the index points at rather than guessing from memory.
 | AI reply suggestions, image rendering, vendor API keys, prompts | [ai/CLAUDE.md](ai/CLAUDE.md), [ai/REQUIREMENTS.md](ai/REQUIREMENTS.md) |
 | **Platform admin — provisioning companies and users, impersonation, why email replaced usernames.** A host blueprint, *not* a module: it imports host models on purpose | [admin/CLAUDE.md](admin/CLAUDE.md), [admin/REQUIREMENTS.md](admin/REQUIREMENTS.md) |
 | **Feature-usage events — what's tracked, why recording can never break the action, adding an event**, and the `/admin/usage` page that reads them | [usage/CLAUDE.md](usage/CLAUDE.md), [usage/REQUIREMENTS.md](usage/REQUIREMENTS.md) |
+| **Per-company features — the parts sold separately**, switched on per company from `/admin`; `is_enabled()`, `require()`, `has_feature()` | [features/CLAUDE.md](features/CLAUDE.md), [features/REQUIREMENTS.md](features/REQUIREMENTS.md) |
 
 **Changing behaviour means changing the matching `REQUIREMENTS.md` rule in the
 same commit.** If a rule and the code disagree, one of them is a bug.
@@ -68,7 +69,8 @@ where it's indexed above; this is the checklist, not the reasoning.
    shared helper that depends on nothing of the app). Any module may also
    call `from usage import track`: the `usage` package root is just as
    dependency-free, and `usage.store` stays off limits
-   (`tests/test_usage.py`).
+   (`tests/test_usage.py`). Likewise `import features`, which imports
+   only `db` from the host (`tests/test_features.py`).
    **`admin/` is not a module and this rule doesn't apply to it** — its
    subject matter *is* `Company` and `User`, so it imports them freely. It's
    a package only because `app.py` is long enough already. See
@@ -215,6 +217,8 @@ admin/                 # platform admin: companies, users       -> admin/CLAUDE.
                        # NOT a module — imports host models on purpose
 usage/                 # feature-usage events + /admin/usage    -> usage/CLAUDE.md
                        # __init__ = track() for anyone; store.py = host-only
+features/              # per-company features switched in /admin -> features/CLAUDE.md
+                       # any module may import it (only `db` from the host)
 billing/               # invoicing, Canadian sales tax          -> billing/CLAUDE.md
 communications/        # Gmail + Google Calendar integration    -> communications/CLAUDE.md
 inventory/             # materials & stock tracking             -> inventory/CLAUDE.md

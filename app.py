@@ -107,6 +107,12 @@ from inventory.config import UNIT_WHOLE as INVENTORY_UNIT_WHOLE  # noqa: E402
 import usage.store as usage_store  # noqa: E402
 from usage import track  # noqa: E402
 
+# Per-company features a platform admin switches on from /admin — the parts
+# of the app sold separately (features/CLAUDE.md). Imported before
+# create_all() so its table exists; register() below gives templates
+# has_feature().
+import features  # noqa: E402
+
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -397,6 +403,7 @@ inventory_routes.register(app, resolve_order=get_order_or_404)
 # TIME_ZONES is handed in rather than imported: admin/ can't import this
 # file without a circular import, and the list belongs to the app.
 admin_routes.register(app, time_zones=TIME_ZONES)
+features.register(app)
 
 
 def _attachable_documents(company_id: int, client_id: int) -> dict:

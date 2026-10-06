@@ -156,3 +156,276 @@
   quantity** (`inventory.services.edit_material`) — same "remove and re-add"
   limit `OrderLine` has, and for the same "fine at prototype scale" reason.
 
+## Planned: Showcase (portfolio, website sync, catalog mode)
+
+*Spec agreed 2026-10-05, not built.* Turns finished work into a portfolio
+the studio controls from one place: each item is pushed to the studio's own
+website (bymonsieur.ca's "Recent Commissions" first), shared to social media
+by hand, and shown full-screen on any device at client meetings and craft
+markets. It started as the "Promotion layer" of the original Cooperator
+brief, which was written before this app existed, so read that brief as
+background, not spec. **Generic on purpose:** nothing here may assume
+leather, bags or the word "commission". A ceramicist or a jeweller must be
+able to use it unchanged; each website chooses its own section label.
+
+When this lands it becomes a self-contained module, `showcase/`, with its own
+`CLAUDE.md` + `REQUIREMENTS.md`, and these notes move there.
+
+### Sold per company: a feature flag
+
+- The platform admin turns Showcase on or off **per company** from `/admin`
+  (the company page). It's meant to be sold later as an extra or a higher
+  tier, so it's built as the first entry of a **generic per-company feature
+  mechanism**, not a one-off `showcase_enabled` column: a
+  `company_features` table (`company_id`, `feature_key`, `enabled_at`)
+  plus a catalog of known keys in code, the same "closed catalog" idea as
+  `usage.EVENTS`. A key not in the catalog is refused. The next paid
+  feature then needs a catalog entry, not a migration.
+- **Off means invisible, not broken.** No nav item, no order-page tab, no
+  badge, no Settings section; every showcase route 404s; kiosk links stop
+  resolving; nothing more is sent to the website. **Turning it off deletes
+  nothing:** items, photos and settings stay, and turning it back on brings
+  them all back. Whatever was already pushed to the website stays there
+  (the website owns its copy); withdrawing it is a deliberate act, not a
+  side effect of a billing change.
+- Checked in one place (a helper such as `company_has(company, "showcase")`),
+  never by querying the table ad hoc. Tests cover flag-off for every route.
+- Events go to `usage` (`showcase.item_published`, `showcase.shared`,
+  `showcase.catalog_opened`, …), which is also how to tell whether the tier
+  is worth selling.
+
+### Data (all module-owned, all filtered by `company_id`)
+
+- **`ShowcaseItem`**: `title`, `description`, `category_id`, `visibility`
+  (`private` / `in_person` / `public`), `status` (`draft` / `published` /
+  `withdrawn`), `published_at`, and an **optional** `order_id`. Optional because pieces made
+  for stock or a market have no order, and the catalog needs them most.
+  `order_id` is stored as a plain integer the module never resolves itself
+  (hard rule 4); the host does it through the adapter below.
+- **`ShowcaseCategory`**: per company, ordered, **hide-don't-delete**
+  (hard rule 8). Mapped by name onto a website's own categories.
+- **`ShowcaseSpecField`**: the studio's **fixed list of spec labels**
+  (e.g. Dimensions, Leather, Hardware, Lining, Thread), defined in
+  Settings, ordered, hide-don't-delete. Every item shows the same fields in
+  the same order, so the catalog and website read consistently and nobody
+  retypes "Hardware". **`ShowcaseSpecValue`** (`item_id`, `field_id`,
+  `value`) holds an item's answers. A blank value is simply not shown
+  anywhere. Hiding a field hides it on every item but keeps the values, so
+  unhiding restores them.
+- **`ShowcasePhoto`**: the module's **own copies** of the chosen photos,
+  ordered, the first one being the cover. Copies, not references to
+  `order_documents`, so deleting an order document can't break a published
+  item. Each copy is re-encoded (long edge about 2400px, JPEG, plus a
+  thumbnail) with **all EXIF metadata stripped**: phone photos carry GPS
+  coordinates, and a piece photographed at a client's home would otherwise
+  publish their address. Stored under `data/showcase/<company_id>/` with
+  its own size cap, for the same shared-disk reason as `documents/`.
+- **`ShowcasePublication`**: one row per item per channel (`website`
+  today), with `status`, `external_id`, `last_synced_at`, `last_error`.
+  Shaped so a social-media channel can be added later without changing
+  `ShowcaseItem`.
+- **`ShowcaseDismissal`** (`order_id`, `dismissed_at`, `dismissed_by`): an
+  order the studio decided not to showcase. See the reminder below.
+- **`ShowcaseExcludedOrderType`** (`order_type_id`): order types that are
+  never showcased. Kept in the module rather than as a column on the root
+  `order_types` table, so the module doesn't reach into host schema.
+- **`ShowcaseKioskLink`**: a name ("Market iPad"), the token stored
+  **hashed**, `created_at`, `last_used_at`, `revoked_at`. One per device,
+  revocable one at a time.
+
+**Host adapter** (`showcase_adapter.py`, same pattern as
+`billing_adapter.py`): the only file that knows a showcase item can come
+from an `Order`. It supplies the prefill (item name, order type), the
+order's image documents and their bytes for the photo picker, the
+company's order types for the exclusion setting, and the delivered orders
+for the reminder.
+
+### Settings → Showcase (one-time setup per studio)
+
+- **Categories**: add, rename, drag to reorder, hide.
+- **Spec fields**: add, rename, drag to reorder, hide. Starts **empty**
+  (hard rule 16: a fresh tenant gets no dataset); `sample_data.py` can load
+  leather-flavoured fields for demos.
+- **Order types never showcased**: a checkbox per order type.
+  Sampling/NDA and Subcontract/white-label are the obvious ones to tick: an
+  NDA forbids it, and a white-label piece's brand isn't the studio's to
+  show.
+- **Default visibility** for new items: public or in-person only,
+  **public** unless the studio changes it (decided 2026-10-05). Excluded
+  order types already keep NDA and white-label work out, so the default
+  only governs ordinary commissions; a client who objects is handled per
+  item by switching it to in-person only or private.
+- **Website**: the receiving site's endpoint URL and a shared secret, with
+  a "Send test" button and a status line (*Connected · last sync 2 min
+  ago*, or the last error in red).
+- **Catalog mode**: create a kiosk link (shown once, as a link plus a QR
+  code to open it on the device), see each link's last use, revoke it.
+
+### Day to day
+
+**The reminder nags until dismissed.** An order is *awaiting a showcase
+decision* when it is `delivered`, its type isn't excluded, and it has
+neither a showcase item nor a dismissal. That state is **derived, never
+stored** (hard rule 10). Each such order shows a purple badge on its order
+page, and the nav's **Showcase** item carries a purple count of them
+("worth knowing", hard rule 7, no new badge weight). The badge stays until
+the studio either creates the item or presses **"Not showcasing this
+one"**. The dismissal is reversible from the order's Showcase tab, in case
+the client later agrees.
+
+**Order page → new "Showcase" tab** (fourth, after Details / Materials /
+Billing; present only when the flag is on, the order is delivered and its
+type isn't excluded). It's the item form, prefilled:
+
+| Field | Prefilled from | The studio does |
+|---|---|---|
+| Photos | the order's image documents, as a grid | ticks the ones to use, drags to set cover and order, or uploads new ones here (finished-piece photos usually aren't in the order's documents yet) |
+| Title | the order's item | edits it ("Weekender Bag — No. 24") |
+| Category | the order type, when a category has the same name | picks from the list |
+| Description | blank | writes two or three sentences |
+| Specs | the fixed spec fields from Settings, empty | fills in the ones that apply, leaves the rest blank |
+| Visibility | the default from Settings (public unless changed) | private / in-person only / public |
+
+Below the form, **a live preview of the public card**: cover photo, title,
+category, specs. It never shows a price or client information, so what the
+studio sees is exactly what can go public.
+
+Actions: **Save draft** (stays private), **Publish** (adds it to catalog
+mode, and sends it to the website if it's public), **Share…** (published
+items only, see below), **Withdraw** (off the website and out of the
+catalog, nothing deleted). Saving a published item re-sends it. The tab
+shows each channel's status (*Website: published Oct 5*, or the error with
+a **Retry** button).
+
+**Showcase page** (new nav item): every item as a card grid, filterable by
+category, status and visibility, with sync failures flagged. **New item**
+opens the same form with no prefill, for stock and market pieces. An item
+made from an order links back to it. **Present** opens catalog mode on this
+device for a signed-in user.
+
+### Sending items to the website
+
+**Push, not pull**, so the website keeps serving its own copies when this
+app is down. Publishing, editing, withdrawing, and changing visibility away
+from public each send one webhook to the configured endpoint:
+
+- A JSON body with a format version, the item's stable id, title,
+  description, category **name**, spec label/value pairs (blank ones
+  omitted), and the photos as ordered, short-lived signed download URLs.
+- Signed with an HMAC of the body using the shared secret, plus a
+  timestamp so replays are rejected.
+- **The body is built by one serializer that can only emit those fields.**
+  A test asserts that no price, client, order number, delivery date or note
+  can appear in it, whatever the item holds. That's the privacy guarantee,
+  so it's tested rather than left to convention.
+- Sent at save time. A failure marks the publication `failed` with the
+  error shown, and **Retry** resends. No background queue: the receiver
+  upserts by item id, so resending is always safe.
+
+**Receiver: `showcase_receiver.py` in `website_modules`**, synced into each
+client site by `sync.py` like `contact_mail.py`. It checks the signature
+and timestamp, downloads the photos, and calls a **per-site mapping
+function** that owns the site's own models. For bymonsieur, the mapping
+upserts `GalleryImage` rows in category `commissions` sharing a `group_id`
+of `showcase-<id>` (one card, several photos), and matches the category to
+`ProductCategory` by name; it creates none, so an unmatched name lands
+uncategorised. Withdrawal deletes the group.
+
+**Who owns what on the website:** this app owns a synced item's content
+(photos, title, category). The site's admin owns its **position and whether
+it shows**, so Joe can still reorder cards in bymonsieur's own dashboard.
+That dashboard marks synced cards "Managed in Atelier" and doesn't offer to
+edit their content, since the next sync would overwrite it.
+
+**Backfill:** a one-time script imports bymonsieur's existing Recent
+Commissions into the Showcase (as published items with no order, already
+linked to their website cards), so catalog mode isn't empty on day one.
+
+### Sharing to social media (by hand)
+
+**Share…** copies the caption (title, description, specs) to the
+clipboard, then opens the device's share sheet with the item's photos (the
+Web Share API with files). The studio picks Instagram, Facebook or anything
+else and pastes the caption. The clipboard step is there because Instagram
+drops text passed through the share sheet. Where the browser can't share
+files (most desktop browsers), the button falls back to **downloading the
+photos and copying the caption**. Nothing posts by itself: publishing
+stays a person's decision. Each share is logged on the item ("Shared
+Oct 5").
+
+### Catalog mode
+
+**Any modern browser on any screen** (tablet, touch laptop, desktop on a
+big monitor, phone), not an iPad app. The layout is responsive, and every
+control works by touch, mouse **and** keyboard (arrows to move, Esc to back
+out, Space to pause the slideshow). Device-specific features are
+progressive enhancements that degrade silently where unsupported.
+
+- **Entry**: a kiosk link (`/k/<token>`), which shows **only** the
+  showcase, read-only, and nothing else of the app, so a visitor handed the
+  tablet is not one tap from the invoices. Signed-in users can also open it
+  from the Showcase page.
+- **Gallery**: large tiles, category chips (the same categories as the
+  website), tap a tile for a full-screen swipeable view with title,
+  description and specs (no prices in this version, see below). Includes
+  `in_person` items, which the website never receives; never includes
+  `private` items or drafts.
+- **Cinematic mode**: started from a button or after a few idle minutes.
+  Random order, slow pan-and-zoom with crossfades, a small caption (title,
+  category) and the studio's logo. Any touch, click or key drops into the
+  gallery **on the piece that was showing**, so a visitor can say "tell me
+  about this one". Honours `prefers-reduced-motion` with plain crossfades.
+- **Offline**: a service worker caches the items and photos, so it keeps
+  working on bad market wifi, and refreshes when back online. Plain JS, no
+  build step (hard rule 2).
+- **Stays on and full-screen**: Screen Wake Lock where supported, the
+  Fullscreen API where supported, and a web manifest so "Add to Home
+  Screen" opens it without browser chrome. On an iPad, Guided Access locks
+  the device to it; worth a line in the in-app help.
+
+### Not now (deliberately)
+
+- **AI-drafted descriptions** from the order's notes. The `ai/` module
+  could do it later; the description is plain text until then.
+- **Posting directly to Instagram/Facebook** through Meta's API. It needs
+  a Meta developer app, App Review and business verification before it
+  works for anyone but test accounts, and Instagram only takes JPEGs at a
+  public URL. `ShowcasePublication` is already shaped for it as another
+  channel. Revisit when a second studio is on the platform.
+- **Prices**, anywhere: not on items, not in catalog mode (decided
+  2026-10-05, for a future version). In-stock pieces at a market are where
+  they'd matter first. When it comes back, the price must stay out of the
+  website serializer (and its privacy test must keep proving that), and it
+  should be shown in catalog mode only behind a Settings switch. Whether
+  only items with no order may carry a price is the question to settle
+  then.
+- **Websites that aren't one of our Flask sites.** The webhook format is
+  generic, but the only receiver is the `website_modules` one; a public
+  JSON feed or an embeddable widget would be the route for anything else.
+
+### Open question
+
+**Spec fields per category?** A wallet has no strap length, a belt no
+capacity. The proposed list is company-wide and blank fields just don't
+show, which may be enough. Limiting a field to some categories is a cheap
+addition (a field-to-category link table, no change to stored values) if
+the form starts feeling cluttered, so building the company-wide version
+first loses nothing. Undecided as of 2026-10-05.
+
+### Build order
+
+1. ~~The per-company feature mechanism and the `/admin` toggle.~~
+   *Done* — `features/` (FE1–FE9) and the company page's Features section
+   (admin `PA8a`). The `showcase` key exists in the catalog; switching it
+   on has no visible effect until step 2 lands.
+2. Module skeleton: data, Settings → Showcase, the item form (order tab +
+   Showcase page), photo copying with EXIF stripping, the nagging reminder.
+3. Catalog mode and kiosk links: useful immediately, touches no website.
+4. Webhook sender, `showcase_receiver.py` in `website_modules`,
+   bymonsieur's mapping and "Managed in Atelier" cards, the backfill script.
+5. The Share button.
+
+Each step ships with its tests and its `REQUIREMENTS.md` rules, and the
+order lifecycle help page (`templates/help/order_lifecycle.html`) gets the
+"after delivery" step when step 2 lands (`OR1i`).
+

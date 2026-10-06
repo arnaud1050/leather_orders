@@ -13,7 +13,7 @@
 
   {# Each section shows the messages its own buttons leave (MOD8). #}
   {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
-  {{ page_notice(notice, ['company', 'access', 'users', 'add-user']) }}
+  {{ page_notice(notice, ['company', 'features', 'access', 'users', 'add-user']) }}
 
   <section class="detail-orders">
     <h2>Company</h2>
@@ -41,6 +41,32 @@
       </div>
       <div>
         <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Features</h2>
+    {{ notice_slot(notice, 'features') }}
+    <p class="detail-note">
+      Parts of the app this company gets on top of the core. Switching one
+      off hides it from everyone here and deletes nothing: switching it back
+      on brings back everything they had in it.
+    </p>
+    <form method="post" action="{{ url_for('admin.update_company_features', company_id=company.id) }}" class="detail-form">
+      {{ notice_field('features') }}
+      <input type="hidden" name="features_shown" value="1">
+      {% for key, (label, description) in catalog.items() %}
+      <div class="detail-form__field">
+        <label class="checkbox-group__item">
+          <input type="checkbox" name="feature" value="{{ key }}" {% if key in enabled_features %}checked{% endif %}>
+          {{ label }}
+        </label>
+        <p class="detail-note">{{ description }}</p>
+      </div>
+      {% endfor %}
+      <div>
+        <button type="submit" class="btn-primary">Save features</button>
       </div>
     </form>
   </section>

@@ -70,6 +70,7 @@ def test_every_mutating_route_is_guarded(logged_in, company, user):
         "/admin/companies",
         f"/admin/companies/{company.id}",
         f"/admin/companies/{company.id}/active",
+        f"/admin/companies/{company.id}/features",
         f"/admin/companies/{company.id}/users",
         f"/admin/users/{user.id}/password",
         f"/admin/users/{user.id}/active",
