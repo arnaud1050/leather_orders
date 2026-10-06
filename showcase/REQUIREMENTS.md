@@ -194,6 +194,13 @@ plan (catalog mode, website sync, sharing) is in
   `--apply`. Pieces made in the app, other companies' pieces, categories
   and spec fields are untouched, so the import can then run again from
   scratch.
+- **SC38 — A regrouped site isn't imported on top.** One card is one
+  piece, however many photos it has. If pieces imported earlier no longer
+  match a card one to one (a piece's photo is now a later photo of some
+  card, or its card has more photos than it does, as when the site starts
+  grouping photos it showed as separate cards), the run stops, dry run or
+  not, writes nothing and says to `--remove` first. Otherwise the skip in
+  SC34 would keep one-photo pieces and leave the others as duplicates.
 
 ## 9. Boundary
 
@@ -208,7 +215,7 @@ plan (catalog mode, website sync, sharing) is in
 | Rules | Where |
 | --- | --- |
 | SC1–SC17, SC19–SC31 | `tests/test_showcase.py` |
-| SC34–SC37 | `tests/test_import_showcase.py` (a fake site with bymonsieur's markup; checked once against the live bymonsieur.ca on 2026-10-06 — a full dry run, and a limited `--apply` on a throwaway database, twice) |
+| SC34–SC38 | `tests/test_import_showcase.py` (a fake site with bymonsieur's markup; checked once against the live bymonsieur.ca on 2026-10-06 — a full dry run, and a limited `--apply` on a throwaway database, twice) |
 | SC18 | `tests/test_save_notices.py` — `test_every_showcase_page_is_wired`, `test_a_showcase_save_reports_in_its_section` |
 
 **Not covered by tests:** the drag-to-reorder scripts (the JSON endpoints

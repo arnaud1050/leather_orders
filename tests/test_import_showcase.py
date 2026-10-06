@@ -184,6 +184,46 @@ def test_imports_are_per_company(company, other_company):
     assert ShowcaseItem.query.filter_by(company_id=other_company.id).count() == 3
 
 
+# --- SC38: the site regrouped its cards -----------------------------------------
+
+BAG = "A signature crossbody bag handcrafted in beige premium suede."
+UNGROUPED = PAGE.replace(
+    card(1, ("/uploads/bbb.webp", BAG), ("/uploads/ccc.webp", BAG)),
+    card(1, ("/uploads/bbb.webp", BAG)) + "\n" + card(1, ("/uploads/ccc.webp", BAG)))
+
+
+def test_cards_with_several_photos_make_one_piece_each(company):
+    report = importer.run(company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+
+    assert report.created.count("Crossbody bag") == 1
+    assert len(services.item_for_source(company.id, "studio.example/uploads/bbb.webp").photos) == 2
+
+
+@pytest.mark.parametrize("apply", [False, True])
+def test_importing_over_an_ungrouped_import_stops_and_says_remove(company, apply):
+    importer.run(company.id, SITE, apply=True, fetch=FakeSite(UNGROUPED), log=lambda *_: None)
+    assert ShowcaseItem.query.count() == 4
+
+    with pytest.raises(importer.SiteReadError, match="--remove --apply"):
+        importer.run(company.id, SITE, apply=apply, fetch=FakeSite(), log=lambda *_: None)
+    assert ShowcaseItem.query.count() == 4
+
+
+def test_after_remove_the_regrouped_site_imports_cleanly(company):
+    importer.run(company.id, SITE, apply=True, fetch=FakeSite(UNGROUPED), log=lambda *_: None)
+    importer.remove(company.id, SITE, apply=True, log=lambda *_: None)
+
+    report = importer.run(company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+
+    assert len(report.created) == 3 and ShowcaseItem.query.count() == 3
+
+
+def test_an_unchanged_site_is_not_mistaken_for_a_regroup(company):
+    importer.run(company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+
+    assert importer.regrouped_imports(company.id, SITE, importer.parse_cards(PAGE, SITE)) == []
+
+
 # --- SC37: removing an import ---------------------------------------------------
 
 def test_remove_deletes_only_this_sites_imports_and_their_photos(company, other_company, tmp_path):

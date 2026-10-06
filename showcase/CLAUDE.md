@@ -4,7 +4,7 @@
 > for stack, conventions and design language.
 
 **This file is the why. [REQUIREMENTS.md](REQUIREMENTS.md) is the what**
-(SC1–SC37). The whole feature, including the parts not built yet (website
+(SC1–SC38). The whole feature, including the parts not built yet (website
 sync, sharing), is planned in [docs/roadmap.md](../docs/roadmap.md),
 "Planned: Showcase".
 
@@ -125,7 +125,7 @@ root CLAUDE.md's one-static-folder rule.
 
 ## Importing a studio's existing website
 
-`scripts/import_showcase_from_site.py` (SC34–SC37) copies a site's Recent
+`scripts/import_showcase_from_site.py` (SC34–SC38) copies a site's Recent
 Commissions into Showcase, once per deployment. It's a host script, not
 module code: it knows our Flask sites' homepage markup, which nothing under
 `showcase/` should. It reads the public page rather than the other app's

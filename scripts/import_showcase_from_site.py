@@ -150,6 +150,22 @@ def default_fetch(url: str) -> bytes:
     return response.content
 
 
+def regrouped_imports(company_id: int, site: str, cards: list[Card]) -> list[str]:
+    """Titles of pieces imported earlier that no longer match a card one to
+    one (SC38): their photo is now a later photo of some card, or their
+    card now has more photos than they do. Happens when the site starts
+    grouping photos it used to show as separate cards."""
+    from showcase import services
+
+    host = urlparse(site).netloc
+    by_ref = {card.source_ref: card for card in cards}
+    later_photos = {f"{host}{urlparse(url).path}" for card in cards for url in card.photo_urls[1:]}
+    return [item.title for item in services.items_imported_from(company_id, host)
+            if item.source_ref in later_photos
+            or (item.source_ref in by_ref
+                and len(item.photos) < len(by_ref[item.source_ref].photo_urls))]
+
+
 def run(company_id: int, site: str, *, apply: bool, fetch=default_fetch,
         limit: int | None = None, log=print) -> Report:
     """Import the site's cards into the company's Showcase. Dry run unless
@@ -160,6 +176,14 @@ def run(company_id: int, site: str, *, apply: bool, fetch=default_fetch,
 
     page = fetch(site).decode("utf-8", errors="replace")
     cards = parse_cards(page, site)
+    regrouped = regrouped_imports(company_id, site, cards)
+    if regrouped:
+        raise SiteReadError(
+            f"The site's cards have changed shape since the last import: "
+            f"{len(regrouped)} piece(s) imported earlier now belong to a bigger card "
+            f"(e.g. {regrouped[0]!r}). Importing on top would leave duplicates and "
+            f"pieces missing photos. Delete the earlier import first with --remove "
+            f"--apply, then import again.")
     if limit:
         cards = cards[:limit]
     report = Report()

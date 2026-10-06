@@ -183,9 +183,12 @@ then the same with `--apply`. For demo:
 naming the demo database's own company. Each piece records the card it came
 from, so running it again only adds what's new on the site, and a card whose
 download failed is picked up next time. bymonsieur.ca's full gallery is about
-254 pieces and 346 photos, roughly 120 MB of re-encoded photos per deployment
+81 pieces and 173 photos (one card per piece since the site grouped them),
+roughly 60 MB of re-encoded photos per deployment
 (the Showcase cap is 500 MB per company), and a few minutes to download.
 
+If the site's cards changed shape since an earlier import (the October 2026
+regrouping), the import stops and asks for `--remove` first (SC38).
 To start again, `--remove` deletes every piece imported from that site,
 photos included (pieces made in the app, categories and spec fields stay).
 Also a dry run first, then `--apply`:
@@ -194,7 +197,7 @@ Also a dry run first, then `--apply`:
 docker compose -f docker-compose-demo.yml exec demo python scripts/import_showcase_from_site.py --company "By Monsieur" --site https://bymonsieur.ca --remove --apply
 ```
 
-Rules: showcase `SC34`–`SC37`.
+Rules: showcase `SC34`–`SC38`.
 
 To rebuild after changing `requirements.txt` or app code:
 `docker compose up --build` (prod) or

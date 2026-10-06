@@ -99,7 +99,7 @@ checked by hand in a browser (see the coverage note in
 feature switched on.
 
 **`tests/test_import_showcase.py`** covers
-`scripts/import_showcase_from_site.py` (showcase `SC34`–`SC37`) without the
+`scripts/import_showcase_from_site.py` (showcase `SC34`–`SC38`) without the
 network: `run()` takes its fetcher, and the tests hand it a fake site whose
 cards mirror bymonsieur.ca's markup. It pins the dry run writing nothing, a
 second run skipping what the first imported (and downloading nothing), a
