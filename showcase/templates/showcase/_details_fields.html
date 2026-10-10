@@ -1,0 +1,53 @@
+{# A piece's details fields — title, category, description, specs and
+   visibility — shared by the editor's form (_editor.html) and the new-piece
+   page (new.html), which has no piece saved yet. Context: `item` (on the
+   new page, an unsaved one carrying the form's values) and `sc`. #}
+<label class="showcase-form__field">Title
+  <input type="text" name="title" value="{{ item.title }}" maxlength="160" required>
+</label>
+
+<label class="showcase-form__field">Category
+  <select name="category_id">
+    <option value="">—</option>
+    {% for category in sc.categories %}
+    <option value="{{ category.id }}" {% if category.id == item.category_id %}selected{% endif %}>{{ category.label }}{% if not category.is_active %} (hidden){% endif %}</option>
+    {% endfor %}
+  </select>
+</label>
+{% if not sc.has_categories %}
+<p class="detail-note detail-form__note">No categories yet: add them in <a href="{{ url_for('showcase.settings') }}">Settings → Showcase</a>.</p>
+{% endif %}
+
+<label>Description
+  <textarea name="description" rows="4" maxlength="4000" placeholder="Two or three sentences about the piece.">{{ item.description or '' }}</textarea>
+</label>
+
+<fieldset class="showcase-form__field">
+  <legend>Specs</legend>
+  {% for field, value in sc.spec_rows %}
+  <label>{{ field.label }}<input type="text" name="spec_{{ field.id }}" value="{{ value }}" maxlength="200"></label>
+  {% else %}
+  <p class="detail-note">
+    {% if sc.has_spec_fields %}Every spec field is hidden.{% else %}No spec fields yet.{% endif %}
+    Set the studio's list (Dimensions, Leather, Hardware…) in <a href="{{ url_for('showcase.settings') }}">Settings → Showcase</a>.
+  </p>
+  {% endfor %}
+  <p class="detail-note">Leave a spec blank and it isn't shown.</p>
+</fieldset>
+
+<fieldset class="showcase-form__field">
+  <legend>Visibility</legend>
+  <div class="checkbox-group">
+    {% for value in sc.visibilities %}
+    <label class="checkbox-group__item visibility-choice">
+      <input type="radio" name="visibility" value="{{ value }}" {% if item.visibility == value %}checked{% endif %}>
+      <span>{{ sc.visibility_labels[value] }}</span>
+      <span class="detail-note">
+        {%- if value == 'public' %}Catalog mode and the website
+        {%- elif value == 'in_person' %}Catalog mode only, never online
+        {%- else %}Kept here, shown nowhere{% endif -%}
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+</fieldset>

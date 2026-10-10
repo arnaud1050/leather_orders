@@ -22,7 +22,7 @@ from flask_login import current_user, login_required
 import features
 from usage import track
 
-from showcase import config, hooks, kiosk, services, storage
+from showcase import config, hooks, kiosk, services, storage, website
 from showcase.models import (
     STATUS_LABELS, VISIBILITIES, VISIBILITY_LABELS, ShowcaseCategory, ShowcaseSpecField,
 )
@@ -150,6 +150,7 @@ def _editor_context(company_id: int, item, next_url: str) -> dict:
         "max_upload_bytes": config.MAX_UPLOAD_BYTES,
         "has_spec_fields": bool(services.list_rows(ShowcaseSpecField, company_id)),
         "has_categories": bool(services.list_rows(ShowcaseCategory, company_id)),
+        "website_state": website.state(company_id, item),
     }
 
 
@@ -208,18 +209,105 @@ def showcase_list():
         visibility=visibility,
         status_labels=STATUS_LABELS,
         visibility_labels=VISIBILITY_LABELS,
+        website_connected=website.get_website(company_id) is not None,
+        website_summary=website.summary(company_id),
         notice=take_notice(),
         active_view="showcase",
     )
 
 
+def _details_form(item) -> dict:
+    """The details form's fields, as update_details/details_error take them.
+    A field the form didn't render keeps the piece's value (hard rule 9)."""
+    raw_category = request.form.get("category_id", "")
+    return {
+        "title": request.form.get("title", item.title),
+        "description": request.form.get("description", item.description or ""),
+        "category_id": int(raw_category) if raw_category.isdigit() else None,
+        "visibility": request.form.get("visibility", item.visibility),
+        "specs": {
+            int(key.removeprefix("spec_")): value
+            for key, value in request.form.items()
+            if key.startswith("spec_") and key.removeprefix("spec_").isdigit()
+        },
+    }
+
+
+def _new_page(item, specs: dict | None = None, notice: dict | None = None):
+    company_id = current_user.company_id
+    spec_rows = services.spec_rows(company_id, item)
+    if specs:
+        spec_rows = [(field, specs.get(field.id, value)) for field, value in spec_rows]
+    return render_template(
+        "showcase/new.html",
+        item=item,
+        sc={
+            "categories": services.offered_categories(company_id, item),
+            "spec_rows": spec_rows,
+            "visibilities": VISIBILITIES,
+            "visibility_labels": VISIBILITY_LABELS,
+            "max_photos": config.MAX_PHOTOS_PER_ITEM,
+            "accept": config.ACCEPT_ATTRIBUTE,
+            "has_spec_fields": bool(services.list_rows(ShowcaseSpecField, company_id)),
+            "has_categories": bool(services.list_rows(ShowcaseCategory, company_id)),
+        },
+        notice=notice,
+        active_view="showcase",
+    )
+
+
+@bp.route("/showcase/items/new")
+@login_required
+def new_item():
+    """The form for a piece with no order. Opening it saves nothing: a
+    piece exists only once Save draft or Publish posts it (SC9a)."""
+    return _new_page(services.new_item(current_user.company_id), notice=take_notice())
+
+
 @bp.route("/showcase/items", methods=["POST"])
 @login_required
 def create_item():
-    item = services.create_item(current_user.company_id, request.form.get("title", ""))
+    company_id = current_user.company_id
+    draft = services.new_item(company_id)
+    fields = _details_form(draft)
+    specs = fields.pop("specs")
+    error = services.details_error(company_id, draft, **fields)
+    if error is not None:
+        # Nothing saved: the form again, with what was typed (not the photos,
+        # which a browser never refills).
+        draft.title, draft.description = fields["title"], fields["description"]
+        draft.category_id, draft.visibility = fields["category_id"], fields["visibility"]
+        return _new_page(draft, specs, {"message": error, "category": "error",
+                                        "section": "details"})
+
+    item = services.create_item(company_id, fields["title"])
+    services.update_details(company_id, item, specs=specs, **fields)
     track("showcase.item_created", via="standalone")
-    _flash("Piece created. Add its photos and details, then publish it.",
-           "success", section="details")
+    errors, added = [], 0
+    for upload in request.files.getlist("photos"):
+        if not upload or not upload.filename:
+            continue
+        photo_error = services.add_photo(company_id, item, upload.read(), upload.filename)
+        if photo_error:
+            errors.append(photo_error)
+        else:
+            added += 1
+            track("showcase.photo_added", source="upload")
+
+    if request.form.get("action") == "publish":
+        publish_error = services.publish(company_id, item)
+        if publish_error is None:
+            track("showcase.item_published", visibility=item.visibility)
+            message = _published_message(company_id, item)
+        else:
+            errors.append(publish_error)
+            message = "Saved as a draft."
+    else:
+        message = "Saved as a draft."
+    if errors:
+        _flash(" ".join([message] + errors), "error", section="details")
+    else:
+        _flash(message, "success", section="details")
     return redirect(url_for("showcase.item_page", item_id=item.id))
 
 
@@ -245,34 +333,25 @@ def item_page(item_id: int):
 def save_item(item_id: int):
     item = _item_or_404(item_id)
     company_id = current_user.company_id
-    raw_category = request.form.get("category_id", "")
-    specs = {
-        int(key.removeprefix("spec_")): value
-        for key, value in request.form.items()
-        if key.startswith("spec_") and key.removeprefix("spec_").isdigit()
-    }
-    error = services.update_details(
-        company_id, item,
-        title=request.form.get("title", item.title),
-        description=request.form.get("description", item.description or ""),
-        category_id=int(raw_category) if raw_category.isdigit() else None,
-        visibility=request.form.get("visibility", item.visibility),
-        specs=specs,
-    )
+    error = services.update_details(company_id, item, **_details_form(item))
     if error is None and request.form.get("action") == "publish":
         was_published = item.status == "published"
         error = services.publish(company_id, item)
         if error is None and not was_published:
             track("showcase.item_published", visibility=item.visibility)
-            _flash("Published. It's in the catalog now"
-                   + (", and marked for the website." if item.visibility == "public" else "."),
-                   "success")
+            _flash(_published_message(company_id, item), "success")
             return _back(url_for("showcase.item_page", item_id=item.id))
     if error is not None:
         _flash(error)
     else:
         _flash("Saved.", "success")
     return _back(url_for("showcase.item_page", item_id=item.id))
+
+
+def _published_message(company_id: int, item) -> str:
+    online = item.visibility == "public" and website.get_website(company_id) is not None
+    return ("Published. It's in the catalog now"
+            + (". It goes to the website only when you send it." if online else "."))
 
 
 @bp.route("/showcase/items/<int:item_id>/withdraw", methods=["POST"])
@@ -476,10 +555,111 @@ def undismiss_order(order_id: int):
 
 
 # ---------------------------------------------------------------------------
+# The website: one piece, the review page, linking (SC43, SC45)
+# ---------------------------------------------------------------------------
+
+RESULTS_KEY = "showcase_website_results"
+
+
+@bp.route("/showcase/items/<int:item_id>/website", methods=["POST"])
+@login_required
+def send_item(item_id: int):
+    """The piece's own button: send it, send it again, send it as a new
+    card, or take it off. Nothing reaches the website any other way."""
+    item = _item_or_404(item_id)
+    action = request.form.get("action", "")
+    ok, message = website.send(current_user.company_id, item, action)
+    if ok:
+        track("showcase.website_sent", action=action, count=1)
+    _flash(f'"{item.title}" {message}.' if ok else f'"{item.title}": {message}',
+           "success" if ok else "error", section="website")
+    return _back(url_for("showcase.item_page", item_id=item.id))
+
+
+def _results_page(template: str, **context):
+    return render_template(template, results=session.pop(RESULTS_KEY, None),
+                           notice=take_notice(), active_view="showcase", **context)
+
+
+def _chosen_items(company_id: int) -> list:
+    ids = {int(i) for i in request.form.getlist("item_id") if i.isdigit()}
+    return [item for item in (services.get_item(company_id, i) for i in sorted(ids))
+            if item is not None]
+
+
+@bp.route("/showcase/website")
+@login_required
+def website_review():
+    company_id = current_user.company_id
+    connection = website.get_website(company_id)
+    if connection is None:
+        return redirect(url_for("showcase.settings"))
+    return _results_page(
+        "showcase/website.html",
+        connection=connection,
+        rows=website.pending(company_id),
+        outcomes=website.ACTION_OUTCOMES,
+    )
+
+
+@bp.route("/showcase/website", methods=["POST"])
+@login_required
+def website_send():
+    """The review page's one button: every ticked piece, each with the
+    action its state offers now (SC43). Results are reported per line."""
+    company_id = current_user.company_id
+    results = []
+    for item in _chosen_items(company_id):
+        current = website.state(company_id, item)
+        if current is None or current.action not in ("send", "take_off"):
+            continue
+        ok, message = website.send(company_id, item, current.action)
+        results.append({"title": item.title, "ok": ok, "message": message, "item_id": item.id})
+    if not results:
+        _flash("Tick at least one piece to send.", section="review")
+    else:
+        sent = sum(1 for r in results if r["ok"])
+        track("showcase.website_sent", action="review", count=sent)
+        session[RESULTS_KEY] = results
+    return redirect(url_for("showcase.website_review"))
+
+
+@bp.route("/showcase/website/link")
+@login_required
+def website_link_review():
+    company_id = current_user.company_id
+    connection = website.get_website(company_id)
+    if connection is None:
+        return redirect(url_for("showcase.settings"))
+    return _results_page(
+        "showcase/website_link.html",
+        connection=connection,
+        items=website.link_candidates(company_id),
+    )
+
+
+@bp.route("/showcase/website/link", methods=["POST"])
+@login_required
+def website_link():
+    company_id = current_user.company_id
+    results = []
+    for item in _chosen_items(company_id):
+        ok, message = website.link(company_id, item)
+        results.append({"title": item.title, "ok": ok, "message": message, "item_id": item.id})
+    if not results:
+        _flash("Tick at least one piece to link.", section="review")
+    else:
+        track("showcase.website_linked", count=sum(1 for r in results if r["ok"]))
+        session[RESULTS_KEY] = results
+    return redirect(url_for("showcase.website_link_review"))
+
+
+# ---------------------------------------------------------------------------
 # Settings → Showcase
 # ---------------------------------------------------------------------------
 
 NEW_LINK_KEY = "showcase_new_kiosk_token"
+NEW_SECRET_KEY = "showcase_new_website_secret"
 
 
 @bp.route("/settings/showcase")
@@ -504,6 +684,10 @@ def settings():
         catalog_count=len(services.catalog_items(company_id)),
         new_link_url=new_link_url,
         new_link_qr=kiosk.qr_svg(new_link_url) if new_link_url else None,
+        website=website.get_website(company_id),
+        # The secret just generated: shown on this one render, never again.
+        new_secret=session.pop(NEW_SECRET_KEY, None),
+        link_count=len(website.link_candidates(company_id)),
         notice=take_notice(),
         active_view="settings",
     )
@@ -610,4 +794,38 @@ def save_default_visibility():
     else:
         track("settings.changed", section="showcase_visibility")
         _flash("Saved. New pieces start with this visibility.", "success")
+    return redirect(url_for("showcase.settings"))
+
+
+@bp.route("/settings/showcase/website", methods=["POST"])
+@login_required
+def connect_website():
+    secret, error = website.connect(current_user.company_id, request.form.get("url", ""))
+    if error:
+        _flash(error, section="website")
+    else:
+        session[NEW_SECRET_KEY] = secret
+        track("showcase.website_connected")
+        _flash("Connected. Copy the secret below into the website now: it's shown only once. "
+               "Nothing is sent until you press a button.", "success", section="website")
+    return redirect(url_for("showcase.settings"))
+
+
+@bp.route("/settings/showcase/website/test", methods=["POST"])
+@login_required
+def test_website():
+    error = website.test_connection(current_user.company_id)
+    if error:
+        _flash(error, section="website")
+    else:
+        _flash("The website answered. Nothing was sent.", "success", section="website")
+    return redirect(url_for("showcase.settings"))
+
+
+@bp.route("/settings/showcase/website/delete", methods=["POST"])
+@login_required
+def disconnect_website():
+    if website.disconnect(current_user.company_id):
+        _flash("Website connection deleted. Its cards stay on the website as they are.",
+               "success", section="website")
     return redirect(url_for("showcase.settings"))

@@ -91,6 +91,9 @@ EVENTS: dict[str, tuple[str, str, bool]] = {
     "showcase.order_dismissed": ("Showcase", "Order not showcased", False),
     "view.catalog": ("Showcase", "Catalog mode opened", True),
     "showcase.kiosk_link_created": ("Showcase", "Device link created", False),
+    "showcase.website_connected": ("Showcase", "Website connected", False),
+    "showcase.website_sent": ("Showcase", "Sent to the website", False),
+    "showcase.website_linked": ("Showcase", "Imported pieces linked", False),
     # Settings — one event, the section says which
     "settings.changed": ("Settings", "Settings changed", False),
 }

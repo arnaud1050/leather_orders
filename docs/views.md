@@ -602,11 +602,18 @@ bottom of `timeline.html`. Each modal has a link out to a full page:
 **Showcase pages** (`showcase/`, sold per company): `/showcase` lists the
 delivered orders waiting for a decision, then every piece as a card grid
 filtered by category, status and visibility, with **+ New piece** for work
-that has no order; `/showcase/items/<id>` is the piece editor (photos,
+that has no order (`/showcase/items/new`, a form that saves nothing until
+Save draft or Publish); `/showcase/items/<id>` is the piece editor (photos,
 details beside a live preview of the public card, then This piece:
 withdraw or delete); `/settings/showcase` is a Settings tab (categories,
-spec fields, order types never showcased, default visibility, and catalog
-mode's device links). The nav's Showcase link sits after Orders, with a
+spec fields, order types never showcased, default visibility, the
+**Website** connection with Send test and Link imported pieces, and catalog
+mode's device links). Once a website is connected, the piece editor gains a
+**Website** section (its state and the one button that applies), the
+Showcase page a **Website** panel counting what's waiting, and
+`/showcase/website` is the review page that sends the ticked pieces
+(`/showcase/website/link` does the same for linking the import). Nothing
+reaches the website except from one of those buttons (SC43). The nav's Showcase link sits after Orders, with a
 purple count of orders waiting. **Catalog mode** is a standalone dark page
 with no app nav — gallery, piece viewer, slideshow — opened by **Present**
 (`/showcase/present`, signed in, with an Exit back) or by a device's kiosk

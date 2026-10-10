@@ -12,7 +12,7 @@
   {% include "_settings_nav.html" %}
 
   {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
-  {{ page_notice(notice, ['categories', 'spec-fields', 'order-types', 'visibility', 'catalog']) }}
+  {{ page_notice(notice, ['categories', 'spec-fields', 'order-types', 'visibility', 'website', 'catalog']) }}
 
   {% macro labelled_list(kind, rows, noun, placeholder) %}
   <ul class="settings-source-list" data-reorder-url="{{ url_for('showcase.reorder_list', kind=kind) }}">
@@ -110,13 +110,13 @@
       {{ notice_field('visibility') }}
       <div class="checkbox-group">
         {% for value in visibilities %}
-        <label class="checkbox-group__item">
+        <label class="checkbox-group__item visibility-choice">
           <input type="radio" name="visibility" value="{{ value }}" {% if value == default_visibility %}checked{% endif %}>
-          {{ visibility_labels[value] }}
+          <span>{{ visibility_labels[value] }}</span>
           <span class="detail-note">
-            {%- if value == 'public' %} — catalog mode and the website
-            {%- elif value == 'in_person' %} — catalog mode only, never online
-            {%- else %} — kept here, shown nowhere{% endif -%}
+            {%- if value == 'public' %}Catalog mode and the website
+            {%- elif value == 'in_person' %}Catalog mode only, never online
+            {%- else %}Kept here, shown nowhere{% endif -%}
           </span>
         </label>
         {% endfor %}
@@ -125,6 +125,73 @@
         <button type="submit" class="btn-primary">Save</button>
       </div>
     </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Website</h2>
+    {{ notice_slot(notice, 'website') }}
+    {% if website %}
+    <p class="detail-note">
+      Connected to <strong>{{ website.site_name or website.endpoint_url }}</strong>.
+      Nothing is ever sent by itself: pieces go to the website, or come off
+      it, only when you press a button on the piece or on the
+      <a href="{{ url_for('showcase.website_review') }}">website page</a>.
+      The website's own cards are never touched.
+    </p>
+
+    {% if new_secret %}
+    <div class="showcase-new-link">
+      <div class="showcase-new-link__text">
+        <p class="showcase-new-link__title">Put this secret in the website now</p>
+        <p class="detail-note">
+          It's shown only this once. On the website it goes in
+          <code>SHOWCASE_SECRET</code>; the two sides sign every call with it,
+          so nobody else can post cards there. Lost it? Delete this
+          connection and connect again.
+        </p>
+        <div class="showcase-new-link__copy">
+          <input type="text" readonly value="{{ new_secret }}" id="showcase-new-secret" aria-label="The website secret">
+          <button type="button" class="btn-secondary" data-copy="showcase-new-secret">Copy</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <p class="detail-note">
+      {{ website.endpoint_url }}
+      {% if website.checked_at %} · last tested {{ website.checked_at|local_datetime('%b %d, %Y')|replace(' 0', ' ') }}:
+      {% if website.check_error %}<span class="showcase-website__error">{{ website.check_error }}</span>{% else %}answered{% if website.max_photos %}, takes up to {{ website.max_photos }} photos per card{% endif %}{% endif %}
+      {% else %} · not tested yet{% endif %}
+    </p>
+    <div class="lifecycle-actions">
+      <form method="post" action="{{ url_for('showcase.test_website') }}">
+        {{ notice_field('website') }}
+        <button type="submit" class="btn-secondary">Send test</button>
+      </form>
+      {% if link_count %}
+      <a class="btn-secondary" href="{{ url_for('showcase.website_link_review') }}">Link imported pieces ({{ link_count }})</a>
+      {% endif %}
+      <form method="post" action="{{ url_for('showcase.disconnect_website') }}" onsubmit="return confirm('Delete the website connection? Cards already on the website stay there as they are.');">
+        {{ notice_field('website') }}
+        <button type="submit" class="btn-secondary">Delete</button>
+      </form>
+    </div>
+    <p class="detail-note">Send test only checks that the website answers; it sends no piece.</p>
+    {% else %}
+    <p class="detail-note">
+      Connect the studio's website to send published, public pieces to it as
+      cards. Nothing is sent when you connect, or ever by itself: each piece
+      goes when you press its button. Cards already on the website stay the
+      website's own and are never touched.
+    </p>
+    <form method="post" action="{{ url_for('showcase.connect_website') }}" class="detail-form settings-source-add">
+      {{ notice_field('website') }}
+      <label>The website's receiver address<input type="url" name="url" maxlength="500" placeholder="https://example.com/showcase/receive" required></label>
+      <div>
+        <button type="submit" class="btn-primary">Connect</button>
+      </div>
+    </form>
+    {% endif %}
   </section>
 
   <section class="detail-orders">

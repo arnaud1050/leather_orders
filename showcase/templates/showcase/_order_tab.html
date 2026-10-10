@@ -6,7 +6,7 @@
 
 {% if sc.item %}
   {% set notice = sc.notice %}
-  {{ page_notice(notice, ['photos', 'details', 'piece']) }}
+  {{ page_notice(notice, ['photos', 'details', 'piece', 'website']) }}
   {% include "showcase/_editor.html" %}
 {% else %}
   {{ page_notice(sc.notice, ['decision']) }}

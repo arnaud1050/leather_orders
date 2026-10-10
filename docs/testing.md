@@ -99,13 +99,24 @@ checked by hand in a browser (see the coverage note in
 feature switched on.
 
 **`tests/test_import_showcase.py`** covers
-`scripts/import_showcase_from_site.py` (showcase `SC34`–`SC38`) without the
+`scripts/import_showcase_from_site.py` (showcase `SC34`–`SC39`) without the
 network: `run()` takes its fetcher, and the tests hand it a fake site whose
 cards mirror bymonsieur.ca's markup. It pins the dry run writing nothing, a
 second run skipping what the first imported (and downloading nothing), a
 card with a failed photo left out whole and retried, and the title/material
 split on real caption shapes. The script is loaded by path with `importlib`,
 since `scripts/` isn't a package.
+
+**`tests/test_showcase_website.py`** covers sending pieces to a studio's
+website (showcase `SC40`–`SC49`) without the network: `website.set_post`
+hands the sender a fake `post` that runs the real protocol
+(`showcase/protocol.py`) against `FakeSite`, an in-memory receiver with
+managed cards, the site's own cards (for linking) and tombstones. So the
+signing, the body and the site's answers are the real ones. It pins that
+nothing is sent without a button, that only new photos travel, the
+payload's privacy, every state of SC42 and the review page. The protocol's
+own tests are in website_modules (`tests/test_showcase_protocol.py`), and
+bymonsieur's mapping has `tests/test_showcase_receiver.py` there.
 
 **`tests/test_user_migration.py`** covers the one migration in the project
 that rebuilds a table rather than extending one — `username` out, `email` in

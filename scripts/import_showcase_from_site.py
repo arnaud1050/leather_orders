@@ -23,12 +23,20 @@ so it writes to the database and photo folder the app uses:
 **Safe to run again.** Each piece records the card it came from
 (`ShowcaseItem.source_ref`, "<host><first photo's path>"); a card already
 imported is skipped, so a second run only brings in what's new on the site.
+Each photo records its own path too (`ShowcasePhoto.source_ref`), so the
+website sync can later link the pieces to the cards they came from.
 A card whose download fails is left out whole and reported, and the next
 run picks it up.
 
 **--remove undoes it**, to start again: it deletes every piece imported
 from that site, photos included (again a dry run unless --apply). Pieces
-made in the app, and the categories and spec field, are kept.
+made in the app, and the categories and spec field, are kept, and so is a
+piece whose card is on the website (SC46).
+
+**A one-off, before connecting the website.** Once the company has a
+website connected (Settings -> Showcase), the import refuses to run, so a
+card that exists only on the website is never pulled in; the pieces it
+brought in are linked to their cards from Settings instead (SC45).
 
 **It reads the public homepage.** Nothing on the server has to be shared
 between the two apps. If the page's markup changes so that no card can be
@@ -87,6 +95,13 @@ class Report:
     photos: int = 0
 
 
+def photo_ref(url: str) -> str:
+    """A photo's origin as stored on the piece and its photos (SC34, SC39):
+    "<host><path>", e.g. "bymonsieur.ca/uploads/c0dd….webp"."""
+    parsed = urlparse(url)
+    return f"{parsed.netloc}{parsed.path}"
+
+
 def title_and_material(caption: str) -> tuple[str, str]:
     """A short title and the material, from a caption like "A custom
     pochette bag handcrafted in black premium cowhide leather." Falls back
@@ -106,8 +121,7 @@ def title_and_material(caption: str) -> tuple[str, str]:
 def parse_cards(page: str, site: str) -> list[Card]:
     """Every card on the page, in page order (SC35). Raises when there are
     none, since that means the markup changed, not that the gallery is empty."""
-    host = urlparse(site).netloc
-    categories = {key: html.unescape(label).strip() for key, label in CATEGORY.findall(page)}
+    categories ={key: html.unescape(label).strip() for key, label in CATEGORY.findall(page)}
     cards = []
     for category_key, raw in CARD.findall(page):
         try:
@@ -120,11 +134,12 @@ def parse_cards(page: str, site: str) -> list[Card]:
             continue
         caption = (images[0].get("caption") or images[0].get("alt") or "").strip()
         title, material = title_and_material(caption)
+        photo_urls = [urljoin(site, i["src"]) for i in images]
         cards.append(Card(
-            source_ref=f"{host}{images[0]['src']}",
+            source_ref=photo_ref(photo_urls[0]),
             category=categories.get(category_key),
             caption=caption,
-            photo_urls=[urljoin(site, i["src"]) for i in images],
+            photo_urls=photo_urls,
             title=title, material=material,
         ))
     if not cards:
@@ -159,7 +174,7 @@ def regrouped_imports(company_id: int, site: str, cards: list[Card]) -> list[str
 
     host = urlparse(site).netloc
     by_ref = {card.source_ref: card for card in cards}
-    later_photos = {f"{host}{urlparse(url).path}" for card in cards for url in card.photo_urls[1:]}
+    later_photos = {photo_ref(url) for card in cards for url in card.photo_urls[1:]}
     return [item.title for item in services.items_imported_from(company_id, host)
             if item.source_ref in later_photos
             or (item.source_ref in by_ref
@@ -232,7 +247,8 @@ def run(company_id: int, site: str, *, apply: bool, fetch=default_fetch,
         )
         errors = [error] if error else []
         for url, data in photos:
-            photo_error = services.add_photo(company_id, item, data, url.rsplit("/", 1)[-1])
+            photo_error = services.add_photo(company_id, item, data, url.rsplit("/", 1)[-1],
+                                             source_ref=photo_ref(url))
             if photo_error:
                 errors.append(photo_error)
             else:
@@ -255,20 +271,25 @@ def run(company_id: int, site: str, *, apply: bool, fetch=default_fetch,
 def remove(company_id: int, site: str, *, apply: bool, log=print) -> tuple[int, int]:
     """Delete every piece this script imported from `site`, photos included
     (SC37), so an import can be run again from scratch. Pieces made in the
-    app, categories and spec fields stay. Dry run unless `apply`. Returns
-    (pieces, photos)."""
+    app, categories and spec fields stay. Dry run unless `apply`. A piece
+    whose card is on the website (linked or sent) is kept and reported
+    (SC46). Returns (pieces, photos) deleted, or that would be."""
     from showcase import services
 
     items = services.items_imported_from(company_id, urlparse(site).netloc)
-    photos = 0
+    pieces = photos = 0
     for item in items:
+        if item.publication is not None and item.publication.on_site:
+            log(f"  kept          {item.title}  (its card is on the website: take it off first)")
+            continue
+        pieces += 1
         photos += len(item.photos)
         if not apply:
             log(f"  would delete  {item.title}")
             continue
         services.withdraw(company_id, item)  # SC10: never deleted while published
         services.delete_item(company_id, item)
-    return len(items), photos
+    return pieces, photos
 
 
 def _company(identifier: str):
@@ -306,6 +327,15 @@ def main(argv=None) -> int:
         company = _company(args.company)
         if company is None:
             print(f"No company called {args.company!r}.", file=sys.stderr)
+            return 2
+        from showcase import website
+
+        if website.get_website(company.id) is not None and not args.remove:
+            # SC45: once the website is connected, nothing comes from it any
+            # more; its cards that aren't in Showcase stay the website's own.
+            print(f"{company.name} has a website connected in Settings -> Showcase, so the "
+                  "import won't run: it's a one-off, done before connecting. Link the pieces "
+                  "it brought in from Settings -> Showcase instead.", file=sys.stderr)
             return 2
         if args.remove:
             print(f"{'Deleting' if args.apply else 'Dry run'}: pieces imported from "

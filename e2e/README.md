@@ -238,6 +238,14 @@ route test structurally can't see:
   edit's dialog reopening by itself.
 - **`auth.spec.ts`, `mobile-nav.spec.ts`** — sign-in, the forced password
   change, and the hamburger nav below 680px (CO5a).
+- **`section-gaps.spec.ts`** — the vertical rhythm (`docs/design.md`,
+  "Vertical rhythm"; hard rule 7a): every section heading on every studio
+  and platform admin page sits exactly 40px under the content above it.
+  Only a laid-out page can say this — margins are invisible to a route
+  test. Unlike the layout check `sender-rules.spec.ts` removed, this one
+  can fail and was seen to: with `.ledger` put back to a flex column it
+  lists every gap that came back (48–80px). A new page goes in its lists;
+  a page that 404s for the seeded studio (a feature off) is skipped.
 
 Tests that change saved state (hiding a client, reordering a list, a
 column's visibility) put it back in a `finally`, because every spec shares

@@ -47,10 +47,15 @@ body {
   background-image: none;
 }
 
+/* A plain block, never a flex column (docs/design.md, "Vertical rhythm").
+   Its children are the page's sections, and only in normal flow does a
+   section's 40px bottom margin overlap whatever margin its last element
+   ends on. As a flex column every section was its own formatting context,
+   so a form's 40px or a note's 12px stacked on top: gaps of 48–80px.
+   `flex: 1 0 auto` is about body's flex column (the footer), not this. */
 .ledger {
   flex: 1 0 auto;
-  display: flex;
-  flex-direction: column;
+  display: block;
   max-width: 1200px;
   width: 100%;
   margin: 40px auto 0;
@@ -839,7 +844,7 @@ body {
    rather than in .legend-row — neither is a filter, so neither should sit
    among the buttons that are. (Rush is reachable from the sort instead.) */
 .timeline__legend-note {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 7px;
   margin: 12px 2px 0;
@@ -904,13 +909,26 @@ body {
 
 /* Long-form prose, so it gets a reading measure rather than the app's full
    1200px grid width. */
+/* A flex column on purpose, unlike every other .ledger: its paragraphs,
+   lists and headings are direct children, and this keeps their spacing as
+   it has always read (paragraph margins add up rather than overlap). Its
+   sections — each h2 and what follows — still sit 40px apart, like every
+   page's: the element before an h2 drops its bottom margin, and the h2's
+   40px is the whole gap. */
 .legal-doc {
+  display: flex;
+  flex-direction: column;
   max-width: 760px;
   padding-bottom: 40px;
 }
 
+.legal-doc > :has(+ h2, + .legal-crosslink),
+.legal-doc > ul:has(+ h2, + .legal-crosslink) > li:last-child {
+  margin-bottom: 0;
+}
+
 .legal-doc h2 {
-  margin: 32px 0 10px;
+  margin: 40px 0 10px;
   font-size: 1.02rem;
   font-weight: 600;
   padding-bottom: 6px;
@@ -976,7 +994,7 @@ body {
 }
 
 .legal-crosslink {
-  margin-top: 32px;
+  margin-top: 40px;
   padding-top: 16px;
   border-top: 1px solid var(--ink);
   font-size: 0.8rem;
@@ -1179,8 +1197,11 @@ a.btn-secondary {
    Customer / order detail pages
    --------------------------------------------------------------------- */
 
+/* Block, as it always was in effect: it sits straight in .ledger, and an
+   inline box there would add a line box's height under it. */
 .back-link {
-  display: inline-block;
+  display: block;
+  width: fit-content;
   font-size: 0.76rem;
   color: var(--ink-soft);
   text-decoration: none;
@@ -1291,6 +1312,12 @@ a.btn-secondary {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
+}
+
+/* A flex column, so its last element's margin would stay inside it and
+   add to the gap under the section (docs/design.md, "Vertical rhythm"). */
+.detail-form > :last-child {
+  margin-bottom: 0;
 }
 
 .detail-form fieldset {
@@ -1881,13 +1908,14 @@ button[aria-busy="true"] {
   white-space: pre-wrap;
 }
 
-/* Uniform gap between page sections (order/client/settings/invoice pages).
-   Deliberately on the section wrapper, not on whatever happens to be its
-   last child (a form, a list, a note) — those vary per section and were
-   producing inconsistent gaps before. Margin collapsing between a
-   border/padding-less section and its last child means this 40px simply
-   wins over a smaller child margin (e.g. .settings-form's 8px) rather than
-   stacking with it. */
+/* The one gap between page sections: 40px, on the section wrapper only,
+   never on whatever its last element happens to be (docs/design.md,
+   "Vertical rhythm"). It holds because .ledger is a plain block: the
+   section has no border or padding, so its last element's bottom margin
+   (a form's 40px, a note's 12px) overlaps this one instead of adding to it.
+   A section whose content sits in a grid or flex box doesn't get that for
+   free — the box's own children keep their margins — so trim them there
+   (see .showcase-preview). tests in e2e/ measure every page. */
 .detail-orders,
 .detail-documents,
 .detail-payments,
@@ -1899,11 +1927,11 @@ button[aria-busy="true"] {
   margin-bottom: 40px;
 }
 
-/* The client page's form is a .settings-form, whose 8px bottom margin
-   would leave "This client" pressed against it — topped up to the same
-   40px every other section sits at. */
+/* The client page's form is a bare .settings-form, not inside a section,
+   so its 8px bottom margin is all that's above "This client". Margins
+   overlap, so this is the whole 40px, not a top-up. */
 .settings-form + .detail-lifecycle {
-  margin-top: 32px;
+  margin-top: 40px;
 }
 
 /* Lifecycle actions on the order page — rush toggle, cancel, delete. Each
@@ -3983,12 +4011,45 @@ button.chip--event:hover .chip__title {
   align-items: start;
 }
 
+/* The form and the preview are grid items, whose margins never overlap the
+   section's 40px (docs/design.md, "Vertical rhythm"): each drops what
+   would otherwise sit under the section's last line. */
+.showcase-form,
+.showcase-preview > :last-child {
+  margin-bottom: 0;
+}
+
 .showcase-form {
   max-width: none;
 }
 
 .showcase-form__field {
   max-width: 360px;
+}
+
+.showcase-form__field .detail-note {
+  margin: 0;
+}
+
+/* Public / In person only / Private, each with its note. The labels take
+   one column so the notes line up in the next, whatever the label's
+   length; .detail-note's top margin would sink the note below the radio. */
+.detail-form .visibility-choice {
+  display: grid;
+  grid-template-columns: 15px 6rem 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.visibility-choice input[type="radio"],
+.visibility-choice .detail-note {
+  margin: 0;
+}
+
+/* The new-piece page has no preview beside the form, so the description
+   would otherwise run the whole page width. */
+.showcase-form--new {
+  max-width: 880px;
 }
 
 .showcase-form textarea {
@@ -4186,4 +4247,27 @@ button.chip--event:hover .chip__title {
   border-radius: var(--radius);
   background: var(--paper-deep);
   color: var(--ink);
+}
+
+/* Showcase → Website (showcase SC42–SC45): a piece's state on the website,
+   the review page's lines, and a send that didn't go through. The error is
+   red text, not a badge: it's the outcome of one press, not a standing
+   count (hard rule 7). */
+.showcase-website__state {
+  margin: 0 0 8px;
+}
+
+.showcase-website__error {
+  display: block;
+  color: var(--status-rush);
+}
+
+.showcase-review__line {
+  flex: 1 1 auto;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.showcase-website-panel .btn-primary {
+  display: inline-block;
 }

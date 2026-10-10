@@ -1,0 +1,23 @@
+{# What the last press of a website button did, one line per piece. #}
+{% if results %}
+<section class="detail-orders">
+  <h2>Result</h2>
+  {% set failed = results|rejectattr('ok')|list %}
+  <p class="{{ 'warning-note' if failed else 'detail-note' }}">
+    {{ results|length - failed|length }} of {{ results|length }} done{% if failed %}; {{ failed|length }} didn't go through, see below{% endif %}.
+  </p>
+  <ul class="settings-source-list">
+    {% for line in results %}
+    <li class="settings-source-list__item">
+      <span class="settings-source-list__label">
+        {{ line.title }}
+        <span class="detail-note{% if not line.ok %} showcase-website__error{% endif %}">{{ line.message }}</span>
+      </span>
+      <div class="settings-source-list__actions">
+        <a class="btn-secondary" href="{{ url_for('showcase.item_page', item_id=line.item_id) }}">Open</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}

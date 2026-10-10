@@ -40,6 +40,29 @@
   </section>
   {% endif %}
 
+  {% if website_connected %}
+  {# No badge, no reminder: a piece left unsent is a choice (SC43). #}
+  {% set waiting = website_summary['add'] + website_summary['update'] + website_summary['take_off'] %}
+  <section class="detail-orders showcase-website-panel">
+    <h2>Website</h2>
+    <p class="detail-note">
+      {% if waiting %}
+      Waiting to be sent:
+      {%- set parts = [] %}
+      {%- if website_summary['add'] %}{% set _ = parts.append(website_summary['add'] ~ ' to add') %}{% endif %}
+      {%- if website_summary['update'] %}{% set _ = parts.append(website_summary['update'] ~ ' to update') %}{% endif %}
+      {%- if website_summary['take_off'] %}{% set _ = parts.append(website_summary['take_off'] ~ ' to take off') %}{% endif %}
+      {{ parts|join(', ') }}. Nothing reaches the website until you send it.
+      {% else %}
+      The website is up to date with every piece meant for it.
+      {% endif %}
+    </p>
+    {% if waiting %}
+    <a class="btn-primary" href="{{ url_for('showcase.website_review') }}">Review and send</a>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="detail-orders">
     <h2>Pieces</h2>
     {{ notice_slot(notice, 'items') }}
@@ -74,10 +97,7 @@
       </form>
       <div class="legend__actions">
         <a class="btn-secondary" href="{{ url_for('showcase.present') }}">Present</a>
-        <form method="post" action="{{ url_for('showcase.create_item') }}">
-          {{ notice_field('items') }}
-          <button type="submit" class="btn-primary">+ New piece</button>
-        </form>
+        <a class="btn-primary" href="{{ url_for('showcase.new_item') }}">+ New piece</a>
       </div>
     </div>
 

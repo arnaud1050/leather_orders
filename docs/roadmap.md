@@ -158,7 +158,7 @@
 
 ## Planned: Showcase (portfolio, website sync, catalog mode)
 
-*Spec agreed 2026-10-05, not built.* Turns finished work into a portfolio
+*Spec agreed 2026-10-05; steps 1–4 built, the Share button not yet.* Turns finished work into a portfolio
 the studio controls from one place: each item is pushed to the studio's own
 website (bymonsieur.ca's "Recent Commissions" first), shared to social media
 by hand, and shown full-screen on any device at client meetings and craft
@@ -297,63 +297,220 @@ category, specs. It never shows a price or client information, so what the
 studio sees is exactly what can go public.
 
 Actions: **Save draft** (stays private), **Publish** (adds it to catalog
-mode, and sends it to the website if it's public), **Share…** (published
-items only, see below), **Withdraw** (off the website and out of the
-catalog, nothing deleted). Saving a published item re-sends it. The tab
-shows each channel's status (*Website: published Oct 5*, or the error with
-a **Retry** button).
+mode), **Share…** (published items only, see below), **Withdraw** (out of
+the catalog, nothing deleted). None of them touches the website: that's
+always a separate button (see "Nothing reaches the website without a
+button" below). The tab shows the piece's website state (*On the website,
+up to date* / *Changed since last sent* / …) and a **Send to website**
+button when there's something to send.
 
 **Showcase page** (new nav item): every item as a card grid, filterable by
-category, status and visibility, with sync failures flagged. **New item**
+category, status and visibility, with website changes waiting and
+failures flagged, and the **Website** panel described below. **New item**
 opens the same form with no prefill, for stock and market pieces. An item
 made from an order links back to it. **Present** opens catalog mode on this
 device for a signed-in user.
 
 ### Sending items to the website
 
-**Push, not pull**, so the website keeps serving its own copies when this
-app is down. Publishing, editing, withdrawing, and changing visibility away
-from public each send one webhook to the configured endpoint:
+*Respecified 2026-10-06* (replaces the first draft's `group_id`
+`showcase-<id>` adoption): loose coupling, one direction, generic for any
+studio, and the website's own content left alone.
 
-- A JSON body with a format version, the item's stable id, title,
-  description, category **name**, spec label/value pairs (blank ones
-  omitted), and the photos as ordered, short-lived signed download URLs.
-- Signed with an HMAC of the body using the shared secret, plus a
-  timestamp so replays are rejected.
-- **The body is built by one serializer that can only emit those fields.**
-  A test asserts that no price, client, order number, delivery date or note
-  can appear in it, whatever the item holds. That's the privacy guarantee,
-  so it's tested rather than left to convention.
-- Sent at save time. A failure marks the publication `failed` with the
-  error shown, and **Retry** resends. No background queue: the receiver
-  upserts by item id, so resending is always safe.
+**The four rules**
+
+1. **One direction: atelier pushes, the website receives.** The website
+   never writes to atelier, and atelier never reads the website after the
+   one-off import. Push rather than pull, so the website keeps serving its
+   own copies when this app is down. All atelier knows is an endpoint URL
+   and a shared secret.
+2. **The website marks what atelier manages.** Every card atelier pushes
+   carries the piece's **key**, stored by the website in one column of its
+   own (`external_key`). A push creates or updates the card with that key,
+   and nothing else.
+3. **A card without a key is the studio's own.** Old collections,
+   anything added directly on the website, a studio's existing gallery the
+   day it connects: never edited, never deleted, never read back into
+   atelier. A studio that connects its website loses nothing it already
+   had, and a website card that doesn't exist in atelier stays on the
+   website only. That's the intended state, not drift.
+4. **One small contract for every website.** Not bymonsieur-specific: our
+   Flask sites get the receiver from `website_modules`; any other site only
+   has to answer the same calls.
+
+**Keys.** Each `ShowcaseItem` and each `ShowcasePhoto` gets a random
+`public_key` (a UUID, not the integer id: ids are sequential and shared
+across tenants). It never changes, so the website can follow a piece
+through any edit, and a photo through any reorder.
+
+**The contract.** JSON over HTTPS, one endpoint, a format version in every
+body, signed with an HMAC of the body using the shared secret, plus a
+timestamp so replays are rejected:
+
+- **`upsert`**: the piece's key, title, description, category **name**,
+  spec label/value pairs (blank ones omitted), and its photos in order, each
+  with its key and a content hash. The receiver answers with the photo keys
+  it doesn't hold yet (or whose hash changed), and atelier sends just those
+  photos in a second signed request. *Changed 2026-10-07* from short-lived
+  download links: the website never has to reach atelier (demo's atelier
+  sits behind the demo slot's basic auth), and unchanged photos are never
+  re-sent.
+- **`remove`**: the piece's key. Sent when a piece is withdrawn, deleted,
+  or moved away from public.
+- **`adopt`**: see "The one-time import, linked" below.
+- **`ping`**: for Settings' "Send test" button.
+
+The body is built by **one serializer that can only emit those fields**. A
+test asserts that no price, client, order number, delivery date or note
+can appear in it, whatever the piece holds. That's the privacy guarantee,
+so it's tested rather than left to convention.
+
+**Nothing reaches the website without a button** (decided 2026-10-07).
+Every call to the website is a deliberate press by the studio, so nothing
+on the site ever changes as a side effect of saving, publishing,
+withdrawing or switching Showcase off. Atelier itself (the piece, catalog
+mode) still changes at once, since that's the studio's own.
+
+- **Website state per piece, derived** (hard rule 10) by comparing the
+  piece with what was last sent (`ShowcasePublication` keeps a hash of the
+  last body it sent, not a status):
+  *Not on the website* (public, never sent) · *On the website, up to date* ·
+  *Changed since last sent* · *To be taken off* (sent, but now withdrawn,
+  deleted, or no longer public) · *Removed on the website* (the studio
+  deleted the card there) · *Not linked* (an imported piece, see below) ·
+  *Last send failed*. Drafts, private and in-person pieces that were never
+  sent have no website state at all.
+- **Per piece:** the editor shows the state and a **Send to website**
+  button (or **Take off the website**) when there's something to do.
+- **All at once:** the Showcase page's **Website** panel says what's
+  waiting ("2 to add, 3 to update, 1 to take off") and opens a **review
+  page** listing each piece and exactly what will happen to its card, with
+  a tick box per line (all ticked) and one **Send to website** button. The
+  result is reported per line on the same page.
+- **No nagging.** Changes waiting are shown on the Showcase page only: no
+  nav badge, no reminder. A piece left unsent is a choice.
+- A failure leaves the piece *Last send failed*, with the error; pressing
+  the button again resends. Every call is idempotent (an upsert by key, a
+  remove of a key the site doesn't hold is a success), so resending is
+  always safe. Calls go out while the page waits, no background queue.
+- **Connecting sends nothing.** Settings' **Send test** only pings. Pieces
+  already published as public then simply show *Not on the website* until
+  sent.
+
+**When they disagree.**
+- A website-only card: stays website-only (rule 3).
+- A managed card deleted in the website's own admin: the receiver keeps
+  the key as deleted, and answers the next upsert with *gone* instead of
+  re-creating it. Atelier learns it at the next send, marks the piece
+  "Removed on the website" and offers **Send again**, which re-creates it
+  on purpose.
+- A managed card's content edited in the website's admin: not possible,
+  see below.
 
 **Receiver: `showcase_receiver.py` in `website_modules`**, synced into each
 client site by `sync.py` like `contact_mail.py`. It checks the signature
-and timestamp, downloads the photos, and calls a **per-site mapping
-function** that owns the site's own models. For bymonsieur, the mapping
-upserts `GalleryImage` rows in category `commissions` sharing a `group_id`
-of `showcase-<id>` (one card, several photos), and matches the category to
-`ProductCategory` by name; it creates none, so an unmatched name lands
-uncategorised. Withdrawal deletes the group.
+and timestamp, downloads the photos, keeps the deleted keys, and calls a
+**per-site mapping** that owns the site's own models. For bymonsieur, the
+mapping writes `GalleryImage` rows in category `commissions` (a card being
+the rows that share a `group_id`), stores the piece key on them and each
+photo's key on its row, and matches the category to `ProductCategory` by
+name; it creates none, so an unmatched name lands uncategorised.
 
-**Who owns what on the website:** this app owns a synced item's content
+**Who owns what on the website:** atelier owns a managed card's content
 (photos, title, category). The site's admin owns its **position and whether
 it shows**, so Joe can still reorder cards in bymonsieur's own dashboard.
-That dashboard marks synced cards "Managed in Atelier" and doesn't offer to
-edit their content, since the next sync would overwrite it.
+That dashboard marks managed cards "Managed in Atelier" and doesn't offer to
+edit their content, since the next push would overwrite it. It can still
+delete one (handled above).
 
-**Backfill:** a one-time script imports bymonsieur's existing Recent
-Commissions into the Showcase (as published items with no order, already
-linked to their website cards), so catalog mode isn't empty on day one.
-*Built ahead of step 4* (2026-10-06): `scripts/import_showcase_from_site.py`
-(SC34–SC36) reads the public homepage, so it needed nothing of the sync.
-Each piece records its card in `ShowcaseItem.source_ref`
-("bymonsieur.ca/uploads/<first photo>.webp"). **Step 4 must use it:** the
-receiver should match an incoming piece with a `source_ref` to the existing
-website product whose first photo is that file, and adopt that product
-(regroup it as `showcase-<id>`) instead of creating a second card — or the
-first sync duplicates the whole gallery.
+### Every case, at a glance
+
+Agreed 2026-10-07. "Managed card": a website card atelier created or
+linked (it carries atelier's key). Nothing in the Website column happens
+until the studio presses **Send to website** (or **Take off the
+website**).
+
+**Made in atelier**
+
+| What the studio does | Atelier and catalog mode | Website, once sent |
+|---|---|---|
+| Saves a draft | Atelier only | Nothing |
+| Publishes as private | Atelier only, not in the catalog | Nothing |
+| Publishes as in person | Atelier and catalog mode | Nothing, ever |
+| Publishes as public | Atelier and catalog mode; *Not on the website* | A new managed card, at the top |
+| Edits a piece that's on the website | Updated at once; *Changed since last sent* | The card is updated |
+| Public → in person or private | As chosen; *To be taken off* | The card is removed |
+| Withdraws | Out of the catalog, kept; *To be taken off* | The card is removed |
+| Publishes again after it was taken off | Back in the catalog; *Not on the website* | A new card, at the top (the old position is gone) |
+| Deletes (only once withdrawn) | Gone; *To be taken off* if the card's still up | The card is removed |
+| A send fails | *Last send failed*, with the error | Keeps what it had |
+| Showcase is switched off for the company | Hidden, nothing deleted | Untouched; nothing can be sent |
+
+**Made on the website**
+
+| What the studio does there | Atelier | Website |
+|---|---|---|
+| Adds a card | Never sees it; not in catalog mode | The site's own card |
+| Edits, reorders, hides or deletes its own card | Nothing | As it likes |
+| Wants a site-only card in atelier too | Makes the piece in atelier, sends it | Two cards until it deletes the original (no pull) |
+
+**A managed card, touched on the website**
+
+| What the studio does there | Result |
+|---|---|
+| Reorders or hides it | Allowed and kept: sends never change position or hidden |
+| Edits its photos or caption | Not offered ("Managed in Atelier") |
+| Deletes it | Allowed; the next send for it comes back *Removed on the website*, and **Send again** re-creates it on purpose |
+
+**Joe's imported pieces** (the one-off, for bymonsieur only)
+
+| Situation | Result |
+|---|---|
+| Imported, not linked | *Not linked*; nothing is ever sent for them |
+| Linked | Managed cards, *up to date*; from then on as "Made in atelier" |
+| Card not found while linking | Stays *Not linked*: **Send as a new card**, or leave it atelier-only |
+| One he no longer wants online | Withdraw or switch to in person, then **Take off the website** |
+
+### The one-time import, linked
+
+`scripts/import_showcase_from_site.py` (SC34–SC38, built 2026-10-06) copied
+bymonsieur's existing Recent Commissions into Showcase so catalog mode
+wasn't empty on day one. It's **the only thing that ever goes from website
+to atelier**, and it's a one-off: once a company has a website connection
+in Settings, the script refuses to run, so nobody re-runs it later and
+pulls website-only cards in. A studio that doesn't want its old cards in
+atelier simply doesn't run it.
+
+**The imported cards end up exactly as if atelier had pushed them.** After
+linking, an imported piece's card is a managed card like any other: it
+carries the piece's key, its photos carry their photo keys, the dashboard
+shows "Managed in Atelier", and the next edit in atelier updates it. No
+duplicate card, no re-upload, no second lossy re-encode of photos the
+website already holds.
+
+How:
+- The import records where each photo came from: `ShowcaseItem.source_ref`
+  ("<host><first photo's path>") and `ShowcasePhoto.source_ref` (the
+  photo's own path on the site). *Both built* (SC34, SC39; the photo one
+  2026-10-06, before prod's import).
+- Linking sends one **`adopt`** per imported piece: the piece's key, and
+  each photo's key with its `source_ref`. The receiver finds the website's
+  row for each photo by its file, stamps the piece key on the whole card
+  and each photo key on its row, and answers with what it found. It
+  changes no content, so the card looks the same the moment after.
+- Linking sends **no content**: an adopted piece is recorded as sent in
+  its current state, so it shows *On the website, up to date*, and only a
+  later edit plus **Send to website** changes its card. Its photos are
+  never uploaded again: the website already holds every photo key.
+- Linking is a button too: Settings → Website, **Link imported pieces**,
+  after the connection is set up, with the same review page first. A piece
+  whose card can't be found (Joe deleted it, or its photos changed) is
+  listed and stays *Not linked*. Nothing is ever sent for a *Not linked*
+  piece (sending it would duplicate its card) until the studio chooses
+  **Send as a new card** on it.
+- Pieces imported before `ShowcasePhoto.source_ref` existed (demo's) can
+  only be matched by their first photo. Simplest: `--remove --apply` and
+  import again before linking.
 
 ### Sharing to social media (by hand)
 
@@ -413,9 +570,11 @@ progressive enhancements that degrade silently where unsupported.
   should be shown in catalog mode only behind a Settings switch. Whether
   only items with no order may carry a price is the question to settle
   then.
-- **Websites that aren't one of our Flask sites.** The webhook format is
-  generic, but the only receiver is the `website_modules` one; a public
-  JSON feed or an embeddable widget would be the route for anything else.
+- **Receivers for websites that aren't one of our Flask sites.** The
+  contract is generic (any site that answers `upsert`/`remove`/`ping` can
+  connect), but the only receiver we build is the `website_modules` one.
+  A Squarespace or Wix site would need a public JSON feed or an embeddable
+  widget instead.
 
 ### Open question
 
@@ -447,9 +606,22 @@ first loses nothing. Undecided as of 2026-10-05.
    QR code is drawn server-side (`qrcode`, a new pure-Python dependency).
    The catalog page's script and service worker are checked by hand, not
    by the test suite.
-4. Webhook sender, `showcase_receiver.py` in `website_modules`,
-   bymonsieur's mapping and "Managed in Atelier" cards, adopting the cards
-   the import already brought in (by `source_ref`, see Backfill above).
+4. ~~The website sync, as respecified 2026-10-06 and 2026-10-07 ("Sending
+   items to the website", "The one-time import, linked", "Every case, at a
+   glance" above).~~ *Done* 2026-10-07 — `showcase/website.py` (SC40–SC49),
+   the review page, Settings → Showcase → Website; the protocol is
+   website_modules' `showcase_protocol.py` (SP), synced into atelier as
+   `showcase/protocol.py` and into bymonsieur, whose mapping is
+   `showcase_site.py` (bymonsieur SH). Differences from the plan: the shared
+   module is the *protocol* (signing, body, `handle()`, `send()`) rather
+   than a whole receiver, because a receiver is mostly the site's own
+   models; photos travel inside the call rather than as download links;
+   bymonsieur's managed cards stay movable among the cards, but there's no
+   per-card "hidden" flag on that site, so "whether it shows" isn't
+   offered; and deleting a piece whose card is on the website is refused
+   until it's taken off (SC46). Checked end to end against a local
+   bymonsieur over HTTP. Not done: `SHOWCASE_ENCRYPTION_KEY` and
+   `SHOWCASE_SECRET` set on the servers, and linking Joe's real import.
 5. The Share button.
 
 Each step ships with its tests and its `REQUIREMENTS.md` rules, and the

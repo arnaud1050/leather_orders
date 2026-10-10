@@ -9,6 +9,7 @@ import of `Order`. `company_id` foreign keys name the table by string, the
 same allowance `documents/` and `features/` use.
 """
 
+import uuid
 from datetime import datetime, timezone
 
 from models import db
@@ -25,6 +26,12 @@ STATUS_LABELS = {"draft": "Draft", "published": "Published", "withdrawn": "Withd
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def new_public_key() -> str:
+    """A piece's or photo's key on the studio's website (SC40): random, so
+    it says nothing about how many pieces exist, and never changed."""
+    return uuid.uuid4().hex
 
 
 class ShowcaseSettings(db.Model):
@@ -103,6 +110,9 @@ class ShowcaseItem(db.Model):
     # it already brought in, and lets the website sync (roadmap step 4)
     # link a piece to its existing card instead of posting a duplicate.
     source_ref = db.Column(db.String(255))
+    # Its key on the studio's website (SC40), sent with every call so the
+    # site can follow the piece through any edit.
+    public_key = db.Column(db.String(32), index=True, default=new_public_key)
 
     category = db.relationship("ShowcaseCategory")
     photos = db.relationship(
@@ -111,6 +121,10 @@ class ShowcaseItem(db.Model):
     )
     spec_values = db.relationship(
         "ShowcaseSpecValue", back_populates="item", cascade="all, delete-orphan",
+    )
+    publication = db.relationship(
+        "ShowcasePublication", back_populates="item", uselist=False,
+        cascade="all, delete-orphan",
     )
 
     @property
@@ -160,6 +174,17 @@ class ShowcasePhoto(db.Model):
     # stops offering a document already added. Not a foreign key: the
     # document may be deleted, and the photo must outlive it.
     source_document_id = db.Column(db.Integer)
+    # Where an imported photo came from on the studio's website,
+    # "<host><path>" (SC39), so the website sync can adopt the site's own
+    # copy instead of uploading it again. Null for photos added in the app.
+    source_ref = db.Column(db.String(255))
+    # Its key on the studio's website (SC40), so the site keeps a photo it
+    # already holds through a reorder instead of receiving it again.
+    public_key = db.Column(db.String(32), index=True, default=new_public_key)
+    # SHA-256 of the stored full-size file, which never changes once
+    # written: how the website tells a photo it holds from a new one.
+    # Filled when the photo is added; older rows on first need (website.py).
+    content_sha256 = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, nullable=False, default=_utcnow)
 
     item = db.relationship("ShowcaseItem", back_populates="photos")
@@ -213,3 +238,51 @@ class ShowcaseExcludedOrderType(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, index=True)
     order_type_id = db.Column(db.Integer, nullable=False)
+
+
+class ShowcaseWebsite(db.Model):
+    """A company's connection to its website (SC41): where to send, and the
+    secret both sides sign with, encrypted at rest (showcase/crypto.py).
+    One per company; no row means no website."""
+
+    __tablename__ = "showcase_websites"
+
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), primary_key=True)
+    endpoint_url = db.Column(db.String(500), nullable=False)
+    secret_encrypted = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=_utcnow)
+    # The last "Send test": what the site said it is, or why it failed.
+    checked_at = db.Column(db.DateTime)
+    site_name = db.Column(db.String(200))
+    max_photos = db.Column(db.Integer)
+    check_error = db.Column(db.Text)
+
+
+class ShowcasePublication(db.Model):
+    """What was last sent to the website for one piece (SC42). A record of
+    what happened, never a status: whether the piece has changed since is
+    worked out by comparing it with `sent_hash` (hard rule 10)."""
+
+    __tablename__ = "showcase_publications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, index=True)
+    item_id = db.Column(db.Integer, db.ForeignKey("showcase_items.id"), nullable=False,
+                        unique=True)
+    # The website has a card for it (sent, or linked to an imported card).
+    on_site = db.Column(db.Boolean, nullable=False, default=False)
+    # The card came from the one-off import and was linked, not created.
+    linked = db.Column(db.Boolean, nullable=False, default=False)
+    # An imported piece the studio chose to send as a new card (SC45).
+    send_as_new = db.Column(db.Boolean, nullable=False, default=False)
+    # The site's own admin deleted the card; it isn't re-created unasked.
+    removed_on_site = db.Column(db.Boolean, nullable=False, default=False)
+    # The hash of the piece as last sent, and its photos' keys and hashes,
+    # so a later send carries only the photos the site doesn't hold.
+    sent_hash = db.Column(db.String(64))
+    sent_photos = db.Column(db.Text)
+    sent_at = db.Column(db.DateTime)
+    last_error = db.Column(db.Text)
+    last_attempt_at = db.Column(db.DateTime)
+
+    item = db.relationship("ShowcaseItem", back_populates="publication")

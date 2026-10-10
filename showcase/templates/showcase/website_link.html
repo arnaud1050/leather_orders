@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{# Linking the one-off import to the cards it came from (SC45): nothing
+   visible changes on the website, and nothing else is sent. #}
+{% block title %}Link imported pieces — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Link imported pieces</h1>
+    <p class="detail-subtitle">{{ connection.site_name or connection.endpoint_url }}</p>
+  </header>
+
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['review']) }}
+
+  {% include "showcase/_website_results.html" %}
+
+  <section class="detail-orders">
+    <h2>Not linked yet</h2>
+    {{ notice_slot(notice, 'review') }}
+    {% if items %}
+    <p class="detail-note">
+      These pieces were copied from the website's own gallery. Linking finds
+      each one's card there and marks it as managed from here, without
+      changing what it shows. After that, editing a piece and sending it
+      updates its card instead of adding a second one. A piece whose card
+      can't be found stays unlinked, and is never sent until you choose to
+      send it as a new card.
+    </p>
+    <form method="post" action="{{ url_for('showcase.website_link') }}" class="detail-form">
+      {{ notice_field('review') }}
+      <ul class="settings-source-list">
+        {% for item in items %}
+        <li class="settings-source-list__item">
+          <label class="checkbox-group__item showcase-review__line">
+            <input type="checkbox" name="item_id" value="{{ item.id }}" checked>
+            <span>
+              {{ item.title }}
+              <span class="detail-note">· {{ item.status_label }}, {{ item.photos|length }} photo{{ 's' if item.photos|length != 1 }}</span>
+              {% if item.publication and item.publication.last_error %}<span class="detail-note showcase-website__error">Last try: {{ item.publication.last_error }}</span>{% endif %}
+            </span>
+          </label>
+        </li>
+        {% endfor %}
+      </ul>
+      <div>
+        <button type="submit" class="btn-primary">Link</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="detail-note">Every imported piece is linked.</p>
+    {% endif %}
+    <p class="detail-note">
+      <a href="{{ url_for('showcase.settings') }}">Back to Settings → Showcase</a>
+    </p>
+  </section>
+
+</div>
+{% endblock %}

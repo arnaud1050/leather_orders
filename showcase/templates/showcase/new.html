@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{# A piece with no order, before it exists (SC9a): opening this page saves
+   nothing, so pressing + New piece by mistake leaves nothing to delete. The
+   one form posts the details and the photos together; Save draft or Publish
+   is what creates the piece, then the editor (item.html) takes over. #}
+{% block title %}New piece — Showcase — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <a class="back-link" href="{{ url_for('showcase.showcase_list') }}">&larr; Showcase</a>
+
+  <header class="detail-header">
+    <h1>New piece</h1>
+    <p class="detail-subtitle">A piece with no order</p>
+  </header>
+
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['details']) }}
+
+  <section class="detail-orders">
+    <h2>Details</h2>
+    {{ notice_slot(notice, 'details') }}
+    <form method="post" action="{{ url_for('showcase.create_item') }}" enctype="multipart/form-data" class="detail-form showcase-form showcase-form--new">
+      {{ notice_field('details') }}
+
+      <label class="showcase-form__field">Photos
+        <input type="file" name="photos" multiple accept="{{ sc.accept }}">
+      </label>
+      <p class="detail-note detail-form__note">
+        The first photo is the cover; you can reorder them once the piece is
+        saved. Each is saved again without its hidden data, so a phone's
+        location never leaves with it. Up to {{ sc.max_photos }}.
+      </p>
+
+      {% include "showcase/_details_fields.html" %}
+
+      <div class="lifecycle-actions">
+        <button type="submit" name="action" value="save" class="btn-secondary">Save draft</button>
+        <button type="submit" name="action" value="publish" class="btn-primary">Publish</button>
+        <a class="btn-secondary" href="{{ url_for('showcase.showcase_list') }}">Cancel</a>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

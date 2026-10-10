@@ -31,7 +31,7 @@ demand — open the one the index points at rather than guessing from memory.
 | **Feature-usage events — what's tracked, why recording can never break the action, adding an event**, and the `/admin/usage` page that reads them | [usage/CLAUDE.md](usage/CLAUDE.md), [usage/REQUIREMENTS.md](usage/REQUIREMENTS.md) |
 | **The studio's logo** — shared by invoices and catalog mode; upload, storage, the light/dark tone read from its pixels, the move out of billing | [brand/CLAUDE.md](brand/CLAUDE.md), [brand/REQUIREMENTS.md](brand/REQUIREMENTS.md) |
 | **Per-company features — the parts sold separately**, switched on per company from `/admin`; `is_enabled()`, `require()`, `has_feature()` | [features/CLAUDE.md](features/CLAUDE.md), [features/REQUIREMENTS.md](features/REQUIREMENTS.md) |
-| **Showcase — the portfolio of finished pieces** (sold per company): pieces, photos with metadata stripped, the order page's Showcase tab and its reminder, Settings → Showcase, catalog mode and its kiosk links (`/k/<token>/`, no sign-in) | [showcase/CLAUDE.md](showcase/CLAUDE.md), [showcase/REQUIREMENTS.md](showcase/REQUIREMENTS.md) |
+| **Showcase — the portfolio of finished pieces** (sold per company): pieces, photos with metadata stripped, the order page's Showcase tab and its reminder, Settings → Showcase, catalog mode and its kiosk links (`/k/<token>/`, no sign-in), and sending pieces to the studio's website (only ever by a button; the protocol is a synced copy from website_modules) | [showcase/CLAUDE.md](showcase/CLAUDE.md), [showcase/REQUIREMENTS.md](showcase/REQUIREMENTS.md) |
 
 **Changing behaviour means changing the matching `REQUIREMENTS.md` rule in the
 same commit.** If a rule and the code disagree, one of them is a bug.
@@ -75,7 +75,8 @@ where it's indexed above; this is the checklist, not the reasoning.
    only `db` from the host (`tests/test_features.py`), and so does
    `brand/` (`tests/test_brand.py`) — though billing still doesn't import
    it: the logo reaches billing through `invoicing.set_logo_source`. `showcase/` is as
-   strict as `ai/` (`tests/test_showcase.py`); `showcase_adapter.py` is its
+   strict as `ai/` (`tests/test_showcase.py`), and likewise imports the root
+   `crypto.py` (its website secret); `showcase_adapter.py` is its
    seam, like `billing_adapter.py`.
    **`admin/` is not a module and this rule doesn't apply to it** — its
    subject matter *is* `Company` and `User`, so it imports them freely. It's
@@ -93,6 +94,12 @@ where it's indexed above; this is the checklist, not the reasoning.
    deliberate exception to what was "three, and only three". Don't add a
    fifth, and don't promote a count between them. See
    [docs/design.md](docs/design.md).
+7a. **Sections sit exactly 40px apart, on every page** — the section
+   wrapper carries the 40px, nothing inside a section adds space under its
+   last line, and `.ledger` stays a plain block (never a flex column: that
+   is what made gaps of 48–80px). Never fix a gap by tuning a margin inside
+   a section. `e2e/tests/section-gaps.spec.ts` measures every page. See
+   "Vertical rhythm" in [docs/design.md](docs/design.md).
 8. **Hide, don't delete**, for anything a company configures and historical
    records reference (`SourceOption`, `OrderType`, `InventoryType`,
    `InventoryUnit`, `DocumentType`) — hard delete only while `can_delete`.

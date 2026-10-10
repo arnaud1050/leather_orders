@@ -2,7 +2,7 @@
    and an order's Showcase tab (showcase/_order_tab.html). Context: `sc`
    (routes._editor_context) and `notice`. Every form carries `next`, the page
    it sits on, so a save comes back to the tab or page it was made from,
-   return_to and all (hard rule 14). Slots: photos, details, piece. #}
+   return_to and all (hard rule 14). Slots: photos, details, piece, website. #}
 {% from "_save_notice.html" import notice_field, notice_slot %}
 {% from "_icons.html" import icon_trash, icon_grip %}
 {% set item = sc.item %}
@@ -14,11 +14,11 @@
   {% elif item.status == 'published' %}
   {# Stored UTC; shown in the company's zone by the app-wide filter. #}
   Published{% if item.published_at %} {{ item.published_at|local_datetime('%b %d, %Y')|replace(' 0', ' ') }}{% endif %} ·
-  {% if item.visibility == 'public' %}shown in catalog mode, and on your website once it's connected.
+  {% if item.visibility == 'public' %}shown in catalog mode, and allowed on your website: it goes there only when you send it.
   {% elif item.visibility == 'in_person' %}shown in catalog mode only, never online.
   {% else %}private: kept here, shown nowhere.{% endif %}
   {% else %}
-  Out of the catalog{{ ' and off the website' if item.visibility == 'public' else '' }}. Nothing was deleted; publish it again any time.
+  Out of the catalog. Nothing was deleted; publish it again any time.
   {% endif %}
 </p>
 
@@ -109,55 +109,7 @@
     <form method="post" action="{{ url_for('showcase.save_item', item_id=item.id) }}" class="detail-form showcase-form">
       {{ notice_field('details') }}
       <input type="hidden" name="next" value="{{ sc.next_url }}">
-      <label class="showcase-form__field">Title
-        <input type="text" name="title" value="{{ item.title }}" maxlength="160" required>
-      </label>
-
-      <label class="showcase-form__field">Category
-        <select name="category_id">
-          <option value="">—</option>
-          {% for category in sc.categories %}
-          <option value="{{ category.id }}" {% if category.id == item.category_id %}selected{% endif %}>{{ category.label }}{% if not category.is_active %} (hidden){% endif %}</option>
-          {% endfor %}
-        </select>
-      </label>
-      {% if not sc.has_categories %}
-      <p class="detail-note detail-form__note">No categories yet: add them in <a href="{{ url_for('showcase.settings') }}">Settings → Showcase</a>.</p>
-      {% endif %}
-
-      <label>Description
-        <textarea name="description" rows="4" maxlength="4000" placeholder="Two or three sentences about the piece.">{{ item.description or '' }}</textarea>
-      </label>
-
-      <fieldset class="showcase-form__field">
-        <legend>Specs</legend>
-        {% for field, value in sc.spec_rows %}
-        <label>{{ field.label }}<input type="text" name="spec_{{ field.id }}" value="{{ value }}" maxlength="200"></label>
-        {% else %}
-        <p class="detail-note">
-          {% if sc.has_spec_fields %}Every spec field is hidden.{% else %}No spec fields yet.{% endif %}
-          Set the studio's list (Dimensions, Leather, Hardware…) in <a href="{{ url_for('showcase.settings') }}">Settings → Showcase</a>.
-        </p>
-        {% endfor %}
-        <p class="detail-note">Leave a spec blank and it isn't shown.</p>
-      </fieldset>
-
-      <fieldset class="showcase-form__field">
-        <legend>Visibility</legend>
-        <div class="checkbox-group">
-          {% for value in sc.visibilities %}
-          <label class="checkbox-group__item">
-            <input type="radio" name="visibility" value="{{ value }}" {% if item.visibility == value %}checked{% endif %}>
-            {{ sc.visibility_labels[value] }}
-            <span class="detail-note">
-              {%- if value == 'public' %} — catalog mode and the website
-              {%- elif value == 'in_person' %} — catalog mode only, never online
-              {%- else %} — kept here, shown nowhere{% endif -%}
-            </span>
-          </label>
-          {% endfor %}
-        </div>
-      </fieldset>
+      {% include "showcase/_details_fields.html" %}
 
       <div class="lifecycle-actions">
         {% if item.status == 'published' %}
@@ -212,12 +164,41 @@
   </div>
   <p class="detail-note">
     {% if item.status == 'published' %}
-    Withdrawing takes it out of the catalog{{ ' and off the website' if item.visibility == 'public' else '' }} and keeps everything, so it can be published again. A published piece can't be deleted: withdraw it first.
+    Withdrawing takes it out of the catalog and keeps everything, so it can be published again.{% if sc.website_state %} A card on the website stays until you take it off below.{% endif %} A published piece can't be deleted: withdraw it first.
     {% else %}
     Deleting removes the piece and its photos for good.{% if sc.order %} The order's own documents aren't touched, and the order asks again whether to showcase it.{% endif %}
     {% endif %}
   </p>
 </section>
+
+{# --------------------------------------------------------------- website #}
+{# Only once a website is connected. Nothing is sent without this button (SC43). #}
+{% if sc.website_state %}
+{% set ws = sc.website_state %}
+<section class="detail-lifecycle showcase-website">
+  <h2>Website</h2>
+  {{ notice_slot(notice, 'website') }}
+  <p class="showcase-website__state"><strong>{{ ws.label }}</strong></p>
+  {% if ws.error %}<p class="detail-note showcase-website__error">Last send failed: {{ ws.error }}</p>{% endif %}
+  {% if ws.warning %}<p class="warning-note">{{ ws.warning }}</p>{% endif %}
+  {% if ws.action %}
+  <form method="post" action="{{ url_for('showcase.send_item', item_id=item.id) }}" class="lifecycle-actions">
+    {{ notice_field('website') }}
+    <input type="hidden" name="next" value="{{ sc.next_url }}">
+    <input type="hidden" name="action" value="{{ ws.action }}">
+    <button type="submit" class="btn-primary">{{ ws.button }}</button>
+  </form>
+  {% endif %}
+  <p class="detail-note">
+    {%- if ws.code == 'not_linked' %} This piece came from the website's own gallery and isn't linked to its card yet. Link it from <a href="{{ url_for('showcase.website_link_review') }}">Link imported pieces</a>, so its card is updated rather than doubled.{% if ws.action %} Or send it as a new card, and delete the old one on the website yourself.{% endif %}
+    {%- elif ws.code == 'removed_on_site' %} Its card was deleted on the website itself, so it isn't sent again unless you ask.
+    {%- elif ws.code == 'to_take_off' %} Its card is still on the website. Take it off when you're ready; nothing else will.
+    {%- elif ws.code == 'up_to_date' %} The website shows what's saved here. Edits reach it only when you send them.
+    {%- else %} Nothing reaches the website until you press the button. You can also send several pieces at once from the <a href="{{ url_for('showcase.website_review') }}">website page</a>.
+    {%- endif %}
+  </p>
+</section>
+{% endif %}
 
 {% if item.status != 'published' %}
 <dialog id="delete-piece-modal" class="modal">

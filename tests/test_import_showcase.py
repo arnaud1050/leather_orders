@@ -184,6 +184,41 @@ def test_imports_are_per_company(company, other_company):
     assert ShowcaseItem.query.filter_by(company_id=other_company.id).count() == 3
 
 
+# --- SC39: every photo records where it came from ------------------------------
+
+def test_each_imported_photo_records_its_own_origin_in_order(company):
+    importer.run(company.id, SITE, apply=True, fetch=FakeSite(), log=lambda *_: None)
+
+    bag = services.item_for_source(company.id, "studio.example/uploads/bbb.webp")
+    assert [p.source_ref for p in bag.photos] == ["studio.example/uploads/bbb.webp",
+                                                  "studio.example/uploads/ccc.webp"]
+
+
+def test_photos_added_in_the_app_have_no_origin(company):
+    item = services.create_item(company.id, "Made here")
+
+    assert services.add_photo(company.id, item, jpeg(), "bench.jpg") is None
+    assert item.photos[0].source_ref is None
+
+
+def test_the_migration_adds_both_origin_columns_to_an_older_database(app):
+    import sqlalchemy as sa
+
+    from showcase import migrations
+
+    with app.app_context():
+        for table in ("showcase_items", "showcase_photos"):
+            db.session.execute(sa.text(f"ALTER TABLE {table} DROP COLUMN source_ref"))
+        db.session.commit()
+
+        migrations.run_migrations()
+        migrations.run_migrations()  # a no-op the second time
+
+        inspector = sa.inspect(db.engine)
+        for table in ("showcase_items", "showcase_photos"):
+            assert "source_ref" in {c["name"] for c in inspector.get_columns(table)}
+
+
 # --- SC38: the site regrouped its cards -----------------------------------------
 
 BAG = "A signature crossbody bag handcrafted in beige premium suede."

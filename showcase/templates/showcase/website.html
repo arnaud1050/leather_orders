@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{# The one place several pieces go to the website at once (SC43): each line
+   says what will happen to its card, everything ticked, one button. #}
+{% block title %}Send to website — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    <h1>Send to website</h1>
+    <p class="detail-subtitle">{{ connection.site_name or connection.endpoint_url }}</p>
+  </header>
+
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['review']) }}
+
+  {% include "showcase/_website_results.html" %}
+
+  <section class="detail-orders">
+    <h2>Waiting to be sent</h2>
+    {{ notice_slot(notice, 'review') }}
+    {% if rows %}
+    <p class="detail-note">
+      Untick anything you'd rather not send yet. Only these cards change: the
+      website's own cards, and its order of cards, are left as they are.
+    </p>
+    <form method="post" action="{{ url_for('showcase.website_send') }}" class="detail-form">
+      {{ notice_field('review') }}
+      <ul class="settings-source-list">
+        {% for item, ws in rows %}
+        <li class="settings-source-list__item">
+          <label class="checkbox-group__item showcase-review__line">
+            <input type="checkbox" name="item_id" value="{{ item.id }}" checked>
+            <span>
+              {{ item.title }}
+              <span class="detail-note">
+                {%- if ws.code == 'changed' %} — will be updated
+                {%- else %} — {{ outcomes[ws.action] }}{% endif %}
+                · {{ ws.label }}
+              </span>
+              {% if ws.error %}<span class="detail-note showcase-website__error">Last send failed: {{ ws.error }}</span>{% endif %}
+              {% if ws.warning %}<span class="detail-note showcase-website__error">{{ ws.warning }}</span>{% endif %}
+            </span>
+          </label>
+          <div class="settings-source-list__actions">
+            <a class="btn-secondary" href="{{ url_for('showcase.item_page', item_id=item.id) }}">Open</a>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      <div>
+        <button type="submit" class="btn-primary">Send to website</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="detail-note">Nothing to send: the website is up to date with every piece meant for it.</p>
+    {% endif %}
+    <p class="detail-note">
+      <a href="{{ url_for('showcase.showcase_list') }}">Back to Showcase</a>
+    </p>
+  </section>
+
+</div>
+{% endblock %}

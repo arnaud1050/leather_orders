@@ -192,7 +192,8 @@ def test_every_showcase_page_is_wired(logged_in, company, order):
 
     tab = f"/orders/{order.id}/showcase"
     pages = [(url, "showcase_notice") for url in
-             ("/showcase", "/settings/showcase", f"/showcase/items/{loose.id}", tab)]
+             ("/showcase", "/settings/showcase", f"/showcase/items/{loose.id}",
+              "/showcase/items/new", tab)]
     named = _check_wiring(logged_in, pages)
     logged_in.post(f"/showcase/orders/{order.id}/start", data={"next": tab})
     named += _check_wiring(logged_in, [(tab, "showcase_notice")])

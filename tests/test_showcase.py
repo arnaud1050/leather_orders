@@ -455,13 +455,68 @@ def test_withdraw_then_delete(logged_in, on, piece):
 
 
 def test_a_standalone_piece(logged_in, on):
-    response = logged_in.post("/showcase/items", data={"notice_section": "items"})
+    response = logged_in.post("/showcase/items", data={
+        "title": "Card holder", "visibility": "private", "action": "save",
+        "notice_section": "details"})
     item = ShowcaseItem.query.one()
-    assert item.order_id is None and item.title == "Untitled piece"
+    assert item.order_id is None and item.title == "Card holder"
+    assert item.status == "draft" and item.visibility == "private"
     assert response.headers["Location"].endswith(f"/showcase/items/{item.id}")
     page = logged_in.get(f"/showcase/items/{item.id}").get_data(as_text=True)
-    assert "A piece with no order" in page
+    assert "A piece with no order" in page and "Saved as a draft." in page
     logged_in.post(f"/showcase/items/{item.id}/delete")
+    assert ShowcaseItem.query.count() == 0
+
+
+def test_opening_new_piece_saves_nothing(logged_in, on):
+    """SC9a: + New piece opens a form; a mistaken click leaves nothing to delete."""
+    services.add_row(ShowcaseSpecField, on.id, "Leather")
+    db.session.commit()
+    listing = logged_in.get("/showcase").get_data(as_text=True)
+    assert 'href="/showcase/items/new"' in listing
+    page = logged_in.get("/showcase/items/new")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    assert "New piece" in body and 'name="spec_' in body and 'name="photos"' in body
+    assert ShowcaseItem.query.count() == 0
+
+
+def test_new_piece_saves_details_and_photos_together(logged_in, on):
+    services.add_row(ShowcaseCategory, on.id, "Bags")
+    services.add_row(ShowcaseSpecField, on.id, "Leather")
+    db.session.commit()
+    bags = services.list_rows(ShowcaseCategory, on.id)[0]
+    leather = services.list_rows(ShowcaseSpecField, on.id)[0]
+    logged_in.post("/showcase/items", data={
+        "title": "Tote", "description": "Roomy.", "category_id": str(bags.id),
+        f"spec_{leather.id}": "Veg tan", "visibility": "public", "action": "publish",
+        "photos": [(BytesIO(jpeg(gps=True)), "a.jpg"), (BytesIO(jpeg()), "b.jpg")],
+        "notice_section": "details",
+    }, content_type="multipart/form-data")
+    item = ShowcaseItem.query.one()
+    assert item.status == "published" and item.published_at is not None
+    assert item.category_id == bags.id and item.description == "Roomy."
+    assert services.shown_specs(on.id, item) == [("Leather", "Veg tan")]
+    assert len(item.photos) == 2
+    assert 0x8825 not in stored_image(item.photos[0]).getexif()  # SC11 still holds
+
+
+def test_new_piece_published_without_photos_stays_a_draft(logged_in, on):
+    body = logged_in.post("/showcase/items", data={
+        "title": "Belt", "visibility": "public", "action": "publish",
+        "notice_section": "details"}, follow_redirects=True).get_data(as_text=True)
+    item = ShowcaseItem.query.one()
+    assert item.status == "draft"
+    assert "Saved as a draft. Add at least one photo before publishing." in body
+
+
+def test_a_refused_new_piece_saves_nothing(logged_in, on):
+    response = logged_in.post("/showcase/items", data={
+        "title": "  ", "description": "Kept", "visibility": "public", "action": "save",
+        "notice_section": "details"})
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "A title is required." in body and "Kept" in body
     assert ShowcaseItem.query.count() == 0
 
 

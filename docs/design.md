@@ -24,21 +24,11 @@ changes made:
 6. Nav arrows are inline SVG chevrons (stroke, `currentColor`), not text glyphs —
    swapped in `calendar.html` inside `.stamp` links.
 7. Footer is pinned to the bottom of the viewport via a flex sticky-footer pattern
-   (`body` → flex column, `.ledger` → `flex: 1 0 auto` + flex column,
-   `.ledger__footer` → `margin-top: auto`), so it no longer jumps up/down between
-   4-row and 6-row months.
-8. Gap between page sections (order/client/settings pages: Line items, Invoice,
-   Payments, Documents, Company details, etc.) is a single `margin-bottom: 40px`
-   declared once on the section-wrapper classes themselves (`.detail-orders`,
-   `.detail-documents`, `.detail-payments`, `.detail-lines`, `.detail-invoice`,
-   `.invoice-admin`), not on whatever form/list/note happens to end each section.
-   It used to be the latter, and different endings (a `.detail-form` at 40px, a
-   `.detail-note` at ~12px, `.settings-form` at 8px) produced visibly inconsistent
-   gaps. **If you add a new section to one of these pages, put it in one of these
-   wrapper classes (or add the class to this rule) rather than tuning the margin
-   on whatever's inside it** — margin collapsing between the border/padding-less
-   `<section>` and its last child means this 40px wins over a smaller child margin
-   automatically, so you don't need to zero anything out.
+   (`body` → flex column, `.ledger` → `flex: 1 0 auto`), so it no longer jumps
+   up/down between 4-row and 6-row months. `.ledger` itself is a plain block,
+   not a flex column — see "Vertical rhythm" below for why that matters.
+8. Gap between page sections: exactly 40px, on every page. The rule, the
+   reasoning and the check are under **"Vertical rhythm"** below.
 9. Page width bumped from 980px to **1200px** for more breathing room, especially on
    the timeline's Gantt bars and the wide list tables (`/orders`, `/clients`,
    `/invoices`). `.ledger`, `.view-switch` and `.site-footer` all move together —
@@ -175,15 +165,49 @@ Current tokens (top of `style.css`):
   part; a control that vanishes without explanation is the failure mode the
   whole block was built to avoid.
 
-- **Sections on a detail page sit exactly 40px apart**, whatever they end
-  in — every tab of the order page and the client page. These sections
-  don't collapse margins with their last child, so a section ending in a
-  `.detail-form` would otherwise get the form's 40px *and* its own (80px).
-  The inline add forms inside the Billing and Materials sections drop
-  their margin for that reason. `.detail-lifecycle` once carried an extra
-  `margin-top: 32px` to set it off from the form above (72px); it read as a
-  stray gap next to the 40px under it, and now applies only after a
-  `.settings-form` (the client page), whose 8px margin needs topping up.
+- **Vertical rhythm: sections sit exactly 40px apart, on every page**
+  (design system token `section-gap`). Measured as it reads: from the last
+  visible line of one section to the top of the next section's heading,
+  whatever the section ends in — a form, a note, a list, a grid, a card.
+  It applies to the app pages, the admin pages, Privacy and Terms, and the
+  two help guides alike. The other vertical spacings it sits among:
+  - page header (`.detail-header`) to the first section: **24px**, or **28px**
+    under a tab bar (`.settings-nav`) — a different spacing on purpose;
+  - section heading (`h2`) to its content: **10px**;
+  - between fields in a form: **16px**;
+  - a note about one field: **8px** under that field (below).
+
+  **How it's built, and the rules that keep it:**
+  1. **The 40px lives only on the section wrapper** (`.detail-orders`,
+     `.detail-documents`, `.detail-payments`, `.detail-lines`,
+     `.detail-discount`, `.detail-invoice`, `.detail-lifecycle`,
+     `.invoice-admin`). A new section uses one of these classes or joins
+     that rule. **Never fix a gap by tuning a margin inside a section.**
+  2. **`.ledger` is a plain block, never a flex column.** In normal flow a
+     section's last element's bottom margin overlaps the section's 40px
+     instead of adding to it, so a section can end in anything. `.ledger`
+     *was* a flex column, which makes every section its own formatting
+     context: the margins stacked, and 18 sections across 12 pages sat
+     48–80px apart (a form's 40px, a note's ~12px, a list's 24px, a
+     settings form's 8px, each added to the 40px) while the comment on the
+     rule claimed they overlapped. It was fixed in one place, Oct 2026.
+  3. **Inside a grid or flex box, margins don't overlap — trim them.** A
+     section whose content sits in one (`.showcase-details`, a
+     `.detail-form`, which is a flex column) keeps its children's margins
+     inside the box. `.detail-form > :last-child` drops its bottom margin
+     for every form; a new grid or flex wrapper at the end of a section
+     does the same for its own children (see `.showcase-preview`).
+  4. **Standalone pages state it themselves.** The help guides set
+     `.section { margin-bottom: 40px }` in their own styles. Privacy and
+     Terms keep `.legal-doc` a flex column so their paragraph spacing reads
+     as it always has, and get the 40px from each `h2`'s top margin with
+     the element before it dropping its bottom margin.
+
+  **The check:** `e2e/tests/section-gaps.spec.ts` visits every studio and
+  platform admin page and fails, naming page, heading and gap, on any
+  section heading that isn't 40px under the content above it. A new page
+  goes in its lists. Checked against the regression it exists for:
+  putting `.ledger` back to a flex column fails it with every gap listed.
 
 - **A note about one field (`.detail-note.detail-form__note`) sits 8px
   under that field** and the usual 16px gap above the next — the Invoicing

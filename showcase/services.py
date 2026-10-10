@@ -238,25 +238,43 @@ def shown_specs(company_id: int, item: ShowcaseItem) -> list[tuple[str, str]]:
     return [(f.label, v) for f, v in spec_rows(company_id, item) if v.strip()]
 
 
-def update_details(company_id: int, item: ShowcaseItem, *, title: str, description: str,
-                   category_id: int | None, visibility: str,
-                   specs: dict[int, str]) -> str | None:
-    """Save the form. Nothing is written when anything is refused."""
+def details_error(company_id: int, item: ShowcaseItem, *, title: str, description: str,
+                  category_id: int | None, visibility: str) -> str | None:
+    """Why the details form would be refused, or None. Also asked before a
+    new piece exists (`item` unsaved), so a refused form saves nothing."""
     title = (title or "").strip()
     if not title:
         return "A title is required."
     if len(title) > TITLE_MAX:
         return f"Keep the title under {TITLE_MAX} characters."
-    description = (description or "").strip()
-    if len(description) > DESCRIPTION_MAX:
+    if len((description or "").strip()) > DESCRIPTION_MAX:
         return f"Keep the description under {DESCRIPTION_MAX} characters."
     if visibility not in VISIBILITIES:
         return "Choose one of the three visibilities."
     if category_id is not None and category_id not in {
             c.id for c in offered_categories(company_id, item)}:
         return "That category isn't available any more. Pick another."
+    return None
 
-    item.title = title
+
+def new_item(company_id: int) -> ShowcaseItem:
+    """A piece for the new-piece form, never added to the session: nothing
+    is saved until the form is (create_item)."""
+    return ShowcaseItem(company_id=company_id, title="", status="draft",
+                        visibility=get_settings(company_id).default_visibility)
+
+
+def update_details(company_id: int, item: ShowcaseItem, *, title: str, description: str,
+                   category_id: int | None, visibility: str,
+                   specs: dict[int, str]) -> str | None:
+    """Save the form. Nothing is written when anything is refused."""
+    error = details_error(company_id, item, title=title, description=description,
+                          category_id=category_id, visibility=visibility)
+    if error is not None:
+        return error
+
+    description = (description or "").strip()
+    item.title = title.strip()
     item.description = description or None
     item.category_id = category_id
     item.visibility = visibility
@@ -301,6 +319,9 @@ def delete_item(company_id: int, item: ShowcaseItem) -> str | None:
     first, so deleting is never also an unannounced unpublish."""
     if item.status == "published":
         return "Withdraw this piece before deleting it."
+    if item.publication is not None and item.publication.on_site:
+        # SC46: atelier would lose the only record that the card is there.
+        return "Take this piece off the website before deleting it."
     for photo in item.photos:
         storage.delete(company_id, photo.stored_filename)
         storage.delete(company_id, photo.thumbnail_filename)
@@ -324,7 +345,8 @@ def get_photo(company_id: int, photo_id: int) -> ShowcasePhoto | None:
 
 
 def add_photo(company_id: int, item: ShowcaseItem, data: bytes, name: str,
-              *, source_document_id: int | None = None) -> str | None:
+              *, source_document_id: int | None = None,
+              source_ref: str | None = None) -> str | None:
     """Re-encode, strip, store (SC11). Error string or None."""
     if len(item.photos) >= config.MAX_PHOTOS_PER_ITEM:
         return f"A piece has at most {config.MAX_PHOTOS_PER_ITEM} photos."
@@ -343,6 +365,7 @@ def add_photo(company_id: int, item: ShowcaseItem, data: bytes, name: str,
         thumbnail_filename=storage.save(company_id, processed.thumbnail),
         width=processed.width, height=processed.height, size_bytes=size,
         position=len(item.photos), source_document_id=source_document_id,
+        source_ref=source_ref, content_sha256=hashlib.sha256(processed.full).hexdigest(),
     )
     item.photos.append(photo)
     item.updated_at = _utcnow()

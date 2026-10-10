@@ -63,18 +63,29 @@ ShowcaseCategory(id, company_id, label, sort_order, is_active)  # hide-don't-del
 ShowcaseSpecField(id, company_id, label, sort_order, is_active) # the studio's fixed spec labels
 ShowcaseItem(id, company_id, order_id, title, description,      # one piece; ≤1 per order; status
              category_id, visibility, status, published_at,     # draft/published/withdrawn,
-             created_at, updated_at, source_ref)                # visibility private/in_person/public;
+             created_at, updated_at, source_ref, public_key)    # visibility private/in_person/public;
                                                                 # source_ref: the website card an
-                                                                # import copied it from (SC34)
+                                                                # import copied it from (SC34);
+                                                                # public_key: its key on the website (SC40)
 ShowcaseSpecValue(id, item_id, field_id, value)                 # blank = not shown
 ShowcasePhoto(id, company_id, item_id, stored_filename,         # re-encoded copy, EXIF stripped;
               thumbnail_filename, width, height, size_bytes,    # position 0 is the cover
-              position, source_document_id, created_at)
+              position, source_document_id, source_ref,         # source_ref: the website photo an
+              public_key, content_sha256, created_at)           # import copied it from (SC39);
+                                                                # public_key + the file's hash: how
+                                                                # the website knows a photo (SC40)
 ShowcaseDismissal(id, company_id, order_id, dismissed_at,       # "Not showcasing this one"
                   dismissed_by)
 ShowcaseExcludedOrderType(id, company_id, order_type_id)        # order types never showcased
 ShowcaseKioskLink(id, company_id, name, token_hash,             # catalog mode on one device; only
                   created_at, last_used_at, revoked_at)         # the token's SHA-256 is stored
+ShowcaseWebsite(company_id, endpoint_url, secret_encrypted,     # the studio's website (SC41); the
+                created_at, checked_at, site_name,              # secret is Fernet-encrypted
+                max_photos, check_error)                        # (SHOWCASE_ENCRYPTION_KEY)
+ShowcasePublication(id, company_id, item_id, on_site, linked,   # what was last sent for one piece
+                    send_as_new, removed_on_site, sent_hash,    # (SC42): a record, not a status;
+                    sent_photos, sent_at, last_error,           # the piece's website state is
+                    last_attempt_at)                            # derived by comparing with it
 User(id, company_id, email, full_name, password_hash,           # email is the login identity, and
      signature, is_active, is_platform_admin)                   # the only globally unique column
                                                                 # company_id is NULL for platform

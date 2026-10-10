@@ -18,7 +18,7 @@ services:
     # See .env.demo.example for the full list of variables this can set
     # (SECRET_KEY, ADMIN_EMAIL/PASSWORD, PLATFORM_ADMIN_EMAIL/PASSWORD,
     # COMMS_ENCRYPTION_KEY, GOOGLE_CLIENT_ID/SECRET, AI_ENCRYPTION_KEY,
-    # RUN_SCHEDULER) — every one of them is optional in app.py, which falls
+    # SHOWCASE_ENCRYPTION_KEY, RUN_SCHEDULER) — every one of them is optional in app.py, which falls
     # back to the same dev-only defaults documented there.
     env_file:
       - .env.demo

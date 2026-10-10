@@ -101,9 +101,11 @@ allocated to another container on the host.
   required by default. Copy `.env.demo.example` to `.env.demo` on the server
   once; nothing needs to be filled in beyond `SECRET_KEY` unless the
   communications/AI integrations are wanted on the demo too.
-- **Two separate encryption keys**, both readable from either env file and
-  both optional: **`COMMS_ENCRYPTION_KEY`** (OAuth tokens, `communications/`) and
-  **`AI_ENCRYPTION_KEY`** (vendor API keys, `ai/`). Generate either with
+- **Three separate encryption keys**, all readable from either env file and
+  all optional: **`COMMS_ENCRYPTION_KEY`** (OAuth tokens, `communications/`),
+  **`AI_ENCRYPTION_KEY`** (vendor API keys, `ai/`) and
+  **`SHOWCASE_ENCRYPTION_KEY`** (the secret that signs calls to a studio's
+  website, `showcase/`; rotating it means connecting the website again). Generate any with
   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
   Left unset, each is derived from `SECRET_KEY` — which works, and means
   **rotating `SECRET_KEY` makes those stored secrets permanently unreadable**
@@ -189,6 +191,8 @@ roughly 60 MB of re-encoded photos per deployment
 
 If the site's cards changed shape since an earlier import (the October 2026
 regrouping), the import stops and asks for `--remove` first (SC38).
+An import run before per-photo origins existed (SC39; demo's first runs)
+can't be linked to the website's cards later: remove it and import again.
 To start again, `--remove` deletes every piece imported from that site,
 photos included (pieces made in the app, categories and spec fields stay).
 Also a dry run first, then `--apply`:
@@ -197,7 +201,28 @@ Also a dry run first, then `--apply`:
 docker compose -f docker-compose-demo.yml exec demo python scripts/import_showcase_from_site.py --company "By Monsieur" --site https://bymonsieur.ca --remove --apply
 ```
 
-Rules: showcase `SC34`–`SC38`.
+Rules: showcase `SC34`–`SC39`.
+
+**Connecting a studio's website to Showcase** (showcase `SC40`–`SC49`). The
+website has to run the receiver first: for bymonsieur, deploy the release
+that has `/showcase/receive`. Then:
+
+1. In atelier, Settings → Showcase → Website: enter
+   `https://bymonsieur.ca/showcase/receive` and press Connect. Copy the
+   secret it shows (once).
+2. On the server, put it in bymonsieur's `.env` as `SHOWCASE_SECRET=…` and
+   recreate its container (`docker compose up -d` in `bymonsieur/`).
+3. Back in atelier, **Send test**: it should answer, with "takes up to 7
+   photos per card".
+4. **Link imported pieces** (the pieces from the import above), review, Link.
+   Nothing on the website changes. Then send whatever reads "Changed" from
+   the Showcase page's **Review and send**, when you choose.
+
+Nothing is sent at any step until a button is pressed. **Don't connect
+demo atelier to the real bymonsieur.ca**: the two would both manage the same
+cards. The demo slot runs one app at a time, so demo atelier has no demo
+bymonsieur to talk to; try the sync locally instead (both apps on
+localhost, with the receiver address `http://localhost:5050/showcase/receive`).
 
 To rebuild after changing `requirements.txt` or app code:
 `docker compose up --build` (prod) or

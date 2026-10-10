@@ -41,6 +41,12 @@ services:
       # and generated the same way — a separate variable so either can be
       # rotated without invalidating the other's stored secrets.
       - AI_ENCRYPTION_KEY=${AI_ENCRYPTION_KEY:-}
+      # --- Showcase (see showcase/) ---
+      # Encrypts the secret that signs every call to a studio's website
+      # (Settings → Showcase → Website). Same fallback and consequence as
+      # the two keys above: unset, it's derived from SECRET_KEY, and
+      # rotating that means connecting the website again.
+      - SHOWCASE_ENCRYPTION_KEY=${SHOWCASE_ENCRYPTION_KEY:-}
       # TLS is live for atelier.arnaudrouillot.com (see docs/deployment.md),
       # so the session cookie should be Secure by default here too — same
       # reasoning as GOOGLE_REDIRECT_URI above for defaulting it in this
