@@ -3015,6 +3015,20 @@ button[aria-busy="true"] {
   min-width: 0;
 }
 
+/* Caption above each preview, so a white logo's white square reads as
+   "this is it on white" rather than an empty box. */
+.brand__preview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.brand__preview-label {
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
 .brand__preview {
   display: inline-flex;
   align-items: center;
@@ -3977,6 +3991,39 @@ button.chip--event:hover .chip__title {
 
 .showcase-photo__thumb {
   height: 120px;
+}
+
+/* The new-piece page's tile waits (upload-tile.js UT13-UT14): chosen
+   photos are held as cards in the grid until Save draft or Publish. Their
+   list is a wrapper the module redraws, laid out as if the cards were the
+   grid's own children. Without the script nothing lists them, so the
+   input shows itself in the tile instead of staying visually hidden. */
+.showcase-held {
+  display: contents;
+}
+
+.showcase-photo--held {
+  cursor: default;
+}
+
+.showcase-photo--held .doc-explorer__size {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.showcase-held > .showcase-photo--held:first-child .doc-explorer__size::before {
+  content: "Cover · ";
+  font-weight: 600;
+}
+
+.showcase-photos--new:not(.is-enhanced) .doc-explorer__upload-input {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 8px;
+  clip: auto;
+  white-space: normal;
 }
 
 .showcase-picker {

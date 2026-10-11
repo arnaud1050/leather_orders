@@ -54,7 +54,12 @@ plan (catalog mode, website sync, sharing) is in
   only its Save draft or Publish creates the piece, with the details and any
   photos chosen in that one post. A refused form creates nothing and comes
   back with what was typed. Publishing without a photo saves a draft and
-  says why it wasn't published.
+  says why it wasn't published. Its photos are picked or dropped on the
+  app's usual upload tile, which here *waits* (upload-tile.js UT13–UT14):
+  choosing photos sends nothing, they're held as cards beside the tile
+  (the first marked Cover, each with a trash button to take it back out)
+  and go up with the form, and more than `MAX_PHOTOS_PER_ITEM` is refused
+  in the page before anything is sent.
 - **SC10 — Withdraw, then delete.** A published piece can be withdrawn
   (nothing is deleted, it can be published again) but not deleted. A draft
   or withdrawn piece can be deleted, behind a confirm dialog; its photos go

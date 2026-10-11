@@ -248,6 +248,7 @@ def _new_page(item, specs: dict | None = None, notice: dict | None = None):
             "visibility_labels": VISIBILITY_LABELS,
             "max_photos": config.MAX_PHOTOS_PER_ITEM,
             "accept": config.ACCEPT_ATTRIBUTE,
+            "max_upload_bytes": config.MAX_UPLOAD_BYTES,
             "has_spec_fields": bool(services.list_rows(ShowcaseSpecField, company_id)),
             "has_categories": bool(services.list_rows(ShowcaseCategory, company_id)),
         },

@@ -1,8 +1,15 @@
 {% extends "base.html" %}
 {# A piece with no order, before it exists (SC9a): opening this page saves
    nothing, so pressing + New piece by mistake leaves nothing to delete. The
-   one form posts the details and the photos together; Save draft or Publish
-   is what creates the piece, then the editor (item.html) takes over. #}
+   one form posts the photos and the details together; Save draft or Publish
+   is what creates the piece, then the editor (item.html) takes over.
+
+   Laid out like the editor: Photos, then Details. The photo tile is the
+   app's upload tile, as a *waiting* zone (upload-tile.js, UT13-UT14): picked
+   or dropped photos are held and shown as cards, not uploaded on the pick,
+   because the upload would be the piece's save. #}
+{% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+{% from "_icons.html" import icon_trash %}
 {% block title %}New piece — Showcase — Atelier Order Book{% endblock %}
 {% block content %}
 <div class="ledger">
@@ -14,33 +21,65 @@
     <p class="detail-subtitle">A piece with no order</p>
   </header>
 
-  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
   {{ page_notice(notice, ['details']) }}
 
-  <section class="detail-orders">
-    <h2>Details</h2>
-    {{ notice_slot(notice, 'details') }}
-    <form method="post" action="{{ url_for('showcase.create_item') }}" enctype="multipart/form-data" class="detail-form showcase-form showcase-form--new">
-      {{ notice_field('details') }}
+  <form method="post" action="{{ url_for('showcase.create_item') }}" enctype="multipart/form-data">
+    {{ notice_field('details') }}
 
-      <label class="showcase-form__field">Photos
-        <input type="file" name="photos" multiple accept="{{ sc.accept }}">
-      </label>
-      <p class="detail-note detail-form__note">
+    <section class="detail-documents">
+      <h2>Photos</h2>
+      <p class="save-notice save-notice--error" role="alert" id="new-photos-error" hidden></p>
+      <p class="detail-note">
         The first photo is the cover; you can reorder them once the piece is
-        saved. Each is saved again without its hidden data, so a phone's
-        location never leaves with it. Up to {{ sc.max_photos }}.
+        saved. Every photo is saved again as a new copy without its hidden
+        data, so a phone's location never leaves with it. Up to {{ sc.max_photos }} per piece.
       </p>
 
-      {% include "showcase/_details_fields.html" %}
-
-      <div class="lifecycle-actions">
-        <button type="submit" name="action" value="save" class="btn-secondary">Save draft</button>
-        <button type="submit" name="action" value="publish" class="btn-primary">Publish</button>
-        <a class="btn-secondary" href="{{ url_for('showcase.showcase_list') }}">Cancel</a>
+      <div class="doc-explorer showcase-photos showcase-photos--new" data-upload-zone data-upload-wait data-upload-status="new-photos-error">
+        <div class="doc-explorer__item doc-explorer__add">
+          <label class="doc-explorer__add-trigger" for="new-photo-input">
+            <span class="doc-explorer__add-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg>
+            </span>
+            <span class="doc-explorer__add-label">Add photos</span>
+            <span class="doc-explorer__add-hint" data-upload-hint hidden>or drop them here</span>
+          </label>
+          <input type="file" name="photos" multiple accept="{{ sc.accept }}" id="new-photo-input"
+                 class="doc-explorer__upload-input"
+                 data-max-files="{{ sc.max_photos }}" data-max-bytes="{{ sc.max_upload_bytes }}"
+                 data-many-error="A piece has at most {{ sc.max_photos }} photos."
+                 data-type-error="{name} isn't a photo that can be added here: use JPEG, PNG or WebP.">
+        </div>
+        {# The chosen photos, drawn by the module from the template below,
+           flowing in the grid after the tile. #}
+        <div class="showcase-held" data-upload-list></div>
+        <template data-upload-item>
+          <div class="doc-explorer__item showcase-photo showcase-photo--held">
+            <div class="doc-explorer__thumb showcase-photo__thumb"><img data-upload-preview alt=""></div>
+            <span class="doc-explorer__size" data-upload-name></span>
+            <div class="doc-explorer__actions">
+              <button type="button" class="icon-btn icon-btn--danger" title="Remove" aria-label="Remove this photo" data-upload-remove>{{ icon_trash() }}</button>
+            </div>
+          </div>
+        </template>
       </div>
-    </form>
-  </section>
+    </section>
+
+    <section class="detail-orders">
+      <h2>Details</h2>
+      {{ notice_slot(notice, 'details') }}
+      <div class="detail-form showcase-form showcase-form--new">
+        {% include "showcase/_details_fields.html" %}
+
+        <div class="lifecycle-actions">
+          <button type="submit" name="action" value="save" class="btn-secondary">Save draft</button>
+          <button type="submit" name="action" value="publish" class="btn-primary">Publish</button>
+          <a class="btn-secondary" href="{{ url_for('showcase.showcase_list') }}">Cancel</a>
+        </div>
+      </div>
+    </section>
+  </form>
 
 </div>
+<script src="{{ url_for('static', filename='assets/js/upload-tile.js') }}" defer></script>
 {% endblock %}

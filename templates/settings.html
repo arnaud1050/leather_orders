@@ -44,12 +44,19 @@
       <li class="settings-source-list__item" data-upload-zone data-upload-status="logo-error">
         <span class="brand__previews">
           {# Shown on both, since it's used on both: white paper (a Classic
-             invoice) and a dark page (catalog mode). #}
-          <span class="brand__preview brand__preview--light">
-            <img src="{{ url_for('brand_logo', v=brand_logo) }}" alt="Your logo on a light background">
+             invoice) and a dark page (catalog mode). Each is captioned, or a
+             white logo reads as an empty white square beside a mystery one. #}
+          <span class="brand__preview-item">
+            <span class="brand__preview-label">On a white background</span>
+            <span class="brand__preview brand__preview--light">
+              <img src="{{ url_for('brand_logo', v=brand_logo) }}" alt="Your logo on a white background">
+            </span>
           </span>
-          <span class="brand__preview brand__preview--dark">
-            <img src="{{ url_for('brand_logo', v=brand_logo) }}" alt="Your logo on a dark background">
+          <span class="brand__preview-item">
+            <span class="brand__preview-label">On a black background</span>
+            <span class="brand__preview brand__preview--dark">
+              <img src="{{ url_for('brand_logo', v=brand_logo) }}" alt="Your logo on a black background">
+            </span>
           </span>
         </span>
         <div class="settings-source-list__actions">

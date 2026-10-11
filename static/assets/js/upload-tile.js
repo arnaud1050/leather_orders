@@ -1,7 +1,7 @@
-// File-upload tile behaviour shared by Arnaud's sites, upload-tile v1.0. Synced from
+// File-upload tile behaviour shared by Arnaud's sites, upload-tile v1.1. Synced from
 // website_modules by sync.py: never edit a site's copy. Load it once per page with `defer`; it
 // wires up every [data-upload-zone] on the page and does nothing when there is none. The rules it
-// keeps are UT1-UT12 in website_modules/REQUIREMENTS.md.
+// keeps are UT1-UT14 in website_modules/REQUIREMENTS.md.
 //
 // The markup contract (each site keeps its own markup and CSS, and only adds these attributes).
 // The page must already work without this script: a real file input and a real submit button.
@@ -24,6 +24,21 @@
 //     <p data-upload-status role="alert" hidden></p>       optional: where refusals are written
 //   </div>
 //
+// A waiting zone (UT13-UT14) sits inside a bigger form, and keeps the files until that form is
+// sent by its own buttons, instead of uploading them at once. The site adds:
+//
+//   <div data-upload-zone data-upload-wait>             inside the form, not around a form
+//     <label for="photos">Add photos <span data-upload-hint hidden>or drop them here</span></label>
+//     <input type="file" id="photos" name="photos" multiple
+//            data-max-files="10" data-many-error="...">  optional: a cap on the whole selection
+//     <ul data-upload-list></ul>                          where the chosen files are listed
+//     <template data-upload-item>                         the site's markup for one chosen file
+//       <li><img data-upload-preview alt="">              filled for an image file, else removed
+//           <span data-upload-name></span>                the file's name
+//           <button type="button" data-upload-remove>Remove</button></li>   takes it back out
+//     </template>
+//   </div>
+//
 // The status element may also live elsewhere on the page (say, at the top of the section, where
 // the site writes its other messages): name it from the zone with data-upload-status="its-id".
 // The zone's form is the one holding its file input, so a grid can hold other forms (a delete
@@ -43,6 +58,10 @@
 //     around the page);
 //   - swallows a file dropped anywhere else on a page that has a zone, so the browser never
 //     replaces the page with the dropped file;
+//   - in a waiting zone, instead, adds picked and dropped files to the selection (a single-file
+//     input swaps them), lists them through the site's template, lets each be removed, marks the
+//     zone `has-files` while it holds any, and sends nothing: the form's own buttons do, and the
+//     zone turns `is-uploading` when they do;
 //   - when the zone has a status element (inside it, or named by id), checks each file first against the input's
 //     `accept` and `data-max-bytes`, and refuses more than one file when the input isn't
 //     `multiple`. A refusal names the file, sends nothing, and empties the input. Without a status
@@ -54,10 +73,19 @@
   var MESSAGES = {
     type: '{name} isn’t a file type that can be uploaded here.',
     size: '{name} is too large. The limit is {max} per file.',
-    count: 'Drop one file at a time.'
+    count: 'Drop one file at a time.',
+    many: 'Up to {count} files can be added here.'
   };
   var zones = document.querySelectorAll('[data-upload-zone]');
   if (!zones.length) return;
+
+  function canBuildFileList() {
+    try {
+      return typeof DataTransfer === 'function' && 'files' in new DataTransfer();
+    } catch (error) {
+      return false;
+    }
+  }
 
   var canHover = !(window.matchMedia && window.matchMedia('(hover: none)').matches);
 
@@ -94,9 +122,15 @@
     // Without requestSubmit (Safari before 16) the zone is left as the plain form it already is,
     // Upload button and all: submitting any other way would skip the site's submit listeners.
     if (!form || typeof form.requestSubmit !== 'function') return;
+    var waiting = zone.hasAttribute('data-upload-wait');
+    // A waiting zone rebuilds the input's file list, which needs a DataTransfer of its own; a
+    // browser that can't make one keeps the plain input, which still works (UT1).
+    if (waiting && !canBuildFileList()) return;
     var named = zone.getAttribute('data-upload-status');
     var status = (named && document.getElementById(named)) || zone.querySelector('[data-upload-status]');
     var sending = false;
+    var held = [];       // a waiting zone's chosen files, in order
+    var previews = [];   // their object URLs, revoked whenever the list is redrawn
 
     zone.classList.add('is-enhanced');
     zone.querySelectorAll('[data-upload-fallback]').forEach(function (el) { el.hidden = true; });
@@ -113,13 +147,17 @@
     function message(kind, file) {
       var text = input.getAttribute('data-' + kind + '-error') || MESSAGES[kind];
       var max = parseInt(input.getAttribute('data-max-bytes'), 10);
-      return text.replace('{name}', file ? file.name : '').replace('{max}', formatBytes(max || 0));
+      return text.replace('{name}', file ? file.name : '').replace('{max}', formatBytes(max || 0))
+        .replace('{count}', input.getAttribute('data-max-files') || '');
     }
 
     // The courtesy checks run only where the site gave refusals somewhere to appear.
     function refusal(files) {
       if (!status) return '';
       if (files.length > 1 && !input.multiple) return message('count');
+      // A waiting zone's cap is on the whole selection, the files already held included (UT13).
+      var most = parseInt(input.getAttribute('data-max-files'), 10);
+      if (waiting && most && input.multiple && held.length + files.length > most) return message('many');
       var max = parseInt(input.getAttribute('data-max-bytes'), 10);
       for (var i = 0; i < files.length; i++) {
         if (!accepted(files[i], input.getAttribute('accept'))) return message('type', files[i]);
@@ -143,7 +181,78 @@
       form.requestSubmit();
     }
 
-    input.addEventListener('change', function () { send(input.files); });
+    // --- a waiting zone (UT13-UT14): hold the files, list them, let the form send them ---
+
+    // The input's own file list is what the form posts, so it is rebuilt from `held` after every
+    // change; a picker replaces the input's list, which is why picks are read before that.
+    function syncInput() {
+      var list = new DataTransfer();
+      held.forEach(function (file) { list.items.add(file); });
+      input.files = list.files;
+      zone.classList.toggle('has-files', held.length > 0);
+    }
+
+    function render() {
+      previews.forEach(function (url) { URL.revokeObjectURL(url); });
+      previews = [];
+      var list = zone.querySelector('[data-upload-list]');
+      var template = zone.querySelector('template[data-upload-item]');
+      if (!list || !template) return;
+      list.textContent = '';
+      held.forEach(function (file, index) {
+        var item = template.content.cloneNode(true);
+        var name = item.querySelector('[data-upload-name]');
+        if (name) name.textContent = file.name;
+        var preview = item.querySelector('img[data-upload-preview]');
+        if (preview) {
+          if (/^image\//.test(file.type)) {
+            var url = URL.createObjectURL(file);
+            previews.push(url);
+            preview.src = url;
+          } else {
+            preview.parentNode.removeChild(preview);
+          }
+        }
+        var remove = item.querySelector('[data-upload-remove]');
+        if (remove) {
+          remove.addEventListener('click', function (event) {
+            event.preventDefault();
+            held.splice(index, 1);
+            say('');
+            syncInput();
+            render();
+          });
+        }
+        list.appendChild(item);
+      });
+    }
+
+    function hold(files) {
+      if (sending || !files.length) return;
+      var problem = refusal(files);
+      if (problem) {
+        say(problem);
+        syncInput();   // the selection is what it was before the refused batch
+        return;
+      }
+      say('');
+      var added = Array.prototype.slice.call(files);
+      held = input.multiple ? held.concat(added) : added.slice(0, 1);
+      syncInput();
+      render();
+    }
+
+    if (waiting) {
+      input.addEventListener('change', function () { hold(input.files); });
+      form.addEventListener('submit', function () {
+        if (!held.length) return;
+        sending = true;
+        zone.classList.add('is-uploading');
+        zone.setAttribute('aria-busy', 'true');
+      });
+    } else {
+      input.addEventListener('change', function () { send(input.files); });
+    }
 
     ['dragenter', 'dragover'].forEach(function (type) {
       zone.addEventListener(type, function (event) {
@@ -163,6 +272,10 @@
       event.stopPropagation();
       var files = event.dataTransfer.files;
       if (!files.length || sending) return;
+      if (waiting) {
+        hold(files);
+        return;
+      }
       // Through the input, so the form posts the files under the input's own name exactly as if
       // they had been picked.
       if (!refusal(files)) input.files = files;
