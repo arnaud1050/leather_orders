@@ -1330,6 +1330,32 @@ def test_settings_inventory_page_lists_types(logged_in, company):
     assert b"Leather" in response.data
 
 
+def test_reorder_types_sets_sort_order_from_position(company):
+    a = services.add_type(company.id, "Leather")
+    b = services.add_type(company.id, "Lining")
+    c = services.add_type(company.id, "Hardware")
+    services.reorder_types(company.id, [c.id, a.id, b.id])
+    assert [t.label for t in services.list_types(company.id)] == ["Hardware", "Leather", "Lining"]
+
+
+def test_reorder_types_skips_ids_outside_the_tenant(company, other_company):
+    mine = services.add_type(company.id, "Leather")
+    theirs = services.add_type(other_company.id, "Thread")
+    services.reorder_types(company.id, [theirs.id, mine.id])
+    assert db.session.get(InventoryType, theirs.id).sort_order == 0  # untouched
+    assert db.session.get(InventoryType, mine.id).sort_order == 0
+
+
+def test_reorder_types_route_persists_the_order(logged_in, company):
+    # Distinctive labels: "Leather"/"Lining" also appear in the page's own copy.
+    a = services.add_type(company.id, "Calfskin stock")
+    b = services.add_type(company.id, "Brass fittings")
+    response = logged_in.post("/settings/inventory-types/reorder", json={"order": [b.id, a.id]})
+    assert response.status_code == 204
+    html = logged_in.get("/settings/inventory").get_data(as_text=True)
+    assert html.index("Brass fittings") < html.index("Calfskin stock")
+
+
 # --- routes: order Materials tab, full HTTP roundtrip -----------------------
 
 def test_add_material_route_decrements_stock_and_shows_the_total(logged_in, company, order):

@@ -257,7 +257,7 @@ hide-don't-delete shape as `SourceOption` (`OrderType.can_delete` is
 `len(self.orders) == 0`; `add_order_type()` / `toggle_order_type()` /
 `delete_order_type()` in `app.py` back the "Order types" section of
 `settings.html`, which is a copy of the source-options section reusing the same
-`.settings-source-list` CSS), but **single-select and optional**, not a many-to-many
+`.settings-source-list` CSS, drag-to-reorder included via `reorder_order_types()`, OT8), but **single-select and optional**, not a many-to-many
 checkbox group: `Order.order_type_id` is a plain nullable FK, not a join table,
 because an order has at most one type. Seeded defaults (`_DEFAULT_ORDER_TYPES` in
 `models.py`): Custom Order, White Label, Consulting/Sampling — arbitrary starting

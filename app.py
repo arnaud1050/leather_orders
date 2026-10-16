@@ -2731,6 +2731,28 @@ def delete_order_type(order_type_id: int):
     return redirect(url_for("settings_orders"))
 
 
+@app.route("/settings/order-types/reorder", methods=["POST"])
+@login_required
+def reorder_order_types():
+    """Fired by the drag-and-drop handler in settings.html — same shape as
+    reorder_source_options: a JSON body, and ids outside this company are
+    silently skipped rather than trusted."""
+    payload = request.get_json(silent=True) or {}
+    ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
+    types_by_id = {
+        t.id: t for t in
+        OrderType.query.filter_by(company_id=current_user.company_id).all()
+    }
+    for index, type_id in enumerate(ordered_ids):
+        order_type = types_by_id.get(type_id)
+        if order_type is not None:
+            order_type.sort_order = index
+    db.session.commit()
+    if ordered_ids:
+        track("settings.changed", section="order_types")
+    return ("", 204)
+
+
 # Orders-list column order/visibility — same drag-to-reorder pattern as
 # documents.reorder_types (immediate fetch on drop), plus a per-column
 # hide/show toggle matching the order-type/source-option Hide button, rather

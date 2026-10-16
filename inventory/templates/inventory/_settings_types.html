@@ -1,23 +1,27 @@
 {# Included from templates/settings.html's "inventory" section. Context
    expected: inventory_types (list, in sort_order, active + hidden — see
    inventory.services.list_types), notice. Same shape as the Order types
-   section on the "orders" settings page — no drag-reorder, unlike
-   documents' DocumentType list. #}
+   section on the "orders" settings page, drag-reorder included. #}
 
 {% from "_save_notice.html" import notice_field, notice_slot %}
+{% from "_icons.html" import icon_grip %}
 <h2>Inventory types</h2>
 {{ notice_slot(notice, 'inventory-types') }}
 <p class="detail-note">
   Categories for a material (e.g. Leather, Lining, Hardware) — shown as a
   dropdown when adding or editing an inventory item, and used to group the
-  item picker on an order's Materials tab. A type can't be deleted once an
-  item has been tagged with it — hide it instead to remove it from new
-  selections while keeping that item labelled correctly.
+  item picker on an order's Materials tab, in the order set here. Drag a row
+  by its handle to reorder. A type can't be deleted once an item has been
+  tagged with it — hide it instead to remove it from new selections while
+  keeping that item labelled correctly.
 </p>
 
-<ul class="settings-source-list">
+<ul class="settings-source-list" id="inventory-type-list">
   {% for inventory_type in inventory_types %}
-  <li class="settings-source-list__item {% if not inventory_type.is_active %}settings-source-list__item--hidden{% endif %}">
+  <li class="settings-source-list__item {% if not inventory_type.is_active %}settings-source-list__item--hidden{% endif %}" draggable="true" data-type-id="{{ inventory_type.id }}">
+    <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
+      {{ icon_grip() }}
+    </span>
     <span class="settings-source-list__label">
       {{ inventory_type.label }}
       {% if not inventory_type.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
@@ -45,3 +49,47 @@
     <button type="submit" class="btn-primary">Add</button>
   </div>
 </form>
+
+<script>
+  (function () {
+    var list = document.getElementById('inventory-type-list');
+    if (!list) return;
+    var dragged = null;
+
+    list.addEventListener('dragstart', function (e) {
+      var item = e.target.closest('.settings-source-list__item');
+      if (!item) return;
+      dragged = item;
+      item.classList.add('settings-source-list__item--dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Firefox won't start a drag at all without setData.
+      e.dataTransfer.setData('text/plain', item.dataset.typeId);
+    });
+
+    list.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      var target = e.target.closest('.settings-source-list__item');
+      if (!target || target === dragged) return;
+      var rect = target.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < rect.height / 2;
+      list.insertBefore(dragged, before ? target : target.nextSibling);
+    });
+
+    list.addEventListener('drop', function (e) {
+      e.preventDefault();
+    });
+
+    list.addEventListener('dragend', function () {
+      if (dragged) dragged.classList.remove('settings-source-list__item--dragging');
+      dragged = null;
+      var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
+        .map(function (item) { return parseInt(item.dataset.typeId, 10); });
+      fetch("{{ url_for('inventory.reorder_types') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: order }),
+      });
+    });
+  })();
+</script>

@@ -121,6 +121,54 @@ def test_reorder_source_options_requires_login(app):
     assert response.status_code in (302, 401)
 
 
+# --- order types reorder (OT8), same contract as CL8 ------------------------
+
+def test_reorder_order_types_sets_sort_order_from_position(logged_in, company):
+    a = OrderType(company_id=company.id, label="A", sort_order=0)
+    b = OrderType(company_id=company.id, label="B", sort_order=1)
+    c = OrderType(company_id=company.id, label="C", sort_order=2)
+    db.session.add_all([a, b, c])
+    db.session.commit()
+
+    logged_in.post("/settings/order-types/reorder", json={"order": [c.id, a.id, b.id]})
+
+    ordered = (
+        OrderType.query.filter_by(company_id=company.id)
+        .order_by(OrderType.sort_order).all()
+    )
+    assert [t.label for t in ordered] == ["C", "A", "B"]
+
+
+def test_reorder_order_types_ignores_ids_from_another_tenant(logged_in, company, other_company):
+    mine = OrderType(company_id=company.id, label="Mine", sort_order=0)
+    theirs = OrderType(company_id=other_company.id, label="Theirs", sort_order=0)
+    db.session.add_all([mine, theirs])
+    db.session.commit()
+
+    logged_in.post("/settings/order-types/reorder", json={"order": [theirs.id, mine.id]})
+
+    assert db.session.get(OrderType, theirs.id).sort_order == 0  # untouched
+
+
+def test_reorder_order_types_reflects_on_the_settings_page(logged_in, company):
+    a = OrderType(company_id=company.id, label="Alpha type", sort_order=0)
+    b = OrderType(company_id=company.id, label="Beta type", sort_order=1)
+    db.session.add_all([a, b])
+    db.session.commit()
+
+    logged_in.post("/settings/order-types/reorder", json={"order": [b.id, a.id]})
+
+    html = logged_in.get("/settings/orders").get_data(as_text=True)
+    assert html.index("Beta type") < html.index("Alpha type")
+
+
+def test_reorder_order_types_requires_login(app):
+    response = app.test_client().post(
+        "/settings/order-types/reorder", json={"order": []},
+    )
+    assert response.status_code in (302, 401)
+
+
 # --- hard delete, gated on can_delete (hard rule 8) ------------------------
 #
 # The two lists hide-don't-delete once a record references them, and hard

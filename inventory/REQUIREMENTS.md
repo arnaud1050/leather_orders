@@ -118,6 +118,11 @@ dropdown, and in what sequence. It never gates what `InventoryItem.unit`
   the master list's "No Type" filter button can appear at all (see U10) —
   existence, not `is_active`, same "does the category exist" question
   `has_order_types` asks elsewhere in the app.
+- **T10.** Types are reorderable by drag-and-drop on Settings → Inventory
+  (`reorder_types`, `/settings/inventory-types/reorder`): `sort_order` is
+  set from position in the given id list, saved on drop. Ids outside the
+  company are silently skipped, same shape as UN12. The item dropdown, the
+  type filter and the Materials-tab picker groups follow that order.
 
 ## 3. Inventory items (`InventoryItem`)
 
@@ -521,6 +526,7 @@ catch a regression of it; that's a to-do, not a shrug.
 | T7 | `test_delete_type_removes_it_when_unused`, `test_delete_type_is_blocked_once_referenced` |
 | T8 | `test_settings_inventory_page_lists_types` |
 | T9 | `test_has_types_is_false_when_none_defined`, `test_has_types_is_true_once_a_type_exists`, `test_has_types_is_true_even_for_a_hidden_type`, `test_has_types_is_scoped_to_the_tenant` |
+| T10 | `test_reorder_types_sets_sort_order_from_position`, `test_reorder_types_skips_ids_outside_the_tenant`, `test_reorder_types_route_persists_the_order` |
 | I1 | *(implicit — model shape)* |
 | I2 | `test_add_item_rejects_an_invalid_unit` |
 | I3 | `test_add_item_rejects_a_blank_name`, `test_add_item_rejects_an_invalid_unit` |

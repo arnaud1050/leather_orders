@@ -144,8 +144,9 @@ Behaviour is `U*` and `V*`; this is the markup map.
   Units (`templates/inventory/_settings_units.html`) is drag-reorderable, the
   same native HTML5 pattern as `documents.reorder_types` and the Orders-list
   columns editor (`draggable="true"` items, a grip handle, a JSON `fetch` on
-  `dragend`). Inventory types (`_settings_types.html`) is the plain
-  hide-don't-delete `.settings-source-list` shape, no drag-reorder.
+  `dragend`). Inventory types (`_settings_types.html`) is the same
+  hide-don't-delete `.settings-source-list` shape, drag-reorderable the
+  same way (`T10`).
   **Inventory list columns** (`_settings_columns.html`, `CFG*`) is a
   deliberate copy of the Orders-list columns editor in `settings.html` —
   same markup, same drag handler, same immediate-`fetch()`-on-drop, same

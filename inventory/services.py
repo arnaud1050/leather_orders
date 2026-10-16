@@ -320,6 +320,22 @@ def add_type(company_id: int, label: str) -> InventoryType | None:
     return inventory_type
 
 
+def reorder_types(company_id: int, ordered_ids: list[int]) -> None:
+    """Set sort_order from position in `ordered_ids`, same shape as
+    reorder_units: ids outside this company are silently skipped."""
+    types_by_id = {
+        t.id: t for t in InventoryType.query.filter_by(company_id=company_id).all()
+    }
+    position = 0
+    for type_id in ordered_ids:
+        inventory_type = types_by_id.get(type_id)
+        if inventory_type is None:
+            continue
+        inventory_type.sort_order = position
+        position += 1
+    db.session.commit()
+
+
 def toggle_type(company_id: int, inventory_type_id: int) -> InventoryType | None:
     inventory_type = InventoryType.query.filter_by(
         id=inventory_type_id, company_id=company_id

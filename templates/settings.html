@@ -199,12 +199,16 @@
       list. With none defined, the dropdown doesn't appear at all. A type
       can't be deleted once an order has been tagged with it — hide it
       instead to remove it from new selections while keeping existing orders
-      labelled correctly.
+      labelled correctly. Drag a row by its handle to reorder — the
+      dropdown on the order page follows the same order.
     </p>
 
-    <ul class="settings-source-list">
+    <ul class="settings-source-list" id="order-type-list" data-reorder-url="{{ url_for('reorder_order_types') }}">
       {% for order_type in order_types %}
-      <li class="settings-source-list__item {% if not order_type.is_active %}settings-source-list__item--hidden{% endif %}">
+      <li class="settings-source-list__item {% if not order_type.is_active %}settings-source-list__item--hidden{% endif %}" draggable="true" data-id="{{ order_type.id }}">
+        <span class="settings-source-list__grip" aria-hidden="true" title="Drag to reorder">
+          {{ icon_grip() }}
+        </span>
         <span class="settings-source-list__label">
           {{ order_type.label }}
           {% if not order_type.is_active %}<span class="checkbox-group__hidden-tag">(hidden)</span>{% endif %}
@@ -628,9 +632,11 @@
 </div>
 
 <script>
-  // Column editors (Orders list, Clients list): each list names its own
-  // reorder route in data-reorder-url, and posts its keys there on drop.
-  [].forEach.call(document.querySelectorAll('#order-column-list, #client-column-list'), function (list) {
+  // Column editors (Orders list, Clients list) and Order types: each list
+  // names its own reorder route in data-reorder-url, and posts its rows'
+  // keys there on drop — data-key strings for columns, data-id integers
+  // for database rows.
+  [].forEach.call(document.querySelectorAll('#order-column-list, #client-column-list, #order-type-list'), function (list) {
     var dragged = null;
 
     list.addEventListener('dragstart', function (e) {
@@ -640,7 +646,7 @@
       item.classList.add('settings-source-list__item--dragging');
       e.dataTransfer.effectAllowed = 'move';
       // Firefox won't start a drag at all without setData.
-      e.dataTransfer.setData('text/plain', item.dataset.key);
+      e.dataTransfer.setData('text/plain', item.dataset.key || item.dataset.id);
     });
 
     list.addEventListener('dragover', function (e) {
@@ -661,7 +667,7 @@
       if (dragged) dragged.classList.remove('settings-source-list__item--dragging');
       dragged = null;
       var order = [].slice.call(list.querySelectorAll('.settings-source-list__item'))
-        .map(function (item) { return item.dataset.key; });
+        .map(function (item) { return item.dataset.id ? parseInt(item.dataset.id, 10) : item.dataset.key; });
       fetch(list.dataset.reorderUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

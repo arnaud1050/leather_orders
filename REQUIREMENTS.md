@@ -391,6 +391,11 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   hidden-but-still-referenced type keeps the column showing for the orders
   that reference it), and only when that column is also marked `visible` in
   the company's saved column preferences (see LST-rules).
+- **OT8.** Order types are reorderable by drag-and-drop on Settings →
+  Orders (`/settings/order-types/reorder`), saved the instant a row is
+  dropped. Same contract as CL8: a JSON `fetch`, and ids outside the
+  current company are silently skipped. Every list that offers types (the
+  order page's dropdown, the new-order form) follows `sort_order`.
 
 ## 5. Order — core fields, status, dates
 
@@ -1091,6 +1096,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | OT5 | `test_new_order_only_offers_active_types`, `test_order_page_offers_a_hidden_type_the_order_already_has` |
 | OT6 | `test_edit_order_without_type_field_leaves_type_untouched`, `test_edit_order_with_blank_type_field_clears_it` |
 | OT7 | `test_orders_list_hides_type_column_with_no_order_types`, `test_type_column_shows_once_a_type_exists_and_is_used`, `test_hiding_type_column_still_hides_it_even_when_order_types_exist` (`tests/test_order_columns.py`), plus `test_orders_list_type_column_only_shows_with_at_least_one_order_type` |
+| OT8 | `test_reorder_order_types_sets_sort_order_from_position`, `test_reorder_order_types_ignores_ids_from_another_tenant`, `test_reorder_order_types_reflects_on_the_settings_page`, `test_reorder_order_types_requires_login` (`tests/test_settings_options.py`); the drag itself is the shared `dragend` handler in `settings.html` (LST6's), not covered by e2e |
 | OR1 | `test_edit_order_rejects_an_unknown_status` |
 | OR2 | — gap — (native `<input type="date">` rendering isn't asserted; the underlying `edit_order`/`new_order` date handling is covered by other OR tests) |
 | OR2a | `test_new_order_rejects_a_due_date_before_the_start`, `test_new_order_allows_a_single_day_order` (the `<` / `<=` boundary), `test_edit_order_refuses_moving_the_start_past_the_existing_due_date` (the resulting pair, not just the submitted one), `test_edit_order_still_saves_an_order_that_was_already_backwards`, `test_a_backwards_order_still_renders_a_positive_span_on_the_timeline` |

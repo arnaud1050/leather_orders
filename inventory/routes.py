@@ -345,6 +345,19 @@ def add_type():
     return redirect(url_for("settings_inventory"))
 
 
+@bp.route("/settings/inventory-types/reorder", methods=["POST"])
+@login_required
+def reorder_types():
+    """Fired by the drag-and-drop handler in _settings_types.html — same
+    shape as reorder_units."""
+    payload = request.get_json(silent=True) or {}
+    ordered_ids = [i for i in payload.get("order", []) if isinstance(i, int)]
+    services.reorder_types(current_user.company_id, ordered_ids)
+    if ordered_ids:
+        track("settings.changed", section="inventory_types")
+    return "", 204
+
+
 @bp.route("/settings/inventory-types/<int:inventory_type_id>/toggle", methods=["POST"])
 @login_required
 def toggle_type(inventory_type_id: int):
