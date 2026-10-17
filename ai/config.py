@@ -22,7 +22,18 @@ RENDER_DIR = os.environ.get("AI_RENDER_DIR", os.path.join(BASE_DIR, "data", "ai_
 
 # --- Inquiry replies -------------------------------------------------------
 
-TEXT_MODEL = os.environ.get("AI_TEXT_MODEL", "gpt-4o-mini")
+TEXT_MODEL = os.environ.get("AI_TEXT_MODEL", "gpt-6-luna")
+
+# Model ids that were once this module's default and that the vendor has
+# since shut down. Unlike a superseded prompt, a row holding one of these
+# is moved forward even if somebody chose it on purpose: the vendor will
+# answer it with a 404 either way, and the replacement is the vendor's own
+# recommendation. See ai/migrations.py.
+RETIRED_TEXT_MODELS = [
+    # Shut down 2027-01-14; OpenAI names gpt-6-luna as the replacement.
+    "gpt-4o-mini",
+    "gpt-4o-mini-2024-07-18",
+]
 
 # The whole thread goes to the model, oldest first, so a reply lands in
 # context rather than answering the last line in isolation. This caps what

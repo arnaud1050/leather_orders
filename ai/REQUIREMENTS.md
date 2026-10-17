@@ -183,7 +183,7 @@ Covered by `tests/test_signature.py`. The column is a host one
 - **SIG-4** The manual compose box is prefilled with it too, so a
   hand-typed reply signs off the same way a drafted one does.
 
-## 14. Prompt defaults over time (`D-*`)
+## 14. Defaults over time (`D-*`)
 
 Covered by `tests/test_ai_migrations.py`.
 
@@ -202,6 +202,13 @@ Covered by `tests/test_ai_migrations.py`.
 - **D-4** The refresh is idempotent and runs across every tenant — a
   boot-time migration has no signed-in user, the same exemption
   communications' scheduled sync has.
+- **D-5** A stored text model the vendor has **retired**
+  (`config.RETIRED_TEXT_MODELS`) is moved to the current default on boot,
+  **even if it was chosen on purpose** — unlike a prompt it isn't the
+  company's own work, and the vendor only ever answers it with an error.
+  Every row stores its model, so changing the default alone moves nobody.
+- **D-6** Any other stored model id is the company's choice and is never
+  rewritten, and the current default is never itself on the retired list.
 
 ## 7. Renderings (`G-*`)
 

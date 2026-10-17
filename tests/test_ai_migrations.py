@@ -105,3 +105,39 @@ def test_every_superseded_prompt_differs_from_the_current_one():
     migration rewrite rows to what they already say — harmless, but it
     means someone pasted the wrong text into the list."""
     assert config.DEFAULT_REPLY_PROMPT not in config.SUPERSEDED_REPLY_PROMPTS
+
+
+# --- Retired text models (D-5, D-6) ---------------------------------------
+
+def _model(company_id: int) -> str:
+    return AISettings.query.filter_by(company_id=company_id).one().text_model
+
+
+def _set_model_raw(company_id: int, model: str) -> None:
+    services.settings_for(company_id)
+    db.session.execute(
+        db.text("UPDATE ai_settings SET text_model = :m WHERE company_id = :c"),
+        {"m": model, "c": company_id},
+    )
+    db.session.commit()
+
+
+def test_a_retired_model_is_moved_to_the_current_default(company, other_company):
+    """Every row stores its model, so changing the default alone moves
+    nobody — and a retired id only ever comes back as a 404."""
+    _set_model_raw(company.id, "gpt-4o-mini")
+    _set_model_raw(other_company.id, "gpt-4o-mini-2024-07-18")
+    migrations.run_migrations()
+    assert _model(company.id) == config.TEXT_MODEL
+    assert _model(other_company.id) == config.TEXT_MODEL
+
+
+def test_a_model_that_is_not_retired_is_never_touched(company):
+    _set_model_raw(company.id, "gpt-4.1")
+    migrations.run_migrations()
+    assert _model(company.id) == "gpt-4.1"
+
+
+def test_the_current_default_is_not_a_retired_model():
+    """Otherwise new rows would be created on a model the next boot moves."""
+    assert config.TEXT_MODEL not in config.RETIRED_TEXT_MODELS

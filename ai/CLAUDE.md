@@ -259,6 +259,14 @@ no-op once nothing matches. Without it the only way off an old default is to
 blank the field, and a company that never knew the default had changed would
 stay on it forever.
 
+The second data migration does the same for **retired text models**
+(`D-5`): a row whose model is in `RETIRED_TEXT_MODELS` is moved to
+`TEXT_MODEL`. Needed because every row stores its own model id, so a new
+default alone moves nobody — and unlike a prompt, it moves deliberate
+choices too, since a shut-down model only ever answers with a 404.
+**When the vendor retires the default, change `TEXT_MODEL` and append the
+old id to `RETIRED_TEXT_MODELS`** in the same commit.
+
 **Changing `DEFAULT_REPLY_PROMPT` means appending the old text to
 `SUPERSEDED_REPLY_PROMPTS`** in the same commit, or existing installs keep the
 prompt they never chose.

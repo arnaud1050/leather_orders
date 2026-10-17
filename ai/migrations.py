@@ -13,9 +13,10 @@ alongside the other module migrations.
 in the right place rather than being reasoned about from scratch (hard rule
 12).
 
-What this file does carry is one **data** migration — refreshing a stored
-prompt that's still verbatim a superseded default. Same class of thing as
-communications' `_backfill_read_messages()`: safe on every boot, and a
+What this file does carry is two **data** migrations — refreshing a stored
+prompt that's still verbatim a superseded default, and moving a stored text
+model the vendor has retired onto the current default. Same class of thing
+as communications' `_backfill_read_messages()`: safe on every boot, and a
 no-op once there's nothing left matching.
 """
 
@@ -74,8 +75,32 @@ def _refresh_unedited_default_prompts() -> None:
     logger.info("ai: refreshed %s unedited default reply prompt(s).", len(stale))
 
 
+def _replace_retired_text_models() -> None:
+    """Move companies off a text model the vendor has shut down.
+
+    Every `ai_settings` row stores its model id — the column is filled from
+    `config.TEXT_MODEL` when the row is created — so changing the default
+    alone moves nobody. A retired id only ever fails, so it's replaced
+    whether or not it was chosen on purpose (`D-5`); any other id, retired
+    or not, is the company's choice and stays.
+    """
+    if "ai_settings" not in set(sa.inspect(db.engine).get_table_names()):
+        return
+
+    result = db.session.execute(
+        sa.text("UPDATE ai_settings SET text_model = :current "
+                "WHERE TRIM(text_model) IN :retired")
+        .bindparams(sa.bindparam("retired", expanding=True)),
+        {"current": config.TEXT_MODEL, "retired": config.RETIRED_TEXT_MODELS},
+    )
+    if result.rowcount:
+        db.session.commit()
+        logger.info("ai: moved %s compan(ies) off a retired text model.", result.rowcount)
+
+
 def run_migrations() -> None:
     _refresh_unedited_default_prompts()
+    _replace_retired_text_models()
 
     if not ADDED_COLUMNS:
         return
