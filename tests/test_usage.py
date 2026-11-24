@@ -270,7 +270,10 @@ def test_an_error_response_records_nothing(tenant):
 def _python_sources():
     for path in ROOT.rglob("*.py"):
         parts = path.relative_to(ROOT).parts
-        if parts[0] in {"tests", "e2e", ".venv", "venv", "scripts"}:
+        # Any dot folder too: .claude/worktrees/ holds whole copies of the
+        # repo, tests included, and one of those tests tracks a made-up
+        # name on purpose — read as app code, it failed the catalog check.
+        if parts[0] in {"tests", "e2e", "venv", "scripts"} or parts[0].startswith("."):
             continue
         yield path
 
