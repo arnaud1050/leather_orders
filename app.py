@@ -144,6 +144,13 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
     "DATABASE_URL", "sqlite:///" + os.path.join(DATA_DIR, "atelier.db")
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# How long a SQLite write waits for another writer's lock before failing
+# with "database is locked". Python's default is 5 seconds; the background
+# sync and two gunicorn workers share one file, so give a save more slack.
+# The real fix is that nothing holds the lock across a network call
+# (communications SY-20) -- this is the margin, not the cure.
+if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"timeout": 15}}
 # Set a real SECRET_KEY via the environment in production/Docker — this
 # fallback is only safe for local dev.
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-not-secure")

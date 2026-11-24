@@ -370,6 +370,43 @@ def test_recovery_shows_in_the_sync_summary(app, company, account, lead_thread):
     assert "1 recovered from Trash" in result.summary()
 
 
+def test_the_trash_check_never_holds_the_database_write_lock(
+    app, company, account, lead_thread,
+):
+    """SY-20: the sync used to write every fetched thread, then ask Gmail
+    about each trashed thread — all in one transaction. SQLite's write lock
+    was held across those calls, so a client edit made meanwhile failed
+    with "database is locked". Another writer must get in during each call."""
+    import sqlite3
+
+    path = app.config["SQLALCHEMY_DATABASE_URI"].removeprefix("sqlite:///")
+    could_write = []
+
+    class Probing(fakes.FakeEmailProvider):
+        def is_trashed(self, thread_id):
+            other = sqlite3.connect(path, timeout=0)
+            try:
+                other.execute("BEGIN IMMEDIATE")  # fails at once if locked
+                could_write.append(True)
+            except sqlite3.OperationalError:
+                could_write.append(False)
+            finally:
+                other.rollback()
+                other.close()
+            return super().is_trashed(thread_id)
+
+    with fakes.fake_providers():
+        email_service.trash_thread(company.id, lead_thread.id)
+    # A fetched thread too: storing it is the write that used to stay open.
+    with fakes.fake_providers(threads=[fakes.thread()], trash_state={"t-lead": False}):
+        email_sync.email_provider_for = Probing
+        result = email_sync.sync_account(account)
+
+    assert could_write == [True]
+    assert result.threads_recovered == 1
+    assert result.threads_seen == 1
+
+
 def test_a_recovered_lead_counts_again(app, company, account, lead_thread):
     """It's back in the inbox, so it's back in the badge — the count is a
     query over the same list, not a separate tally that could disagree."""

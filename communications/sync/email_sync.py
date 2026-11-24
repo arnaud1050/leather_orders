@@ -87,8 +87,8 @@ class SyncResult:
 def sync_account(account, since: datetime | None = None) -> SyncResult:
     """Pull one mailbox into the database.
 
-    Commits on success, rolls back on failure, and records the failure on
-    the account either way — a mailbox that quietly stopped syncing three
+    Commits after each thread (SY-20), rolls back the thread in hand on
+    failure, and records the failure on the account either way — a mailbox that quietly stopped syncing three
     weeks ago is the worst outcome available, so the error is stored where
     the UI shows it rather than only logged.
 
@@ -117,12 +117,21 @@ def sync_account(account, since: datetime | None = None) -> SyncResult:
     clients_by_email = _client_index(account.company_id)
     rules = sender_rules.rules_for(account.company_id)
 
+    # Commit per thread, never once at the end. SQLite takes its write lock
+    # at the first flush and keeps it until commit, and every other write
+    # in the app -- a client edit, the calendar job -- waits at most the
+    # busy timeout for it. One transaction across a whole mailbox, plus a
+    # Gmail call per trashed thread, held that lock for tens of seconds and
+    # made those writes fail with "database is locked" (SY-20). SY-1 is
+    # what makes stopping halfway safe: the next run upserts the rest.
+    db.session.commit()  # a token refreshed by the fetch, before the loop
     try:
         for fetched in threads:
             result.threads_seen += 1
             _store_thread(
                 account, settings, fetched, clients_by_email, result, provider, rules,
             )
+            db.session.commit()
         _recover_untrashed(account, result, provider)
         account.last_sync_at = utcnow()
         account.last_sync_error = None
@@ -383,9 +392,13 @@ def _recover_untrashed(account, result: SyncResult, provider) -> None:
         EmailThread.dismissed_at > cutoff,
     ).all()
 
+    # Ask Gmail about every candidate first and write afterwards: a restore
+    # left pending while the next call is in flight would be flushed by the
+    # next query and hold the write lock across the rest of the calls (SY-20).
+    answers = []
     for thread in candidates:
         try:
-            still_trashed = provider.is_trashed(thread.provider_thread_id)
+            answers.append((thread, provider.is_trashed(thread.provider_thread_id)))
         except Exception as exc:  # noqa: BLE001
             # One unreadable thread must not fail a sync that has already
             # stored mail successfully — the same rule as attachments.
@@ -394,8 +407,8 @@ def _recover_untrashed(account, result: SyncResult, provider) -> None:
                 thread.provider_thread_id, exc,
             )
             result.errors.append(f"Trash check for {thread.display_subject!r}: {exc}")
-            continue
 
+    for thread, still_trashed in answers:
         # `None` is "can't tell" (purged, or the id is gone) and must not be
         # read as "recovered" — that would put a permanently deleted
         # conversation back in the lead inbox 30 days after it was binned.

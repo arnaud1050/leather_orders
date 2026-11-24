@@ -121,7 +121,9 @@ def refresh_oauth_tokens(app) -> int:
                 account.last_sync_error = str(exc)[:1000]
             except Exception:  # noqa: BLE001
                 logger.exception("Token refresh failed for account %s", account.id)
-        db.session.commit()
+            # Per account: committing once at the end held the write lock
+            # across every later account's call to Google (SY-20).
+            db.session.commit()
     return refreshed
 
 
