@@ -1060,6 +1060,27 @@ def logout():
 LEGAL_UPDATED = "4 October 2026"
 
 
+@app.errorhandler(500)
+def internal_error(error):
+    """A crashed request gets the app's own page, not Flask's plain
+    "Internal Server Error" (CO4j). Flask has already logged the original
+    exception by the time this runs, so the Grafana alert still fires.
+
+    base.html asks the database for every nav badge, and the request may
+    have failed because of the database — so if drawing it fails too, the
+    same page is drawn on a layout that touches nothing."""
+    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001 — the page must still be drawn
+        pass
+    context = {"was_save": request.method == "POST", "active_view": None}
+    try:
+        return render_template("errors/500.html", layout="base.html", **context), 500
+    except Exception:  # noqa: BLE001
+        app.logger.exception("Error page: base.html failed, using the bare layout")
+        return render_template("errors/500.html", layout="errors/_bare.html", **context), 500
+
+
 @app.route("/privacy")
 def privacy():
     return render_template("privacy.html", updated=LEGAL_UPDATED, active_view=None)

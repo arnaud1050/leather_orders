@@ -1,0 +1,38 @@
+{#
+  What someone sees when a request crashes (REQUIREMENTS CO4j) — instead of
+  Flask's plain "Internal Server Error" page, which said nothing about
+  whether a save went through. `layout` is base.html normally and
+  errors/_bare.html when base.html itself couldn't be drawn.
+#}
+{% extends layout %}
+{% block title %}Something went wrong — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+  <header class="detail-header">
+    <h1>Something went wrong</h1>
+  </header>
+
+  {% if was_save %}
+  <p class="save-notice save-notice--error" role="alert">
+    <strong>Your changes may not have been saved.</strong>
+  </p>
+  <p>
+    Go back: what you typed should still be in the form. Check whether the change shows,
+    and if it doesn't, save again. If it fails a second time, tell us what you were
+    changing and we'll look into it.
+  </p>
+  {% else %}
+  <p class="save-notice save-notice--error" role="alert">
+    <strong>This page couldn't be shown.</strong>
+  </p>
+  <p>
+    Try again in a moment. If it keeps happening, tell us which page it was and we'll look into it.
+  </p>
+  {% endif %}
+
+  <p>
+    <button type="button" class="btn-primary" onclick="history.back()">Go back</button>
+    <a href="{{ url_for('timeline_view') }}" class="btn-secondary">Timeline</a>
+  </p>
+</div>
+{% endblock %}

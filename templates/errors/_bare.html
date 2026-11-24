@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+{#
+  The fallback layout for the error page (CO4j), used only when base.html
+  itself can't be drawn. base.html asks the database for every nav badge,
+  so on a request that failed *because of* the database it can fail again —
+  and an error inside the error handler leaves Flask's plain white page,
+  which is what this exists to replace. Nothing in here touches the
+  database, the session or the signed-in user.
+#}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Atelier Order Book{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/style.css') }}">
+</head>
+<body>
+  {% block content %}{% endblock %}
+</body>
+</html>

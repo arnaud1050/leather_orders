@@ -75,6 +75,14 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   (drawn by `templates/_save_notice.html`, like every refused save, `MOD8`)
   and comes back with the email address still filled in and the password
   field focused. The password is never echoed back.
+- **CO4j.** A request that crashes gets the app's own error page
+  (`templates/errors/500.html`, status 500), never Flask's plain "Internal
+  Server Error". After a form post it says the changes **may not have been
+  saved** and to go back and check; otherwise that the page couldn't be
+  shown. If `base.html` can't be drawn (its nav badges query the database,
+  which may be what failed), the same page is drawn on
+  `templates/errors/_bare.html`, which touches nothing. The original
+  exception is still logged, so the Grafana alert fires either way.
 - **CO4h.** A tenant user whose `users.must_change_password` is set is
   redirected to Settings → Account from every route except the settings
   page itself, `change_password`, `/logout`, the legal pages and static
@@ -1061,6 +1069,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | CO4b | — gap — (single-user deployments mean there's no second user to assert isolation against; the route only ever reads `current_user.id`) |
 | CO4c | `test_the_status_message_shows_once` (`tests/test_change_password.py`) |
 | CO4i | `test_a_refused_sign_in_is_a_red_save_notice_and_keeps_the_address`, `test_a_fresh_sign_in_page_has_no_notice` (`tests/test_admin.py`); in a browser, `e2e/pages/LoginPage.ts` reads the error from `.save-notice--error` |
+| CO4j | `tests/test_error_page.py` |
 | CO4h | `test_changing_the_password_clears_the_forced_flag`, `test_a_forced_change_redirects_everywhere_but_settings` (`tests/test_change_password.py`); `test_a_reset_password_must_be_changed`, `test_resetting_a_staff_password_does_not_require_a_change`, `test_a_user_is_added_to_the_named_company` (`tests/test_admin.py`) |
 | CO5 | `test_nav_hides_for_a_logged_out_visitor` |
 | CO5a | `test_nav_includes_the_mobile_hamburger_toggle` (markup presence/order only — the CSS collapse and the open/close click behavior itself are client-side and unassertable by a route test, same limitation as TL7–TL9) |
