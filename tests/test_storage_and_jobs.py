@@ -137,6 +137,23 @@ def test_start_scheduler_survives_apscheduler_being_absent(app, monkeypatch):
     assert jobs.start_scheduler(app) is None
 
 
+def test_start_scheduler_survives_the_scheduler_failing_to_build(app, monkeypatch):
+    """Importing APScheduler isn't the only way to fail: building one asks
+    tzlocal for the machine's zone, which raised on Windows' new "British
+    Columbia Standard Time" before tzlocal 5.4.5. The app must still boot."""
+    from zoneinfo import ZoneInfoNotFoundError
+
+    from apscheduler.schedulers import background
+
+    class Broken:
+        def __init__(self, *args, **kwargs):
+            raise ZoneInfoNotFoundError("British Columbia Standard Time")
+
+    monkeypatch.setenv("RUN_SCHEDULER", "1")
+    monkeypatch.setattr(background, "BackgroundScheduler", Broken)
+    assert jobs.start_scheduler(app) is None
+
+
 # --- due-account selection ------------------------------------------------
 
 def test_an_account_never_synced_is_due(app, account):

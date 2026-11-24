@@ -181,25 +181,33 @@ def start_scheduler(app):
         logger.warning("RUN_SCHEDULER=1 but APScheduler isn't installed; no jobs will run.")
         return None
 
-    scheduler = BackgroundScheduler(daemon=True)
-    # coalesce + max_instances=1: if a run overshoots its slot (a big first
-    # sync will), the next tick is skipped rather than queued behind it, so
-    # two syncs of the same mailbox can never overlap.
-    scheduler.add_job(
-        sync_email_accounts, "interval", minutes=TICK_MINUTES, args=[app],
-        id="sync_email_accounts", coalesce=True, max_instances=1,
-    )
-    # Ticks on the same short interval as mail, not on a fixed 30 minutes:
-    # the per-company frequency is enforced inside the job, and a job that
-    # only wakes every half hour can't honour a company that asked for 10.
-    scheduler.add_job(
-        sync_calendar_events, "interval", minutes=TICK_MINUTES, args=[app],
-        id="sync_calendar_events", coalesce=True, max_instances=1,
-    )
-    scheduler.add_job(
-        refresh_oauth_tokens, "interval", minutes=30, args=[app],
-        id="refresh_oauth_tokens", coalesce=True, max_instances=1,
-    )
-    scheduler.start()
+    # Building the scheduler can fail too, not just importing it: it asks
+    # tzlocal for the machine's time zone, and tzlocal before 5.4.5 raised
+    # on Windows' "British Columbia Standard Time". Logged as an error so
+    # the alert fires, but the web app keeps serving.
+    try:
+        scheduler = BackgroundScheduler(daemon=True)
+        # coalesce + max_instances=1: if a run overshoots its slot (a big first
+        # sync will), the next tick is skipped rather than queued behind it, so
+        # two syncs of the same mailbox can never overlap.
+        scheduler.add_job(
+            sync_email_accounts, "interval", minutes=TICK_MINUTES, args=[app],
+            id="sync_email_accounts", coalesce=True, max_instances=1,
+        )
+        # Ticks on the same short interval as mail, not on a fixed 30 minutes:
+        # the per-company frequency is enforced inside the job, and a job that
+        # only wakes every half hour can't honour a company that asked for 10.
+        scheduler.add_job(
+            sync_calendar_events, "interval", minutes=TICK_MINUTES, args=[app],
+            id="sync_calendar_events", coalesce=True, max_instances=1,
+        )
+        scheduler.add_job(
+            refresh_oauth_tokens, "interval", minutes=30, args=[app],
+            id="refresh_oauth_tokens", coalesce=True, max_instances=1,
+        )
+        scheduler.start()
+    except Exception:  # noqa: BLE001 — see the docstring
+        logger.exception("Communications scheduler failed to start; no background sync will run.")
+        return None
     logger.info("Communications scheduler started (tick: %s minutes).", TICK_MINUTES)
     return scheduler

@@ -16,6 +16,11 @@ google-auth>=2.28
 google-auth-oauthlib>=1.2   # OAuth 2.0 web flow
 google-api-python-client>=2.120
 APScheduler>=3.10           # background sync, only when RUN_SCHEDULER=1
+# APScheduler's own dependency, pinned for one reason: before 5.4.5 it
+# didn't know Windows' "British Columbia Standard Time" (BC's permanent
+# daylight time), so on a Windows dev machine set to it the scheduler
+# couldn't start. Linux (prod) never reads Windows zone names.
+tzlocal>=5.4.5
 
 # Documents module (see documents/). Both are used for thumbnailing and,
 # for images, content validation too. PDF/.ai thumbnailing additionally
