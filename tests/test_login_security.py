@@ -228,3 +228,49 @@ def test_the_ip_limit_reads_the_forwarded_address_behind_the_proxy(app, user, cl
         app.wsgi_app = original
     assert response.status_code == 302
     assert {a.ip for a in login_throttle.LoginAttempt.query} == {"203.0.113.7"}
+
+
+# --- a sign-in starts a fresh session (CO4o) ----------------------------------
+
+def _studio_user(user):
+    row = User(company_id=user.company_id, email="owner@studio.example", full_name="Owner")
+    row.set_password("changeme")
+    db.session.add(row)
+    db.session.commit()
+    return row
+
+
+def test_signing_out_mid_impersonation_leaves_admin_reachable(app, user, platform_admin):
+    """The production bug: impersonate, sign out from inside the tenant
+    session, sign back in as staff — and /admin answered 403, because
+    `impersonator_id` outlived the sign-out."""
+    tenant = _studio_user(user)
+    with app.test_client() as client:
+        _sign_in(client, email="platform@example.com")
+        client.post(f"/admin/users/{tenant.id}/impersonate")
+        client.get("/logout")
+        with client.session_transaction() as session:
+            assert "impersonator_id" not in session
+        response = _sign_in(client, email="platform@example.com")
+        assert response.headers["Location"] == "/admin/companies"
+        assert client.get("/admin/companies").status_code == 200
+
+
+def test_a_stale_impersonation_key_does_not_survive_sign_in(app, platform_admin):
+    """However it got there (a session dropped by load_user mid-
+    impersonation, a cookie from before this fix), signing in clears it."""
+    with app.test_client() as client:
+        with client.session_transaction() as session:
+            session["impersonator_id"] = platform_admin.id
+        _sign_in(client, email="platform@example.com")
+        assert client.get("/admin/companies").status_code == 200
+
+
+def test_sign_in_starts_a_fresh_session(app, user):
+    with app.test_client() as client:
+        with client.session_transaction() as session:
+            session["planted"] = "by someone else"
+        _sign_in(client)
+        with client.session_transaction() as session:
+            assert "planted" not in session
+            assert "_user_id" in session

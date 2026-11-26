@@ -480,5 +480,6 @@ def stop_impersonating():
         # only honest end state — staying signed in as the tenant user
         # would be a quiet privilege change nobody asked for.
         logout_user()
+        session.clear()  # nothing of the impersonation survives (CO4o)
         return redirect(url_for("login"))
     return redirect(url_for("admin.companies"))

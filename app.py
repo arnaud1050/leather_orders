@@ -1078,6 +1078,12 @@ def login():
             error = "That account is no longer active. Contact your administrator."
         else:
             login_throttle.clear(email)
+            # A sign-in starts a fresh session (CO4o). Whatever the old one
+            # carried goes: above all `impersonator_id`, which would make
+            # a platform admin's own /admin 403 (PA20) after an
+            # impersonation that ended in a sign-out, and anything a
+            # session-fixation attempt planted before the password was typed.
+            session.clear()
             login_user(user)
             track("auth.login")
             # `next` is honoured for a tenant user only. Platform staff have
@@ -1095,6 +1101,9 @@ def login():
 @login_required
 def logout():
     logout_user()
+    # The whole session, not just Flask-Login's keys (CO4o): an
+    # impersonation's `impersonator_id` must not outlive signing out.
+    session.clear()
     return redirect(url_for("login"))
 
 

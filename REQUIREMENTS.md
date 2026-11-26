@@ -123,6 +123,12 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   `csrf.exempt` and a comment saying why. `SESSION_COOKIE_SAMESITE=Lax`
   stays as defence in depth, but is not enough alone: the server's other
   `*.arnaudrouillot.com` sites count as same-site.
+- **CO4o.** Signing in and signing out each clear the **whole** session,
+  not just Flask-Login's keys. A sign-in therefore never inherits state
+  from before the password was typed (session fixation), and an
+  impersonation's `impersonator_id` (`admin/REQUIREMENTS.md` PA20) never
+  outlives a sign-out — left behind, it made a platform admin's own
+  `/admin` answer 403 on their next sign-in.
 - **CO4h.** A tenant user whose `users.must_change_password` is set is
   redirected to Settings → Account from every route except the settings
   page itself, `change_password`, `/logout`, the legal pages and static
@@ -1113,6 +1119,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | CO4g | `test_a_next_that_leaves_the_site_is_ignored`, `test_a_next_on_this_site_is_honoured`, `test_safe_next_path`, `test_staff_still_ignore_next` (`tests/test_login_security.py`) |
 | CO4k | `test_the_lockout_triggers_after_too_many_failures`, `test_the_right_password_is_refused_during_a_lockout`, `test_the_lockout_expires`, `test_hammering_a_locked_address_does_not_extend_the_lock`, `test_the_lockout_is_per_email`, `test_the_lockout_applies_to_an_unknown_email_too`, `test_the_address_is_normalised_before_counting`, `test_a_successful_sign_in_clears_the_counter` (`tests/test_login_security.py`) |
 | CO4l | `test_one_ip_trying_many_addresses_is_limited`, `test_the_ip_limit_reads_the_forwarded_address_behind_the_proxy` (`tests/test_login_security.py`) |
+| CO4o | `test_signing_out_mid_impersonation_leaves_admin_reachable`, `test_a_stale_impersonation_key_does_not_survive_sign_in`, `test_sign_in_starts_a_fresh_session` (`tests/test_login_security.py`) |
 | CO4m | `test_the_counter_is_kept_in_the_database`, `test_old_failures_are_pruned` (`tests/test_login_security.py`) |
 | CO4n | `tests/test_csrf.py` — static scans of every POST form and every posting `fetch`, plus enforced 400s on `app.py`, `admin/`, `inventory/` and `communications/` routes; the communications tests that ask for `enforce_csrf` (S-7) |
 | CO4h | `test_changing_the_password_clears_the_forced_flag`, `test_a_forced_change_redirects_everywhere_but_settings` (`tests/test_change_password.py`); `test_a_reset_password_must_be_changed`, `test_resetting_a_staff_password_does_not_require_a_change`, `test_a_user_is_added_to_the_named_company` (`tests/test_admin.py`) |
