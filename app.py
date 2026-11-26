@@ -1097,9 +1097,21 @@ def login():
     return render_template("login.html", error=error, email=email, active_view=None)
 
 
-@app.route("/logout")
-@login_required
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
+    """Sign out — on a POST only (CO4p).
+
+    A GET that signed you out could be fired by any page on the web (an
+    <img src=".../logout"> is enough), so the nav's Log out is a form, and
+    the POST carries a CSRF token like every other. A GET — an old bookmark,
+    a typed URL — shows a page with the same button instead of doing it.
+    Not @login_required: a signed-out visitor is simply sent to sign in,
+    rather than to /login?next=/logout and back to a pointless question.
+    """
+    if not current_user.is_authenticated:
+        return redirect(url_for("login"))
+    if request.method == "GET":
+        return render_template("logout.html", active_view=None)
     logout_user()
     # The whole session, not just Flask-Login's keys (CO4o): an
     # impersonation's `impersonator_id` must not outlive signing out.

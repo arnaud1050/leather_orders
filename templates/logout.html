@@ -1,0 +1,21 @@
+{#
+  What a GET to /logout shows (REQUIREMENTS CO4p): an old bookmark or a
+  typed URL lands here and signs out with one press, but a link or an image
+  on some other page can't sign anybody out by itself.
+#}
+{% extends "base.html" %}
+{% block title %}Log out — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+  <header class="detail-header">
+    <h1>Log out?</h1>
+    <p class="detail-subtitle">Signed in as {{ current_user.email }}</p>
+  </header>
+
+  <form method="post" action="{{ url_for('logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-primary">Log out</button>
+    <a href="{{ url_for('timeline_view') if current_user.is_tenant_user else url_for('admin.companies') }}" class="btn-secondary">Stay signed in</a>
+  </form>
+</div>
+{% endblock %}

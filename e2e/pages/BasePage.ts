@@ -51,7 +51,7 @@ export class BasePage {
 
   async logOut(): Promise<void> {
     await step("Log out", async () => {
-      await this.navLinks.getByRole("link", { name: "Log out" }).click();
+      await this.navLinks.getByRole("button", { name: "Log out" }).click();
     });
   }
 

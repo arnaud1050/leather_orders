@@ -536,7 +536,7 @@ def test_staff_see_only_admin_and_log_out_in_the_nav(admin_client):
     body = admin_client.get("/admin/companies").get_data(as_text=True)
 
     assert 'href="/admin/companies"' in body
-    assert 'href="/logout"' in body
+    assert 'action="/logout"' in body
     assert 'href="/calendar"' not in body
     assert 'href="/clients"' not in body
 

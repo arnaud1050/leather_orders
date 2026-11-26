@@ -106,7 +106,12 @@
       {% if is_platform_admin() %}
       <a href="{{ url_for('admin.companies') }}" class="view-switch__link {{ 'is-active' if active_view == 'admin' else '' }}">Admin</a>
       {% endif %}
-      <a href="{{ url_for('logout') }}" class="view-switch__logout">Log out</a>
+      {# A form, not a link: signing out is a POST (CO4p), so no other page
+         can sign anyone out. The button is styled exactly as the link was. #}
+      <form method="post" action="{{ url_for('logout') }}" class="view-switch__logout-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="view-switch__logout">Log out</button>
+      </form>
     </div>
   </nav>
 

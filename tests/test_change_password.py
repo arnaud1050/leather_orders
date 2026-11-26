@@ -34,7 +34,7 @@ def test_change_password_replaces_the_hash(logged_in, user):
 
 def test_the_new_password_is_what_logs_in_afterwards(app, logged_in, user):
     _change(logged_in)
-    logged_in.get("/logout")
+    logged_in.post("/logout")
 
     with app.test_client() as fresh:
         rejected = fresh.post(
@@ -111,7 +111,7 @@ def test_a_forced_change_redirects_everywhere_but_settings(logged_in, user):
     assert account_page.status_code == 200
     assert b"set a new password before continuing" in account_page.data
 
-    still_reachable = logged_in.get("/logout", follow_redirects=False)
+    still_reachable = logged_in.post("/logout", follow_redirects=False)
     assert still_reachable.status_code == 302
 
 

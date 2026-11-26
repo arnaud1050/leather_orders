@@ -15,6 +15,7 @@ import pytest
 import login_throttle
 from login_throttle import LOCKED_MESSAGE, MAX_FAILURES_PER_EMAIL, MAX_FAILURES_PER_IP, WINDOW
 from models import User, db
+from tests.conftest import csrf_token_for
 
 import app as app_module
 
@@ -173,7 +174,7 @@ def test_a_successful_sign_in_clears_the_counter(app, user, clock):
     with app.test_client() as client:
         _fail(client, MAX_FAILURES_PER_EMAIL - 1)
         assert _sign_in(client).status_code == 302
-        client.get("/logout")
+        client.post("/logout")
         _fail(client, MAX_FAILURES_PER_EMAIL - 1)
         assert _sign_in(client).status_code == 302
 
@@ -248,7 +249,7 @@ def test_signing_out_mid_impersonation_leaves_admin_reachable(app, user, platfor
     with app.test_client() as client:
         _sign_in(client, email="platform@example.com")
         client.post(f"/admin/users/{tenant.id}/impersonate")
-        client.get("/logout")
+        client.post("/logout")
         with client.session_transaction() as session:
             assert "impersonator_id" not in session
         response = _sign_in(client, email="platform@example.com")
@@ -274,3 +275,45 @@ def test_sign_in_starts_a_fresh_session(app, user):
         with client.session_transaction() as session:
             assert "planted" not in session
             assert "_user_id" in session
+
+
+# --- signing out is a POST (CO4p) --------------------------------------------
+
+def test_a_get_to_logout_does_not_sign_out(logged_in):
+    """Any page on the web can make a browser GET a URL; none should be
+    able to sign the studio out."""
+    page = logged_in.get("/logout")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    assert 'method="post" action="/logout"' in body
+    assert _is_signed_in(logged_in)
+    assert logged_in.get("/").status_code == 200
+
+
+def test_posting_to_logout_signs_out(logged_in):
+    response = logged_in.post("/logout")
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
+    assert not _is_signed_in(logged_in)
+    assert logged_in.get("/").status_code == 302
+
+
+def test_logging_out_needs_a_csrf_token(logged_in, enforce_csrf):
+    assert logged_in.post("/logout").status_code == 400
+    assert _is_signed_in(logged_in)
+    token = csrf_token_for(logged_in)
+    assert logged_in.post("/logout", data={"csrf_token": token}).status_code == 302
+    assert not _is_signed_in(logged_in)
+
+
+def test_the_nav_logs_out_with_a_form(logged_in):
+    body = logged_in.get("/").get_data(as_text=True)
+    assert 'href="/logout"' not in body
+    assert 'class="view-switch__logout-form"' in body
+
+
+def test_a_signed_out_visit_to_logout_goes_to_sign_in(app):
+    with app.test_client() as client:
+        response = client.get("/logout")
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
