@@ -214,13 +214,11 @@ below are what this page asks of it.
 
 ## 11. Security posture
 
-- **No CSRF token layer** on any route in this module — deliberately
-  consistent with every other mutating route in `app.py` (`edit_order`,
-  `delete_payment`, etc.), which rely on the app-wide
-  `SESSION_COOKIE_SAMESITE=Lax` rather than a token. This is a conscious
-  choice, not an oversight — `communications/` has its own CSRF layer
-  specifically because *that* module sends mail and disconnects accounts,
-  a different class of risk.
+- **Every post needs a valid CSRF token**, checked by the host's app-wide
+  `CSRFProtect` (root `CO4n`) rather than by this module: the upload and
+  delete forms carry `{{ csrf_token() }}`, the type-reorder `fetch` sends
+  `X-CSRFToken`. `SESSION_COOKIE_SAMESITE=Lax` alone was not enough — the
+  server's other `*.arnaudrouillot.com` sites count as same-site.
 - Generated (never user-supplied) filenames on disk close off path
   traversal via a crafted upload name.
 

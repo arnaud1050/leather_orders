@@ -11,6 +11,11 @@
      same box as the _save_notice.html macro (MOD8a). In the head so a
      page's own inline script can rely on it. #}
   <script src="{{ url_for('static', filename='assets/js/save-notice.js') }}"></script>
+  {# The CSRF token for a script's own posts (CO4n): every fetch() that
+     isn't a GET sends it as `X-CSRFToken: window.csrfToken`. Forms carry
+     it as a hidden field instead. #}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>window.csrfToken = document.querySelector('meta[name="csrf-token"]').content;</script>
 </head>
 <body>
   {# Platform announcement — a fact about the installation, not the
@@ -120,6 +125,7 @@
       Anything you change here is theirs.
     </span>
     <form method="post" action="{{ url_for('admin.stop_impersonating') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">Return to admin</button>
     </form>
   </div>

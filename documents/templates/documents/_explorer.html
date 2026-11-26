@@ -51,6 +51,7 @@
     </button>
     {% endif %}
     <form method="post" action="{{ url_for('documents.delete', order_id=order.id, document_id=doc.id) }}" class="doc-explorer__delete-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ doc.original_filename }}">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -64,6 +65,7 @@
 
 {% macro add_tile(order, key, type_id=none) %}
 <form method="post" action="{{ url_for('documents.upload', order_id=order.id) }}" enctype="multipart/form-data" class="doc-explorer__item doc-explorer__add">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="return_to" value="{{ request.path }}">
   {% if type_id %}<input type="hidden" name="document_type_id" value="{{ type_id }}">{% endif %}
   {# The native input is visually hidden, not display:none — it stays in

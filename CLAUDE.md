@@ -215,6 +215,7 @@ Visit `http://localhost:5013`. `docker compose down` to stop. See [docs/deployme
 app.py                 # Flask app: config, auth wiring, routes/view logic
 models.py              # core SQLAlchemy models + first-boot bootstrap + run_migrations()
 crypto.py              # shared Fernet SecretBox — the one host helper a module may import
+login_throttle.py      # failed sign-ins table + per-email/per-IP lockout (CO4k–CO4m)
 sample_data.py         # demo clients/orders/invoices — imported by NOTHING at startup
 billing_adapter.py     # the ONLY file that knows billing's "subject" means an Order
 showcase_adapter.py    # the ONLY file that knows a showcase piece can come from an Order
@@ -282,7 +283,25 @@ The other exception is Showcase's **kiosk links** (`/k/<token>/…`): a capabili
 URL whose token is the permission, so they ignore the session entirely, and
 app.py's staff and password-change redirects skip them (showcase `SC27`–`SC30`). `login_manager.login_view = "login"`,
 so hitting any protected route while logged out redirects to `/login?next=...` and
-bounces back after a successful sign-in.
+bounces back after a successful sign-in — **only to a path on this site**:
+`safe_next_path()` drops anything with a scheme, a host, a backslash or
+`//`, so sign-in is never an open redirect (`CO4g`).
+
+**Sign-in attempts are limited** (`login_throttle.py`): 5 failures for one
+address in 15 minutes locks that address — known or not, so the lock leaks
+nothing — and 20 from one client IP locks that IP; during a lock even the
+right password is refused. Counted in the `login_attempts` table, never in
+memory, because two gunicorn workers share nothing else (`CO4k`–`CO4m`).
+nginx can add its own `limit_req` in front; that lives in `server_config`.
+
+**CSRF is app-wide** — Flask-WTF's `CSRFProtect` checks every POST,
+`/login` and every module included (`CO4n`). **Every new POST form needs
+`<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">`**, and
+every script `fetch` that posts needs `'X-CSRFToken': window.csrfToken`
+(from base.html's meta tag); `tests/test_csrf.py` scans for both. The test
+suite runs with CSRF off — ask for the `enforce_csrf` fixture to test it.
+`SameSite=Lax` alone isn't enough here: the server's sibling
+`*.arnaudrouillot.com` sites are same-site.
 
 `app.config["SECRET_KEY"]` reads from the `SECRET_KEY` env var, falling back to an
 insecure dev default (`"dev-not-secure"`) — **must** be set to a real value for any

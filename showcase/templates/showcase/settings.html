@@ -25,11 +25,13 @@
       </span>
       <div class="settings-source-list__actions">
         <form method="post" action="{{ url_for('showcase.toggle_list_row', kind=kind, row_id=row.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {{ notice_field(kind) }}
           <button type="submit" class="btn-secondary">{{ 'Unhide' if not row.is_active else 'Hide' }}</button>
         </form>
         {% if row.can_delete %}
         <form method="post" action="{{ url_for('showcase.delete_list_row', kind=kind, row_id=row.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {{ notice_field(kind) }}
           <button type="submit" class="btn-secondary">Delete</button>
         </form>
@@ -39,6 +41,7 @@
     {% endfor %}
   </ul>
   <form method="post" action="{{ url_for('showcase.add_list_row', kind=kind) }}" class="detail-form settings-source-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ notice_field(kind) }}
     <label>Add a {{ noun }}<input type="text" name="label" maxlength="80" placeholder="{{ placeholder }}" required></label>
     <div>
@@ -79,6 +82,7 @@
       under an NDA, or a white-label run whose brand isn't the studio's to show.
     </p>
     <form method="post" action="{{ url_for('showcase.save_excluded_types') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('order-types') }}
       <input type="hidden" name="order_types_shown" value="1">
       <div class="checkbox-group">
@@ -107,6 +111,7 @@
     {{ notice_slot(notice, 'visibility') }}
     <p class="detail-note">Where a new piece is shown until you change it on the piece itself.</p>
     <form method="post" action="{{ url_for('showcase.save_default_visibility') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('visibility') }}
       <div class="checkbox-group">
         {% for value in visibilities %}
@@ -165,6 +170,7 @@
     </p>
     <div class="lifecycle-actions">
       <form method="post" action="{{ url_for('showcase.test_website') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('website') }}
         <button type="submit" class="btn-secondary">Send test</button>
       </form>
@@ -172,6 +178,7 @@
       <a class="btn-secondary" href="{{ url_for('showcase.website_link_review') }}">Link imported pieces ({{ link_count }})</a>
       {% endif %}
       <form method="post" action="{{ url_for('showcase.disconnect_website') }}" onsubmit="return confirm('Delete the website connection? Cards already on the website stay there as they are.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('website') }}
         <button type="submit" class="btn-secondary">Delete</button>
       </form>
@@ -185,6 +192,7 @@
       website's own and are never touched.
     </p>
     <form method="post" action="{{ url_for('showcase.connect_website') }}" class="detail-form settings-source-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('website') }}
       <label>The website's receiver address<input type="url" name="url" maxlength="500" placeholder="https://example.com/showcase/receive" required></label>
       <div>
@@ -242,6 +250,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('showcase.delete_kiosk_link', link_id=link.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('catalog') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
@@ -252,6 +261,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('showcase.create_kiosk_link') }}" class="detail-form settings-source-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('catalog') }}
       <label>New device link<input type="text" name="name" maxlength="80" placeholder="e.g. Market iPad"></label>
       <div>
@@ -300,7 +310,7 @@
           .map(function (item) { return parseInt(item.dataset.rowId, 10); });
         fetch(list.dataset.reorderUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
           body: JSON.stringify({ order: order }),
         });
       });

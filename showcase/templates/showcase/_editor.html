@@ -37,6 +37,7 @@
        id="showcase-photos" data-reorder-url="{{ url_for('showcase.reorder_photos', item_id=item.id) }}">
     {% if item.photos|length < sc.max_photos %}
     <form method="post" action="{{ url_for('showcase.upload_photos', item_id=item.id) }}" enctype="multipart/form-data" class="doc-explorer__item doc-explorer__add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('photos') }}
       <input type="hidden" name="next" value="{{ sc.next_url }}">
       <label class="doc-explorer__add-trigger" for="showcase-photo-input">
@@ -64,6 +65,7 @@
         {% if not loop.first %}
         {# Dragging needs a mouse; this works by touch too. #}
         <form method="post" action="{{ url_for('showcase.make_cover', item_id=item.id, photo_id=photo.id) }}" class="doc-explorer__delete-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ sc.next_url }}">
           <button type="submit" class="icon-btn" title="Make cover" aria-label="Make photo {{ loop.index }} the cover">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3.2l2 4.3 4.6.5-3.4 3.1 1 4.6L10 13.4l-4.2 2.3 1-4.6L3.4 8l4.6-.5z"/></svg>
@@ -71,6 +73,7 @@
         </form>
         {% endif %}
         <form method="post" action="{{ url_for('showcase.delete_photo', item_id=item.id, photo_id=photo.id) }}" class="doc-explorer__delete-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {{ notice_field('photos') }}
           <input type="hidden" name="next" value="{{ sc.next_url }}">
           <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete photo {{ loop.index }}">{{ icon_trash() }}</button>
@@ -82,6 +85,7 @@
 
   {% if sc.order_images %}
   <form method="post" action="{{ url_for('showcase.add_order_photos', item_id=item.id) }}" class="showcase-picker">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ notice_field('photos') }}
     <input type="hidden" name="next" value="{{ sc.next_url }}">
     <h3 class="showcase-picker__title">From this order's documents</h3>
@@ -107,6 +111,7 @@
   {{ notice_slot(notice, 'details') }}
   <div class="showcase-details">
     <form method="post" action="{{ url_for('showcase.save_item', item_id=item.id) }}" class="detail-form showcase-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('details') }}
       <input type="hidden" name="next" value="{{ sc.next_url }}">
       {% include "showcase/_details_fields.html" %}
@@ -151,6 +156,7 @@
   <div class="lifecycle-actions">
     {% if item.status == 'published' %}
     <form method="post" action="{{ url_for('showcase.withdraw_item', item_id=item.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('piece') }}
       <input type="hidden" name="next" value="{{ sc.next_url }}">
       <button type="submit" class="btn-secondary">Withdraw</button>
@@ -183,6 +189,7 @@
   {% if ws.warning %}<p class="warning-note">{{ ws.warning }}</p>{% endif %}
   {% if ws.action %}
   <form method="post" action="{{ url_for('showcase.send_item', item_id=item.id) }}" class="lifecycle-actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ notice_field('website') }}
     <input type="hidden" name="next" value="{{ sc.next_url }}">
     <input type="hidden" name="action" value="{{ ws.action }}">
@@ -203,6 +210,7 @@
 {% if item.status != 'published' %}
 <dialog id="delete-piece-modal" class="modal">
   <form method="post" action="{{ url_for('showcase.delete_item', item_id=item.id) }}" class="modal__form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ notice_field('piece') }}
     <input type="hidden" name="next" value="{{ sc.next_url }}">
     <h2 class="modal__title">Delete this piece?</h2>
@@ -262,7 +270,7 @@
         .map(function (card) { return parseInt(card.dataset.photoId, 10); });
       fetch(grid.dataset.reorderUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         body: JSON.stringify({ order: order }),
       }).then(function () { window.location.reload(); });
     });

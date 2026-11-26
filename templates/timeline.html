@@ -121,6 +121,7 @@
   {% for client in clients_in_view %}
   <dialog id="client-modal-{{ client.id }}" class="modal">
     <form method="post" action="{{ url_for('edit_client', client_id=client.id) }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <h2 class="modal__title">{{ client.name }}</h2>
       <label class="modal__field">First name<input type="text" name="first_name" value="{{ client.first_name }}" required></label>
@@ -150,6 +151,7 @@
   {% set errors = edit_error['errors'] if edit_error else {} %}
   <dialog id="order-modal-{{ row.id }}" class="modal"{% if edit_error %} data-open-on-load{% endif %}>
     <form method="post" action="{{ url_for('edit_order', order_id=row.id) }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <h2 class="modal__title">{{ row.item }}</h2>
       <p class="modal__subtitle">{{ row.client.name }}</p>

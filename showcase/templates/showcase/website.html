@@ -24,6 +24,7 @@
       website's own cards, and its order of cards, are left as they are.
     </p>
     <form method="post" action="{{ url_for('showcase.website_send') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('review') }}
       <ul class="settings-source-list">
         {% for item, ws in rows %}

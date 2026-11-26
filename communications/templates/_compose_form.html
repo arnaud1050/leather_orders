@@ -309,7 +309,7 @@
 
       fetch(button.dataset.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         // Same-origin, so the session cookie rides along and nothing else does.
         credentials: 'same-origin',
         body: JSON.stringify({ thread_id: button.dataset.threadId })

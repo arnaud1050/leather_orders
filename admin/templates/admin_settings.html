@@ -23,6 +23,7 @@
       the same moment just reads back in the new zone.
     </p>
     <form method="post" action="{{ url_for('admin.update_staff_timezone') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('timezone') }}
       <label>Time zone
         <select name="timezone">
@@ -47,6 +48,7 @@
     </p>
     <p class="detail-note"><strong>{{ announcement_status }}</strong></p>
     <form method="post" action="{{ url_for('admin.update_announcement') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('announcement') }}
       <label>Message
         <textarea name="message" rows="3"

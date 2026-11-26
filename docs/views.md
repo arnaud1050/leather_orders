@@ -100,9 +100,8 @@ first being shoved right and the second trailing after it. Points worth knowing:
 - **The forms post into the communications blueprint**
   (`create_calendar_event` / `update_calendar_event` in the module's
   `routes.py`), not into `app.py`. Writing an event goes out to a provider, so
-  it belongs behind the service and inside that blueprint's automatic CSRF —
-  the templates therefore carry `{{ csrf_token() }}`, unlike the app's own
-  forms. `month_view()` renders the result through
+  it belongs behind the service. Its forms carry `{{ csrf_token() }}`, like
+  every POST form in the app (`CO4n`). `month_view()` renders the result through
   `communications_routes.take_notice()`, the module's one-shot notice.
 - **Times in the form are the company's local wall clock**, converted by
   `_to_utc()` (the inverse of the `local_datetime` filter). Everything below

@@ -19,6 +19,32 @@ that came back — a redirect carrying the right words says nothing about what
 was written — and one test goes the whole way round through `/login` to prove
 the new password is the one that actually authenticates.
 
+**`tests/test_csrf.py`** defends `CO4n`, app-wide CSRF. **The suite runs
+with `WTF_CSRF_ENABLED=False`** (`conftest.py`'s `_app`), because hundreds of
+tests post forms built by hand; a test that's about CSRF asks for the
+`enforce_csrf` fixture, which switches it back on for that test (Flask-WTF
+reads the flag per request), and `csrf` / `csrf_token_for(client)` read a
+real token off `base.html`'s meta tag. So a form that forgot its token
+would pass every other test and fail for the studio — which is why the file
+also has two static scans in the style of the save-notice one: every
+`<form method="post">` in every template must contain `csrf_token()`, and
+every `fetch` that posts must send `X-CSRFToken`. The enforced half posts
+without a token to an `app.py` route, an `admin/` route, a module's route,
+a JSON reorder (header, not field) and `/login`, and expects 400, then the
+same with the token and expects it through. `test_nothing_is_exempt` is
+where adding a `csrf.exempt` gets noticed. `conftest.py`'s per-request hook
+drops Flask-WTF's token cache from `g` alongside Flask-Login's, for the
+same held-open-app-context reason.
+
+**`tests/test_login_security.py`** defends `CO4g` (`?next=` must be a path
+on this site; parametrised over the browser tricks — `//`, `/\`, encoded
+and double-encoded slashes, a tab, `javascript:`) and the sign-in limits
+`CO4k`–`CO4m`. The clock is `login_throttle._utcnow`, moved by a fixture
+rather than slept. The tests assert on behaviour — the 429, the redirect,
+whether a session exists — with a correct password during a lockout, an
+unknown address locking exactly like a known one, and the per-IP limit
+read from `X-Forwarded-For` through a real `ProxyFix`.
+
 **`tests/test_save_notices.py`** defends `MOD8`, a save's message in the
 section whose button was pressed. Two kinds of test. The wiring tests render
 every tenant and admin page with enough data that all its forms appear, check
@@ -318,7 +344,8 @@ What's covered, in rough order of how much it matters:
   second company's id; cross-tenant reads 404, cross-tenant matching finds
   nothing.
 - **CSRF** — every unsafe route rejects a missing and a wrong token, and
-  accepts a valid one.
+  accepts a valid one (these tests ask for `enforce_csrf`; the check itself
+  is the app-wide `CSRFProtect`, `CO4n`).
 - **OAuth state** — missing, mismatched and replayed callbacks are all refused;
   a callback whose session company differs from `current_user`'s is refused too.
 - **Token encryption** — ciphertext isn't the plaintext, is non-deterministic,

@@ -28,6 +28,7 @@
       send it as a new card.
     </p>
     <form method="post" action="{{ url_for('showcase.website_link') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('review') }}
       <ul class="settings-source-list">
         {% for item in items %}

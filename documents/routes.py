@@ -7,11 +7,8 @@ can't import from `app.py` without creating a circular import, since
 `app.py` is what imports and registers this blueprint. Same hook pattern
 as `billing.routes.register`.
 
-No CSRF layer here, deliberately — matches every other mutating route in
-`app.py` (edit_order, delete_payment, ...), which rely on the app-wide
-`SESSION_COOKIE_SAMESITE=Lax` rather than a token. Communications' CSRF
-layer exists because that module sends mail and disconnects accounts; nothing
-here is in that class of risk.
+CSRF is app.py's `CSRFProtect`, app-wide (CO4n): every POST form here
+carries `{{ csrf_token() }}`, every script post an `X-CSRFToken` header.
 """
 
 from flask import Blueprint, abort, redirect, request, send_file, session, url_for

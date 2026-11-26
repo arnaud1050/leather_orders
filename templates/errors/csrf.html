@@ -1,0 +1,27 @@
+{#
+  What someone sees when a post is refused for a missing or stale CSRF
+  token (REQUIREMENTS CO4n), status 400. Nearly always a page opened before
+  signing out (or before the session expired) and submitted after: nothing
+  was saved, and reloading the page fixes it.
+#}
+{% extends "base.html" %}
+{% block title %}Page expired — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+  <header class="detail-header">
+    <h1>This page has expired</h1>
+  </header>
+
+  <p class="save-notice save-notice--error" role="alert">
+    <strong>Nothing was saved.</strong>
+  </p>
+  <p>
+    The page was open from an earlier session. Go back, reload it, and make the change again.
+  </p>
+
+  <p>
+    <button type="button" class="btn-primary" onclick="history.back()">Go back</button>
+    <a href="{{ url_for('timeline_view') }}" class="btn-secondary">Timeline</a>
+  </p>
+</div>
+{% endblock %}

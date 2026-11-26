@@ -33,10 +33,12 @@
     </span>
     <div class="settings-source-list__actions">
       <form method="post" action="{{ url_for('documents.toggle_type', document_type_id=type.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-secondary">{{ 'Unhide' if not type.is_active else 'Hide' }}</button>
       </form>
       {% if type.can_delete %}
       <form method="post" action="{{ url_for('documents.delete_type', document_type_id=type.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-secondary">Delete</button>
       </form>
       {% endif %}
@@ -46,6 +48,7 @@
 </ul>
 
 <form method="post" action="{{ url_for('documents.add_type') }}" class="detail-form settings-source-add">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label>Add a new type<input type="text" name="label" placeholder="e.g. Mockups" required></label>
   <div>
     <button type="submit" class="btn-primary">Add</button>
@@ -89,7 +92,7 @@
         .map(function (item) { return parseInt(item.dataset.typeId, 10); });
       fetch("{{ url_for('documents.reorder_types') }}", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         body: JSON.stringify({ order: order }),
       });
     });

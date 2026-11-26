@@ -56,20 +56,20 @@ def test_client_email_tab_requires_a_login(app, client_record):
 # --- CSRF -----------------------------------------------------------------
 
 @pytest.mark.parametrize("path", UNSAFE_ROUTES)
-def test_unsafe_requests_without_a_token_are_rejected(logged_in, path):
-    """Enforced by a blueprint-wide before_request, so a route added later
-    is protected by default rather than if someone remembers."""
+def test_unsafe_requests_without_a_token_are_rejected(logged_in, enforce_csrf, path):
+    """Enforced app-wide by CSRFProtect, so a route added later is
+    protected by default rather than if someone remembers."""
     assert logged_in.post(path).status_code == 400
 
 
-def test_a_wrong_token_is_rejected(logged_in, csrf):
+def test_a_wrong_token_is_rejected(logged_in, enforce_csrf, csrf):
     response = logged_in.post(
         "/integrations/sync-settings", data={"csrf_token": csrf + "x"},
     )
     assert response.status_code == 400
 
 
-def test_a_valid_token_is_accepted(logged_in, csrf):
+def test_a_valid_token_is_accepted(logged_in, enforce_csrf, csrf):
     response = logged_in.post(
         "/integrations/sync-settings",
         data={"csrf_token": csrf, "sync_enabled": "on", "sync_frequency": "20"},
@@ -82,9 +82,9 @@ def test_get_requests_do_not_need_a_token(logged_in):
     assert logged_in.get("/settings/integrations").status_code == 200
 
 
-def test_the_token_is_rendered_into_forms(logged_in, csrf):
+def test_the_token_is_rendered_into_forms(logged_in):
     body = logged_in.get("/settings/integrations").get_data(as_text=True)
-    assert f'value="{csrf}"' in body
+    assert 'name="csrf_token" value="' in body
 
 
 def test_the_session_cookie_is_samesite_lax(app):

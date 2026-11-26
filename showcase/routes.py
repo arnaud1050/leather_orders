@@ -9,7 +9,8 @@ anyone remembering to cover it. The order page's tab *route* is the host's
 renders `order_tab_context()` from here, and every form inside the tab
 posts back to this blueprint.
 
-No CSRF layer, matching documents/ and app.py (`SESSION_COOKIE_SAMESITE=Lax`).
+CSRF is app.py's `CSRFProtect`, app-wide (CO4n): every POST form here
+carries `{{ csrf_token() }}`, every script post an `X-CSRFToken` header.
 """
 
 import re

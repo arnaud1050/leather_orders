@@ -212,7 +212,7 @@
         });
       fetch("{{ url_for('reorder_analytics_layout') }}", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         body: JSON.stringify({ sections: sections }),
       });
     });

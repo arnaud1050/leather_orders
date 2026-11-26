@@ -24,18 +24,21 @@
     </p>
     <div class="lifecycle-actions">
       <form method="post" action="{{ url_for('showcase.start_for_order', order_id=sc.order_summary.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('decision') }}
         <input type="hidden" name="next" value="{{ sc.next_url }}">
         <button type="submit" class="btn-primary">Showcase this piece</button>
       </form>
       {% if sc.dismissed %}
       <form method="post" action="{{ url_for('showcase.undismiss_order', order_id=sc.order_summary.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('decision') }}
         <input type="hidden" name="next" value="{{ sc.next_url }}">
         <button type="submit" class="btn-secondary">Remind me again</button>
       </form>
       {% else %}
       <form method="post" action="{{ url_for('showcase.dismiss_order', order_id=sc.order_summary.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('decision') }}
         <input type="hidden" name="next" value="{{ sc.next_url }}">
         <button type="submit" class="btn-secondary">Not showcasing this one</button>

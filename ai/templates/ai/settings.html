@@ -49,6 +49,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('ai.delete_reply_key') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('replies') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
@@ -58,6 +59,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('ai.save_replies') }}" class="detail-form ai-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('replies') }}
       {# Always rendered blank: a saved key is never sent back to the
          browser. Submitting this section without retyping it therefore
@@ -105,6 +107,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('ai.delete_render_key') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('renders') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
@@ -114,6 +117,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('ai.save_renders') }}" class="detail-form ai-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('renders') }}
       <label class="ai-form__field">Google AI Studio API key
         <input type="password" name="api_key" autocomplete="off" spellcheck="false"

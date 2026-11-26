@@ -2,14 +2,8 @@
 The module's blueprint. Phase 1 is the Settings → AI page and the four
 posts that maintain it.
 
-No CSRF layer here, matching `documents/` and every mutating route in
-`app.py`, which rely on the app-wide `SESSION_COOKIE_SAMESITE=Lax` rather
-than a token. That's a real decision rather than an omission: writing an
-API key is closer to communications' class of risk than to editing an order
-line, but `SameSite=Lax` already stops a cross-site form post from carrying
-the session cookie, and a second hand-rolled CSRF implementation is worse
-than one. **If Flask-WTF is ever added app-wide, this module and
-`communications/security.py` should both defer to `CSRFProtect`.**
+CSRF is app.py's `CSRFProtect`, app-wide (CO4n): every POST form here
+carries `{{ csrf_token() }}`, every script post an `X-CSRFToken` header.
 """
 
 import io

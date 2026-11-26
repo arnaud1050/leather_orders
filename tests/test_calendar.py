@@ -508,7 +508,7 @@ def test_an_event_cannot_be_linked_to_another_tenants_client(
     assert CalendarEvent.query.one().client_id is None
 
 
-def test_event_routes_require_a_csrf_token(logged_in, account):
+def test_event_routes_require_a_csrf_token(logged_in, enforce_csrf, account):
     with fakes.fake_providers():
         response = logged_in.post("/calendar/events/new", data=_event_form("wrong-token"))
 

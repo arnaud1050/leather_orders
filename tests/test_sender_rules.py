@@ -722,7 +722,7 @@ def test_removing_a_rule_from_the_page(logged_in, csrf, company):
 
 
 @pytest.mark.parametrize("path", ["/integrations/rules", "/integrations/rules/1/delete"])
-def test_rule_routes_require_a_csrf_token(logged_in, path):
+def test_rule_routes_require_a_csrf_token(logged_in, enforce_csrf, path):
     assert logged_in.post(path).status_code == 400
 
 

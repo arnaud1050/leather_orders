@@ -63,8 +63,17 @@ async function waitUntilReady(url: string, timeoutMs: number): Promise<void> {
 
 async function saveAdminStorageState(cfg: ReturnType<typeof resolveConfig>): Promise<void> {
   const api = await request.newContext({ baseURL: cfg.baseURL });
+  // The app checks a CSRF token on every post, /login included (REQUIREMENTS
+  // CO4n): read it off the sign-in page first, as a browser would, in the
+  // same context so the session cookie it belongs to comes along.
+  const page = await (await api.get("/login")).text();
+  const csrfToken = page.match(/<meta name="csrf-token" content="([^"]+)">/)?.[1] ?? "";
   const response = await api.post("/login", {
-    form: { email: testData.adminUser.email, password: testData.adminUser.password },
+    form: {
+      email: testData.adminUser.email,
+      password: testData.adminUser.password,
+      csrf_token: csrfToken,
+    },
   });
   if (response.status() >= 400) {
     throw new Error(

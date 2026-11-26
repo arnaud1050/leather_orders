@@ -128,7 +128,7 @@
       window.saveNotice(notice, '');
       fetch('/orders/' + orderId + '/documents/' + documentId + '/render', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         credentials: 'same-origin',
         body: JSON.stringify({ extra_prompt: promptBox.value })
       }).then(readJson).then(function (data) {
@@ -148,7 +148,8 @@
       var done = window.busyButton(button, 'Saving…');
       window.saveNotice(cardNotice, '');
       fetch('/ai/renders/' + draftId + '/save', {
-        method: 'POST', credentials: 'same-origin'
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRFToken': window.csrfToken }
       }).then(readJson).then(function (data) {
         if (data.saved) {
           // The order page behind the modal is now out of date — the
@@ -171,7 +172,8 @@
     function discardDraft(draftId, cardNotice) {
       window.saveNotice(cardNotice, '');
       fetch('/ai/renders/' + draftId + '/discard', {
-        method: 'POST', credentials: 'same-origin'
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'X-CSRFToken': window.csrfToken }
       }).then(readJson).then(function (data) {
         if (data.discarded) {
           // The card disappearing is the result; nothing to say.

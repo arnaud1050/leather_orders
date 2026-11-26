@@ -63,6 +63,7 @@
       <div class="doc-list__actions">
         <button type="button" class="icon-btn" data-open-item="material-{{ material.id }}" title="Edit" aria-label="Edit {{ material.item_name }}">{{ icon_pencil() }}</button>
         <form method="post" action="{{ url_for('inventory.delete_material', order_id=order.id, material_id=material.id) }}" class="icon-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="return_to" value="{{ request.path }}">
           <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ material.item_name }}">{{ icon_trash() }}</button>
         </form>
@@ -75,6 +76,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('inventory.add_material', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ request.path }}">
     <label>Item
       <select name="inventory_item_id" id="material-item-select">
@@ -114,6 +116,7 @@
       <div class="doc-list__actions">
         <button type="button" class="icon-btn" data-open-item="other-{{ other.id }}" title="Edit" aria-label="Edit {{ other.description }}">{{ icon_pencil() }}</button>
         <form method="post" action="{{ url_for('inventory.delete_other', order_id=order.id, other_id=other.id) }}" class="icon-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="return_to" value="{{ request.path }}">
           <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ other.description }}">{{ icon_trash() }}</button>
         </form>
@@ -132,6 +135,7 @@
   </div>
 
   <form method="post" action="{{ url_for('inventory.add_other', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ request.path }}">
     <label>Description<input type="text" name="description" placeholder="e.g. Replacement buckle" required></label>
     <label>Cost<input type="number" name="cost" step="0.01" min="0" required></label>
@@ -148,6 +152,7 @@
 {% for material in materials %}
 <dialog id="item-modal-material-{{ material.id }}" class="modal">
   <form method="post" action="{{ url_for('inventory.edit_material', order_id=order.id, material_id=material.id) }}" class="modal__form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ request.path }}">
     <h2 class="modal__title">{{ material.item_name }}</h2>
     <label class="modal__field">Quantity ({{ unit_labels.get(material.unit, material.unit) }})<input type="number" name="quantity_used" step="{{ '1' if unit_whole.get(material.unit, True) else '0.01' }}" min="0" value="{{ material.quantity_used }}" required></label>
@@ -165,6 +170,7 @@
 {% for other in others %}
 <dialog id="item-modal-other-{{ other.id }}" class="modal">
   <form method="post" action="{{ url_for('inventory.edit_other', order_id=order.id, other_id=other.id) }}" class="modal__form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ request.path }}">
     <h2 class="modal__title">{{ other.description }}</h2>
     <label class="modal__field">Description<input type="text" name="description" value="{{ other.description }}" required></label>

@@ -370,7 +370,7 @@ def test_the_combined_button_sits_with_connect(logged_in, account):
     assert body.index("Sync mail and calendar now") < body.index("Email sync")
 
 
-def test_the_combined_route_needs_a_csrf_token(logged_in, account):
+def test_the_combined_route_needs_a_csrf_token(logged_in, enforce_csrf, account):
     assert logged_in.post("/integrations/sync-all").status_code == 400
 
 
@@ -496,7 +496,7 @@ def test_a_calendar_sync_failure_is_reported(logged_in, csrf, account):
     assert "Calendar down" in logged_in.get("/calendar").get_data(as_text=True)
 
 
-def test_the_calendar_sync_route_needs_a_csrf_token(logged_in, account):
+def test_the_calendar_sync_route_needs_a_csrf_token(logged_in, enforce_csrf, account):
     assert logged_in.post("/integrations/calendar/sync").status_code == 400
 
 

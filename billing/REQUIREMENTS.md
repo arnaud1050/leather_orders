@@ -665,10 +665,9 @@ them without checking first. See `docs/roadmap.md` for reasoning.
   by hand whatever their method. Square is one `method` value, not a second
   source of truth. If that ever lands, invoices must stop being created in
   the processor's dashboard — its auto-numbering would collide with N1.
-- **Z6.** **No CSRF layer on this blueprint's forms** — same posture as the
-  host's own mutating routes (relies on `SESSION_COOKIE_SAMESITE=Lax`),
-  unlike `communications/`, which has its own. Add it here too if the app
-  ever gains `CSRFProtect`.
+- **Z6.** **No CSRF layer of the module's own** — its forms carry
+  `{{ csrf_token() }}` and the host's app-wide `CSRFProtect` checks them
+  (root `CO4n`), as it does every other post in the app.
 - **Z7.** **No stored PDFs.** The PDF is rendered on request and never kept:
   the printed document changes after issue anyway (payments received, balance
   due), so a stored copy would be a copy that can disagree (PD12).

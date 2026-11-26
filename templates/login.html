@@ -9,6 +9,7 @@
   </header>
 
   <form method="post" class="detail-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {# A refused sign-in is a refused save like any other: the red
        .save-notice, drawn by the shared macro (MOD8). There's one form and
        no sections, so it's rendered directly rather than through a slot. #}

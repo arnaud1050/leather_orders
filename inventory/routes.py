@@ -8,10 +8,8 @@ and the order-page Materials tab's mutations.
 a circular import, since `app.py` is what imports and registers this
 blueprint.
 
-No CSRF layer here, deliberately — same posture as `documents/routes.py`:
-matches every other mutating route in `app.py`, relying on the app-wide
-`SESSION_COOKIE_SAMESITE=Lax` rather than a token. Nothing here sends mail or
-touches a third-party account, unlike communications.
+CSRF is app.py's `CSRFProtect`, app-wide (CO4n): every POST form here
+carries `{{ csrf_token() }}`, every script post an `X-CSRFToken` header.
 """
 
 import re

@@ -42,6 +42,7 @@
   {% from "_field_error.html" import field_error, invalid %}
   {% set typed = form_values or {} %}
   <form method="post" action="{{ url_for('order_page', order_id=order.id) }}" class="detail-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ return_to }}">
     <label>Item<input type="text" name="item" value="{{ typed.get('item', order.item) }}" required{{ invalid(form_errors, 'item') }}>{{ field_error(form_errors, 'item') }}</label>
     <label>Start date<input type="date" name="start" value="{{ typed.get('start', order.start.isoformat()) }}" required{{ invalid(form_errors, 'start') }}>{{ field_error(form_errors, 'start') }}</label>
@@ -103,6 +104,7 @@
     <div class="lifecycle-actions">
       {% if order.can_rush %}
       <form method="post" action="{{ url_for('toggle_rush', order_id=order.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="return_to" value="{{ return_to }}">
         <button type="submit" class="btn-secondary">{{ 'Remove rush flag' if order.is_rush else 'Mark as rush' }}</button>
       </form>
@@ -142,6 +144,7 @@
   {% if order.can_cancel %}
   <dialog id="cancel-order-modal" class="modal">
     <form method="post" action="{{ url_for('cancel_order', order_id=order.id) }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <h2 class="modal__title">Cancel this order?</h2>
       <p class="modal__subtitle">{{ order.item }} — {{ order.client.name }}</p>
@@ -163,6 +166,7 @@
   {% if order.can_delete %}
   <dialog id="delete-order-modal" class="modal">
     <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <h2 class="modal__title">Delete this order?</h2>
       <p class="modal__subtitle">{{ order.item }} — {{ order.client.name }}</p>
@@ -238,6 +242,7 @@
         {% if not order.is_issued %}
         <div class="doc-list__actions">
           <form method="post" action="{{ url_for('delete_order_line', order_id=order.id, line_id=line.id) }}" class="icon-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('line-items') }}
             <input type="hidden" name="return_to" value="{{ request.path }}">
             <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ line.description }}">{{ icon_trash() }}</button>
@@ -310,6 +315,7 @@
     </p>
     {% else %}
     <form method="post" action="{{ url_for('add_order_line', order_id=order.id) }}" class="detail-form detail-inline-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('line-items') }}
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <label>Description<input type="text" name="description" placeholder="e.g. Brass hardware upgrade" required></label>
@@ -337,6 +343,7 @@
     {% else %}
     <p class="detail-note">Taken off the whole order before tax. Leave the amount empty for no discount.</p>
     <form method="post" action="{{ url_for('set_order_discount', order_id=order.id) }}" class="detail-form detail-inline-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('discount') }}
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <label>Type
@@ -372,6 +379,7 @@
     {% else %}
     <p class="detail-note">Not invoiced yet. Creating one assigns the next number in the company's sequence.</p>
     <form method="post" action="{{ url_for('billing.create', subject_id=order.id) }}" class="detail-form detail-inline-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>Payment due<input type="date" name="due_date" value="{{ order.due.isoformat() }}"></label>
       <div>
         <button type="submit" class="btn-primary">Create invoice</button>
@@ -405,6 +413,7 @@
         </span>
         <div class="doc-list__actions">
           <form method="post" action="{{ url_for('delete_payment', order_id=order.id, payment_id=payment.id) }}" class="icon-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="return_to" value="{{ request.path }}">
             <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete payment">{{ icon_trash() }}</button>
           </form>
@@ -417,6 +426,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('add_payment', order_id=order.id) }}" class="detail-form detail-payments__add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <label>Amount<input type="number" name="amount" step="0.01" min="0" required></label>
       <label>Date<input type="date" name="paid_date" value="{{ today.isoformat() }}" required></label>

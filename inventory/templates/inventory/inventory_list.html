@@ -111,12 +111,14 @@
           <td>
             <div class="icon-actions">
               <form method="post" action="{{ url_for('inventory.toggle_item', item_id=item.id) }}" class="icon-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="icon-btn" title="{{ 'Unhide' if not item.is_active else 'Hide' }}" aria-label="{{ 'Unhide' if not item.is_active else 'Hide' }} {{ item.name }}">
                   {{ icon_eye() if not item.is_active else icon_eye_slash() }}
                 </button>
               </form>
               {% if item.can_delete %}
               <form method="post" action="{{ url_for('inventory.delete_item', item_id=item.id) }}" class="icon-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete {{ item.name }}">{{ icon_trash() }}</button>
               </form>
               {% endif %}
@@ -193,6 +195,7 @@
   {# Add-item modal, opened by the button above. #}
   <dialog id="item-modal-new" class="modal">
     <form method="post" action="{{ url_for('inventory.add_item') }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <h2 class="modal__title">Add item</h2>
       {{ item_fields() }}
       <div class="modal__actions">
@@ -210,6 +213,7 @@
   {% for item in items %}
   <dialog id="item-modal-{{ item.id }}" class="modal">
     <form method="post" action="{{ url_for('inventory.edit_item', item_id=item.id) }}" class="modal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <h2 class="modal__title">{{ item.name }}</h2>
       {{ item_fields(item) }}
       <div class="modal__actions">

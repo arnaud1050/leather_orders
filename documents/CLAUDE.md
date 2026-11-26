@@ -90,11 +90,9 @@ page route stays in `app.py` and includes the module's partial — the same
   template knows about the other's. A saved rendering comes back through
   `services.upload()` like any other file, so quota, extension allowlist and
   content sniffing all apply to it — see [ai/CLAUDE.md](../ai/CLAUDE.md).
-- **No CSRF layer here**, deliberately — consistent with every other mutating
-  route in `app.py`, relying on `SESSION_COOKIE_SAMESITE=Lax`.
-  `communications/` has its own precisely because that module sends mail and
-  disconnects accounts, a different class of risk. See REQUIREMENTS §11 before
-  "fixing" this.
+- **CSRF is the host's**, app-wide `CSRFProtect` (root `CO4n`): forms here
+  carry `{{ csrf_token() }}` and script posts an `X-CSRFToken` header, like
+  everywhere else. See REQUIREMENTS §11.
 - **One-shot notices** use this module's own session key
   (`routes._flash` / `take_notice`), popped by `order_page()` in `app.py`. The
   app has no flash convention; each part that needs one keeps its own key rather

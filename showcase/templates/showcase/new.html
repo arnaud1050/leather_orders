@@ -24,6 +24,7 @@
   {{ page_notice(notice, ['details']) }}
 
   <form method="post" action="{{ url_for('showcase.create_item') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ notice_field('details') }}
 
     <section class="detail-documents">

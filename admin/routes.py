@@ -6,11 +6,8 @@ same reason `documents.routes.register` takes `resolve_order` — `app.py`
 imports and registers this blueprint, so importing `app.TIME_ZONES` back
 out of it would be circular.
 
-No CSRF layer, matching every other mutating route in `app.py` and in
-`documents/`: the app-wide `SESSION_COOKIE_SAMESITE=Lax` is what stops a
-forged cross-site POST reaching any of them. Communications has tokens
-because it sends mail and disconnects Google accounts; nothing here is
-outward-facing in that way.
+CSRF is app.py's `CSRFProtect`, app-wide (CO4n): every POST form here
+carries `{{ csrf_token() }}`, every script post an `X-CSRFToken` header.
 """
 
 import re

@@ -143,11 +143,12 @@ The rules are `S-1` … `S-15`. What isn't in that table:
   one host import this module makes besides `db`; it depends on the standard
   library and `cryptography` alone, which is what keeps it from dragging the
   app in behind it (`ai/REQUIREMENTS.md` `B-3` tests that).
-- **CSRF** (`security.py`) is enforced by a blueprint `before_request` hook, and
-  forms write `{{ csrf_token() }}`, registered as a Jinja global.
-  `SESSION_COOKIE_SAMESITE=Lax` is set in `app.py` as defence in depth.
-  **If Flask-WTF is ever added app-wide, delete `security.py` and use
-  `CSRFProtect`** — it exists only because there was nothing to defer to.
+- **CSRF** is the host's app-wide Flask-WTF `CSRFProtect` (root `CO4n`),
+  which replaced this module's hand-rolled `security.py` once there was
+  something to defer to. Forms still write `{{ csrf_token() }}` (Flask-WTF's
+  Jinja global, same spelling), and the compose form's AI fetch sends
+  `X-CSRFToken`. `SESSION_COOKIE_SAMESITE=Lax` stays as defence in depth.
+  Moving this module to another app means that app needs CSRF of its own.
 - **The PKCE `code_verifier`** rides in the session as `VERIFIER_SESSION_KEY`
   (`S-6`): `google-auth-oauthlib` auto-generates one inside
   `authorization_url()`, but the callback builds a *different* `Flow`.
@@ -326,8 +327,8 @@ the markup map.
   inside the form, one hidden `document_id` per row, so removing one is the
   app's usual trash icon rather than a second convention.
 - **Time rendering** goes through the **`local_datetime`** Jinja filter,
-  registered by the module's `register()` alongside `csrf_token` so the module
-  carries what its own templates need. **`local_time`** is the same conversion
+  registered by the module's `register()` so the module carries what its own
+  templates need (`csrf_token` is Flask-WTF's, registered by the host). **`local_time`** is the same conversion
   for a time-of-day alone (the calendar's event chips) — 12-hour, lowercase
   am/pm, no leading zero ("12:00pm") — built on `local_datetime` rather than
   duplicating the zone resolution. Rules: `TZ-1` … `TZ-4`.

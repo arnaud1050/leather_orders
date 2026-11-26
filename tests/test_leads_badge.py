@@ -421,6 +421,6 @@ def test_the_sync_status_note_shares_the_row_with_the_button(logged_in, account)
     assert "Sync now" in row
 
 
-def test_syncing_from_the_leads_page_needs_a_csrf_token(logged_in, account):
+def test_syncing_from_the_leads_page_needs_a_csrf_token(logged_in, enforce_csrf, account):
     assert logged_in.post("/integrations/sync",
                           data={"return_to": "/mail/leads"}).status_code == 400

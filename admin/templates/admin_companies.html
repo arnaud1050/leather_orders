@@ -59,6 +59,7 @@
       orders or sample data.
     </p>
     <form method="post" action="{{ url_for('admin.create_company') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('add-company') }}
       <label>Company name<input type="text" name="name" required></label>
       <label>Time zone

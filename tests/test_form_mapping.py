@@ -931,7 +931,7 @@ def test_a_duplicate_label_is_reported_not_raised(logged_in, csrf, company, mapp
 @pytest.mark.parametrize("path", [
     "/integrations/rules/1/fields", "/integrations/rules/fields/1/delete",
 ])
-def test_field_routes_require_a_csrf_token(logged_in, path):
+def test_field_routes_require_a_csrf_token(logged_in, enforce_csrf, path):
     assert logged_in.post(path).status_code == 400
 
 

@@ -29,6 +29,7 @@
         <div class="settings-source-list__actions">
           <a class="btn-primary" href="{{ order.showcase_url }}?return_to={{ request.path|urlencode }}">Showcase</a>
           <form method="post" action="{{ url_for('showcase.dismiss_order', order_id=order.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('awaiting') }}
             <input type="hidden" name="next" value="{{ request.path }}">
             <button type="submit" class="btn-secondary">Not showcasing this one</button>

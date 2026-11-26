@@ -172,6 +172,7 @@
     <h2>Invoice settings</h2>
     {{ notice_slot(notice, 'invoice-settings') }}
     <form method="post" action="{{ url_for('billing.set_status', invoice_id=invoice.id) }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('invoice-settings') }}
       <input type="hidden" name="return_to" value="{{ request.path }}">
       <label>Status

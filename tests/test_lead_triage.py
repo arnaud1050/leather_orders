@@ -535,7 +535,7 @@ def test_restore_button_restores(logged_in, csrf, company, account, lead_thread)
 
 
 @pytest.mark.parametrize("action", ["dismiss", "restore", "trash"])
-def test_triage_routes_require_a_csrf_token(logged_in, lead_thread, action):
+def test_triage_routes_require_a_csrf_token(logged_in, enforce_csrf, lead_thread, action):
     assert logged_in.post(f"/mail/threads/{lead_thread.id}/{action}").status_code == 400
 
 

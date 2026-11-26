@@ -20,6 +20,7 @@ table count.
 """
 
 import os
+import re
 import tempfile
 
 # --- must precede `import app` -------------------------------------------
@@ -98,8 +99,12 @@ def _app():
         both as whoever signed in first. That failure looks like a bug in
         the code under test, which is what makes it worth preventing here
         rather than working around per test.
+
+        Flask-WTF caches the request's CSRF token on `g` the same way, so
+        without dropping it one client would be handed another's token.
         """
         g.pop("_login_user", None)
+        g.pop("csrf_token", None)
 
     with flask_app.app_context():
         db.drop_all()
@@ -293,14 +298,39 @@ def admin_client(app, platform_admin):
         yield test_client
 
 
+CSRF_META = re.compile(r'<meta name="csrf-token" content="([^"]+)">')
+
+
+@pytest.fixture
+def enforce_csrf(_app):
+    """Turn CSRFProtect back on for one test (CO4n).
+
+    The suite runs with `WTF_CSRF_ENABLED=False` (see `_app`): hundreds of
+    tests post forms built by hand, and threading a token through each
+    would test the fixture more than the route. The protection itself is
+    tested by the tests that ask for this, against the real check —
+    Flask-WTF reads the flag per request, so flipping it here is enough.
+    """
+    _app.config["WTF_CSRF_ENABLED"] = True
+    yield
+    _app.config["WTF_CSRF_ENABLED"] = False
+
+
+def csrf_token_for(client, path="/settings/account"):
+    """A valid CSRF token for `client`'s session, read off a rendered page
+    (base.html's meta tag) — the same path a browser takes."""
+    match = CSRF_META.search(client.get(path).get_data(as_text=True))
+    assert match, f"no csrf-token meta tag on {path}"
+    return match.group(1)
+
+
 @pytest.fixture
 def csrf(logged_in):
     """A valid CSRF token for the logged-in session.
 
     Fetched by visiting a page that mints one, rather than writing the
     session directly — that way the tests exercise the same path the
-    templates do.
+    templates do. Only checked in a test that also asks for
+    `enforce_csrf`; elsewhere it's carried for realism.
     """
-    logged_in.get("/settings/integrations")
-    with logged_in.session_transaction() as session:
-        return session.get("comms_csrf_token")
+    return csrf_token_for(logged_in)

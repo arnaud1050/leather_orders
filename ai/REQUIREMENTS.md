@@ -46,11 +46,11 @@ Covered by `tests/test_ai_settings.py`, `tests/test_ai_reply.py` and
   read" rather than 500ing — which is the state a user in that situation
   most needs described.
 - **S-6** A key is never written to a log, a flash message or an audit row.
-- **S-7** No CSRF token layer, matching `documents/` and `app.py`'s own
-  mutating routes, relying on `SESSION_COOKIE_SAMESITE=Lax`. This is a
-  decision, not an omission — see `routes.py`'s docstring. Revisit it
-  together with `communications/security.py` if Flask-WTF is ever added
-  app-wide.
+- **S-7** Every post into this blueprint needs a valid CSRF token —
+  enforced by the host's app-wide `CSRFProtect` (root `CO4n`), not by the
+  module. The Settings → AI forms carry `{{ csrf_token() }}`; the render
+  modal's `fetch` posts send `X-CSRFToken`. Writing an API key is exactly
+  the action a forged post would be worth mounting.
 
 ## 3. Settings and prompts (`C-*`)
 

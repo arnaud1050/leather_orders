@@ -46,11 +46,13 @@
     {% else %}
     <div class="settings-source-list__actions">
       <form method="post" action="{{ url_for('inventory.toggle_unit', unit_id=unit.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('units') }}
         <button type="submit" class="btn-secondary">{{ 'Unhide' if not unit.is_active else 'Hide' }}</button>
       </form>
       {% if unit.can_delete %}
       <form method="post" action="{{ url_for('inventory.delete_unit', unit_id=unit.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('units') }}
         <button type="submit" class="btn-secondary">Delete</button>
       </form>
@@ -63,6 +65,7 @@
 
 {% if available_units %}
 <form method="post" action="{{ url_for('inventory.add_unit') }}" class="detail-form settings-source-add">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {{ notice_field('units') }}
   <label>Add a unit
     <select name="key">
@@ -123,7 +126,7 @@
         .map(function (item) { return parseInt(item.dataset.unitId, 10); });
       fetch("{{ url_for('inventory.reorder_units') }}", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         body: JSON.stringify({ order: order }),
       });
     });

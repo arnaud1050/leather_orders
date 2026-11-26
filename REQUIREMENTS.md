@@ -52,8 +52,9 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   might imply the row exists elsewhere.
 - **CO4.** Every view route requires an authenticated session
   (`@login_required`); `/login`, `/privacy` and `/terms` are the only
-  exceptions. `/login` redirects to `next` on success; an unauthenticated
-  request to any other route redirects to `/login?next=...`.
+  exceptions. `/login` redirects to `next` on success (only if it is a path
+  on this site, CO4g); an unauthenticated request to any other route
+  redirects to `/login?next=...`.
 - **CO4e.** **Email is the login identity**, unique across the whole
   platform rather than per company — usernames were globally unique, which
   is fine for one tenant and impossible for many. `User.full_name` is
@@ -70,7 +71,12 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
 - **CO4g.** A successful sign-in lands a tenant user on the timeline and
   platform staff on `/admin`. `?next=` is honoured for a tenant user only —
   a staff session following a bookmarked tenant URL would bounce straight
-  off `CO6b`.
+  off `CO6b` — and only when it is a relative path on this site
+  (`app.safe_next_path`): a single leading `/`, no scheme, no host, no
+  backslash or control character, checked again after percent-decoding.
+  `//evil`, `/\evil`, `https://…`, `javascript:` and their encoded
+  spellings fall back to the landing page, so the sign-in page is never an
+  open redirect.
 - **CO4i.** A refused sign-in shows its reason as the red `.save-notice`
   (drawn by `templates/_save_notice.html`, like every refused save, `MOD8`)
   and comes back with the email address still filled in and the password
@@ -83,6 +89,40 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   which may be what failed), the same page is drawn on
   `templates/errors/_bare.html`, which touches nothing. The original
   exception is still logged, so the Grafana alert fires either way.
+- **CO4k.** Failed sign-ins are limited per address: after
+  `login_throttle.MAX_FAILURES_PER_EMAIL` (5) failures for one normalised
+  email within `WINDOW` (15 minutes), that address is refused — status 429,
+  the red notice "Too many sign-in attempts…" — until the oldest of them
+  is older than the window. A refused attempt **checks no password** (the
+  right one is refused too) and **isn't recorded** (hammering a locked
+  address doesn't extend the lock). The limit applies to every address
+  typed, with or without an account, so the lockout says nothing about
+  which addresses exist. A successful sign-in clears that address's count.
+- **CO4l.** A coarser per-client-IP limit
+  (`MAX_FAILURES_PER_IP`, 20 in the same window) catches one source trying
+  many addresses. The IP is `request.remote_addr` — the browser's own
+  address when `TRUST_PROXY_HEADERS=1` puts `ProxyFix` in front, as both
+  deployments do. A successful sign-in doesn't reset it.
+- **CO4m.** Failures are stored in the `login_attempts` table (address, IP,
+  time — never a password), not in process memory, so both gunicorn
+  workers and a restart see the same count. Rows older than the window are
+  pruned whenever one is added. A lockout is logged as a warning; it is
+  not a usage event (`usage/` counts features a company uses, and an
+  unknown address has no company).
+- **CO4n.** Every unsafe request (POST, PUT, PATCH, DELETE) into the app,
+  `admin/` and every module needs a valid CSRF token — Flask-WTF's
+  `CSRFProtect`, app-wide, so a route added later is covered by default.
+  `/login` included (login CSRF). Every POST form carries
+  `{{ csrf_token() }}`; every script `fetch` that posts sends
+  `X-CSRFToken: window.csrfToken`, which `base.html` reads from its
+  `<meta name="csrf-token">`. A refused post is a 400 drawn by
+  `templates/errors/csrf.html` ("This page has expired… Nothing was
+  saved"). Tokens don't expire on a timer (`WTF_CSRF_TIME_LIMIT = None`),
+  only with the session. Nothing is exempt today; an exemption is only for
+  a machine-to-machine endpoint with its own signature, made with
+  `csrf.exempt` and a comment saying why. `SESSION_COOKIE_SAMESITE=Lax`
+  stays as defence in depth, but is not enough alone: the server's other
+  `*.arnaudrouillot.com` sites count as same-site.
 - **CO4h.** A tenant user whose `users.must_change_password` is set is
   redirected to Settings → Account from every route except the settings
   page itself, `change_password`, `/logout`, the legal pages and static
@@ -1070,6 +1110,11 @@ rows. See [e2e/README.md](e2e/README.md).
 | CO4c | `test_the_status_message_shows_once` (`tests/test_change_password.py`) |
 | CO4i | `test_a_refused_sign_in_is_a_red_save_notice_and_keeps_the_address`, `test_a_fresh_sign_in_page_has_no_notice` (`tests/test_admin.py`); in a browser, `e2e/pages/LoginPage.ts` reads the error from `.save-notice--error` |
 | CO4j | `tests/test_error_page.py` |
+| CO4g | `test_a_next_that_leaves_the_site_is_ignored`, `test_a_next_on_this_site_is_honoured`, `test_safe_next_path`, `test_staff_still_ignore_next` (`tests/test_login_security.py`) |
+| CO4k | `test_the_lockout_triggers_after_too_many_failures`, `test_the_right_password_is_refused_during_a_lockout`, `test_the_lockout_expires`, `test_hammering_a_locked_address_does_not_extend_the_lock`, `test_the_lockout_is_per_email`, `test_the_lockout_applies_to_an_unknown_email_too`, `test_the_address_is_normalised_before_counting`, `test_a_successful_sign_in_clears_the_counter` (`tests/test_login_security.py`) |
+| CO4l | `test_one_ip_trying_many_addresses_is_limited`, `test_the_ip_limit_reads_the_forwarded_address_behind_the_proxy` (`tests/test_login_security.py`) |
+| CO4m | `test_the_counter_is_kept_in_the_database`, `test_old_failures_are_pruned` (`tests/test_login_security.py`) |
+| CO4n | `tests/test_csrf.py` — static scans of every POST form and every posting `fetch`, plus enforced 400s on `app.py`, `admin/`, `inventory/` and `communications/` routes; the communications tests that ask for `enforce_csrf` (S-7) |
 | CO4h | `test_changing_the_password_clears_the_forced_flag`, `test_a_forced_change_redirects_everywhere_but_settings` (`tests/test_change_password.py`); `test_a_reset_password_must_be_changed`, `test_resetting_a_staff_password_does_not_require_a_change`, `test_a_user_is_added_to_the_named_company` (`tests/test_admin.py`) |
 | CO5 | `test_nav_hides_for_a_logged_out_visitor` |
 | CO5a | `test_nav_includes_the_mobile_hamburger_toggle` (markup presence/order only — the CSS collapse and the open/close click behavior itself are client-side and unassertable by a route test, same limitation as TL7–TL9) |

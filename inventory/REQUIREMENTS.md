@@ -485,8 +485,9 @@ them without checking first. See `docs/roadmap.md` for the reasoning.
   and re-adding.
 - **N4.** No seed/default data for `InventoryType`/`InventoryItem` — every
   company starts empty.
-- **N5.** No CSRF token layer on this module's forms — same posture as every
-  other mutating route in `app.py` (relies on `SESSION_COOKIE_SAMESITE=Lax`).
+- **N5.** No CSRF layer of the module's own — its forms carry
+  `{{ csrf_token() }}`, its reorder `fetch` posts send `X-CSRFToken`, and the
+  host's app-wide `CSRFProtect` checks both (root `CO4n`).
 - **N6.** A company's Units list is not an enforcement mechanism — hiding or
   never adding a catalog unit doesn't stop `InventoryItem.unit` from being
   set to it (UN9). Making it enforced would mean deciding what happens to

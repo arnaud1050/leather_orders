@@ -40,6 +40,7 @@
     <div class="settings-source-list__actions">
       {% if column.can_hide %}
       <form method="post" action="{{ url_for('inventory.toggle_column', key=column.key) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('inventory-columns') }}
         <button type="submit" class="btn-secondary">{{ 'Show' if not column.visible else 'Hide' }}</button>
       </form>
@@ -88,7 +89,7 @@
         .map(function (item) { return item.dataset.key; });
       fetch("{{ url_for('inventory.reorder_columns') }}", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         body: JSON.stringify({ order: order }),
       });
     });

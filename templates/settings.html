@@ -61,6 +61,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('upload_logo') }}" enctype="multipart/form-data" class="brand__upload">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('brand') }}
             <label class="btn-secondary" for="brand-logo-input">Replace</label>
             <input type="file" name="logo" accept="image/png,image/jpeg,.png,.jpg,.jpeg" id="brand-logo-input" class="brand__file" data-max-bytes="{{ logo_max_bytes }}"
@@ -68,6 +69,7 @@
             <button type="submit" class="btn-secondary" data-upload-fallback>Upload</button>
           </form>
           <form method="post" action="{{ url_for('delete_logo') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('brand') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
@@ -89,6 +91,7 @@
     {% endif %}
     {% else %}
     <form method="post" action="{{ url_for('upload_logo') }}" enctype="multipart/form-data" class="brand__upload brand__add" data-upload-zone data-upload-status="logo-error">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('brand') }}
       {# Same tile as an order's "Add file": the label opens the picker, and
          choosing a file uploads it — no separate button once JS is on. #}
@@ -122,6 +125,7 @@
       what's already on file rather than moving anything.
     </p>
     <form method="post" action="{{ url_for('update_preferences') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('timezone') }}
       <label>Time zone
         <select name="timezone">
@@ -146,6 +150,7 @@
       the account you're signed in as. Your current password is required.
     </p>
     <form method="post" action="{{ url_for('change_password') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('password') }}
       <label>Current password
         <input type="password" name="current_password" autocomplete="current-password" required>
@@ -174,6 +179,7 @@
       How <strong>{{ current_user.display_name }}</strong> signs off an email.
     </p>
     <form method="post" action="{{ url_for('update_signature') }}" class="detail-form ai-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('signature') }}
       <div class="detail-form__field">
         <label>Signature
@@ -215,11 +221,13 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('toggle_order_type', order_type_id=order_type.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('order-types') }}
             <button type="submit" class="btn-secondary">{{ 'Unhide' if not order_type.is_active else 'Hide' }}</button>
           </form>
           {% if order_type.can_delete %}
           <form method="post" action="{{ url_for('delete_order_type', order_type_id=order_type.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('order-types') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
@@ -230,6 +238,7 @@
     </ul>
 
     <form method="post" action="{{ url_for('add_order_type') }}" class="detail-form settings-source-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('order-types') }}
       <label>Add a new type<input type="text" name="label" placeholder="e.g. Custom Order" required></label>
       <div>
@@ -260,6 +269,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('toggle_order_column', key=col.key) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('order-columns') }}
             <button type="submit" class="btn-secondary">{{ 'Show' if not col.visible else 'Hide' }}</button>
           </form>
@@ -316,15 +326,18 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('set_other_source_option', source_option_id=option.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('sources') }}
             <button type="submit" class="btn-secondary">{{ 'Remove text box' if option.is_other else 'Add a text box' }}</button>
           </form>
           <form method="post" action="{{ url_for('toggle_source_option', source_option_id=option.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('sources') }}
             <button type="submit" class="btn-secondary">{{ 'Unhide' if not option.is_active else 'Hide' }}</button>
           </form>
           {% if option.can_delete %}
           <form method="post" action="{{ url_for('delete_source_option', source_option_id=option.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('sources') }}
             <button type="submit" class="btn-secondary">Delete</button>
           </form>
@@ -335,6 +348,7 @@
     </ul>
 
     <form method="post" action="{{ url_for('add_source_option') }}" class="detail-form settings-source-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('sources') }}
       <label>Add a new option<input type="text" name="label" placeholder="e.g. Word of Mouth" required></label>
       <div>
@@ -379,7 +393,7 @@
             .map(function (item) { return parseInt(item.dataset.optionId, 10); });
           fetch("{{ url_for('reorder_source_options') }}", {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
             body: JSON.stringify({ order: order }),
           });
         });
@@ -411,6 +425,7 @@
         <div class="settings-source-list__actions">
           {% if col.can_hide %}
           <form method="post" action="{{ url_for('toggle_client_column', key=col.key) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('client-columns') }}
             <button type="submit" class="btn-secondary">{{ 'Show' if not col.visible else 'Hide' }}</button>
           </form>
@@ -437,6 +452,7 @@
       do pick up changes.
     </p>
     <form method="post" action="{{ url_for('update_company_details') }}" class="detail-form settings-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('company-details') }}
       <label>Company name<input type="text" name="name" value="{{ company.name }}" required></label>
       <label>Street address<input type="text" name="street" value="{{ profile.street or '' }}" placeholder="543 Cambie Street, Studio 3"></label>
@@ -472,6 +488,7 @@
       {{ next_number }}
     </p>
     <form method="post" action="{{ url_for('update_invoicing_settings') }}" class="detail-form settings-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('invoicing') }}
       <label>Invoice prefix<input type="text" name="invoice_prefix" value="{{ profile.invoice_prefix }}" maxlength="10" required></label>
       <label>Payment instructions<textarea name="payment_instructions" rows="6" placeholder="Where to send an e-transfer, who to make a cheque out to…">{{ profile.payment_instructions or '' }}</textarea></label>
@@ -541,6 +558,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('update_invoice_appearance') }}" class="invoice-look__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('appearance') }}
       <fieldset class="invoice-look__fieldset">
         <legend class="settings-subheading">Layout</legend>
@@ -670,7 +688,7 @@
         .map(function (item) { return item.dataset.id ? parseInt(item.dataset.id, 10) : item.dataset.key; });
       fetch(list.dataset.reorderUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         body: JSON.stringify({ order: order }),
       });
     });

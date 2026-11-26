@@ -10,8 +10,10 @@ features — this is a module with its own templates, models and services.
 Registered in app.py via `communications.routes.register(app)`.
 
 Every route is @login_required and derives its tenant from
-`current_user.company_id` — never from the URL. The blueprint also
-enforces CSRF on every unsafe request (see security.validate_csrf).
+`current_user.company_id` — never from the URL. CSRF is the host's job:
+app.py's `CSRFProtect` checks every unsafe request app-wide, this
+blueprint's included, and its templates write `{{ csrf_token() }}` in every
+form (S-7).
 """
 
 import re
@@ -34,7 +36,6 @@ from communications.models import (
 from communications.oauth import google_oauth
 from communications.providers.base import ProviderError
 from communications.providers.registry import PROVIDER_LABELS
-from communications.security import csrf_token, validate_csrf
 from communications.services import (
     account_service, audit, calendar_service, email_service, sender_rules,
 )
@@ -73,16 +74,6 @@ def document_attachments_available() -> bool:
     would be computed on every page whether or not the form is on it.
     """
     return _list_client_documents is not None
-
-
-@bp.before_request
-def _protect():
-    """CSRF on every unsafe request into this blueprint, by default.
-
-    A route added below is covered without having to remember a decorator —
-    see security.py.
-    """
-    validate_csrf()
 
 
 def _flash(message: str, category: str = "info", section: str | None = None,
@@ -745,7 +736,7 @@ def download_attachment(attachment_id: int):
 # ---------------------------------------------------------------------------
 # Calendar events. The month view itself is app.py's (orders used to share
 # that grid), but writing an event is this module's job — it goes out to a
-# provider, so it belongs behind the service and inside this blueprint's CSRF.
+# provider, so it belongs behind the service.
 #
 # Both routes take a wall-clock date/time from the form and convert it with
 # _to_utc: the studio types 2pm meaning 2pm where it is, and everything below
@@ -1103,16 +1094,13 @@ def _local_time(value) -> str:
 def register(app) -> None:
     """Attach the module to a Flask app.
 
-    Also exposes csrf_token() to Jinja — module templates call it in every
-    form, and a template global beats threading it through each
-    render_template call — plus the `local_datetime` filter its templates use
-    for every time they print, and `document_attachments_available()` so the
+    Also exposes the `local_datetime` filter its templates use for every
+    time they print, and `document_attachments_available()` so the
     compose form can ask whether the host wired up the attachment picker.
     All registered here rather than in app.py so the module carries what its
     own templates need — and the last one as a *callable*, because
     `set_document_attachments` runs after this does.
     """
-    app.jinja_env.globals.setdefault("csrf_token", csrf_token)
     app.jinja_env.globals.setdefault(
         "document_attachments_available", document_attachments_available
     )

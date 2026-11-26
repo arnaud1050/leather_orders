@@ -16,6 +16,7 @@
      reads its value back out of `form`, so fixing one mistake never means
      retyping everything else. #}
   <form method="post" class="detail-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ return_to }}">
     <label>Client
       <select name="client_id" id="client-select" required>

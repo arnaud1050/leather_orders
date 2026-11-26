@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+from urllib.parse import unquote, urlsplit
 
 # Load .env before ANY other project import. Not stylistic: communications/
 # config.py reads os.environ at *module* level, so loading after that import
@@ -36,6 +37,7 @@ from flask import Flask, render_template, request, redirect, url_for, abort, sen
 from flask_login import (  # noqa: E402
     LoginManager, current_user, login_required, login_user, logout_user,
 )
+from flask_wtf.csrf import CSRFError, CSRFProtect  # noqa: E402
 
 from models import (  # noqa: E402
     Client, Company, Order, OrderLine, OrderType, Payment,
@@ -128,6 +130,10 @@ import showcase.migrations as showcase_migrations  # noqa: E402
 import showcase.routes as showcase_routes  # noqa: E402
 import showcase_adapter  # noqa: E402
 
+# Failed sign-ins, counted in the database so both gunicorn workers share
+# the limit (CO4k). Imported before create_all() so its table exists.
+import login_throttle  # noqa: E402
+
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -154,9 +160,10 @@ if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
 # Set a real SECRET_KEY via the environment in production/Docker — this
 # fallback is only safe for local dev.
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-not-secure")
-# Defence in depth behind the communications blueprint's CSRF tokens: Lax
-# stops the session cookie riding along on cross-site POSTs at all, so a
-# forged form never even reaches the token check.
+# Defence in depth behind the CSRF tokens below: Lax stops the session
+# cookie riding along on cross-*site* POSTs at all. It is not enough on its
+# own — the other *.arnaudrouillot.com subdomains on the same server are
+# same-site, so a page on any of them could still post here with the cookie.
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 # Only over TLS in production. Off by default because local dev is plain
@@ -182,6 +189,18 @@ if os.environ.get("TRUST_PROXY_HEADERS") == "1":
     from werkzeug.middleware.proxy_fix import ProxyFix
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# CSRF on every unsafe request, app-wide (CO4n). Flask-WTF's synchroniser
+# token: `{{ csrf_token() }}` in every POST form, or an `X-CSRFToken`
+# header (read from base.html's <meta name="csrf-token">) on a script's
+# fetch. A route added later is covered without anyone remembering to.
+# No time limit: the token lives as long as the session, because an order
+# page left open over lunch must still save. Exemptions go through
+# `csrf.exempt` with a comment saying why; today there are none — nothing
+# here is posted to by a machine (the showcase website protocol is
+# outbound, kiosk links are GET-only).
+app.config["WTF_CSRF_TIME_LIMIT"] = None
+csrf = CSRFProtect(app)
 
 db.init_app(app)
 communications_routes.register(app)
@@ -937,6 +956,32 @@ def _landing_page() -> str:
     return url_for("timeline_view")
 
 
+def safe_next_path(value):
+    """`value` if it's a path on this site, else None (CO4g).
+
+    `?next=` arrives from whoever built the link, so honouring it as given
+    would make the sign-in page an open redirect: a phishing mail links to
+    our real /login, and the victim lands on a look-alike after typing
+    their password. Only a relative path survives — one leading slash, no
+    scheme, no host. Browsers are generous about what counts as "another
+    host": `//evil`, `/\\evil` and `/<tab>/evil` all leave the site, so a
+    backslash or a control character anywhere is refused outright, and
+    the check is repeated on the percent-decoded form for the encoded
+    spellings of the same tricks.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    for candidate in (value, unquote(value)):
+        if not candidate.startswith("/") or candidate.startswith("//"):
+            return None
+        if "\\" in candidate or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate):
+            return None
+        parts = urlsplit(candidate)
+        if parts.scheme or parts.netloc:
+            return None
+    return value
+
+
 @app.before_request
 def _keep_staff_out_of_tenant_routes():
     """Send platform staff back to /admin from any tenant route.
@@ -1007,11 +1052,20 @@ def login():
         # capitalised address signs in rather than mystifying its owner.
         email = normalise_email(request.form.get("email", ""))
         password = request.form.get("password", "")
+        client_ip = request.remote_addr or ""
+        if login_throttle.is_locked(email, client_ip):
+            # Checked before the password, and for any address at all: a
+            # correct password must be refused here too, and an unknown
+            # address must lock exactly like a real one (CO4k-CO4l).
+            app.logger.warning("Sign-in refused: too many failed attempts")
+            return render_template("login.html", error=login_throttle.LOCKED_MESSAGE,
+                                   email=email, active_view=None), 429
         user = User.query.filter_by(email=email).first()
         if user is None or not user.check_password(password):
             # One message for "no such address" and "wrong password", as
             # before: telling them apart tells a stranger which addresses
             # have accounts on this installation.
+            login_throttle.record_failure(email, client_ip)
             error = "Incorrect email or password."
         elif not user.is_active or (
             user.company is not None and not user.company.is_active
@@ -1023,12 +1077,13 @@ def login():
             # call either way.
             error = "That account is no longer active. Contact your administrator."
         else:
+            login_throttle.clear(email)
             login_user(user)
             track("auth.login")
             # `next` is honoured for a tenant user only. Platform staff have
             # no timeline to be sent back to, and a bookmarked tenant URL
             # would bounce off the guard below into a redirect loop.
-            next_url = request.args.get("next") if user.is_tenant_user else None
+            next_url = safe_next_path(request.args.get("next")) if user.is_tenant_user else None
             return redirect(next_url or _landing_page())
 
     # A refused sign-in comes back with the address still typed; only the
@@ -1058,6 +1113,15 @@ def logout():
 # ---------------------------------------------------------------------------
 
 LEGAL_UPDATED = "4 October 2026"
+
+
+@app.errorhandler(CSRFError)
+def csrf_error(error):
+    """A post refused for a missing or stale CSRF token (CO4n): a 400 that
+    says what to do, rather than Flask's bare "Bad Request". In practice
+    it's a page opened before a sign-out and submitted after, so the advice
+    is to reload it — never a hint at which check failed."""
+    return render_template("errors/csrf.html", active_view=None), 400
 
 
 @app.errorhandler(500)

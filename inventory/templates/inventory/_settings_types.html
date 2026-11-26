@@ -28,11 +28,13 @@
     </span>
     <div class="settings-source-list__actions">
       <form method="post" action="{{ url_for('inventory.toggle_type', inventory_type_id=inventory_type.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('inventory-types') }}
         <button type="submit" class="btn-secondary">{{ 'Unhide' if not inventory_type.is_active else 'Hide' }}</button>
       </form>
       {% if inventory_type.can_delete %}
       <form method="post" action="{{ url_for('inventory.delete_type', inventory_type_id=inventory_type.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('inventory-types') }}
         <button type="submit" class="btn-secondary">Delete</button>
       </form>
@@ -43,6 +45,7 @@
 </ul>
 
 <form method="post" action="{{ url_for('inventory.add_type') }}" class="detail-form settings-source-add">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {{ notice_field('inventory-types') }}
   <label>Add a new type<input type="text" name="label" placeholder="e.g. Leather" required></label>
   <div>
@@ -87,7 +90,7 @@
         .map(function (item) { return parseInt(item.dataset.typeId, 10); });
       fetch("{{ url_for('inventory.reorder_types') }}", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken },
         body: JSON.stringify({ order: order }),
       });
     });

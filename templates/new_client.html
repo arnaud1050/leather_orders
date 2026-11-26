@@ -11,6 +11,7 @@
   </header>
 
   <form method="post" class="detail-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="return_to" value="{{ return_to }}">
     <label>First name<input type="text" name="first_name" required></label>
     <label>Last name<input type="text" name="last_name" required></label>

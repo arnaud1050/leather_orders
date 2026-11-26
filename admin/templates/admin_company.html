@@ -19,6 +19,7 @@
     <h2>Company</h2>
     {{ notice_slot(notice, 'company') }}
     <form method="post" action="{{ url_for('admin.update_company', company_id=company.id) }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('company') }}
       <label>Name<input type="text" name="name" value="{{ company.name }}" required></label>
       <label>Time zone
@@ -54,6 +55,7 @@
       on brings back everything they had in it.
     </p>
     <form method="post" action="{{ url_for('admin.update_company_features', company_id=company.id) }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('features') }}
       <input type="hidden" name="features_shown" value="1">
       {% for key, (label, description) in catalog.items() %}
@@ -86,6 +88,7 @@
       {% endif %}
     </p>
     <form method="post" action="{{ url_for('admin.set_company_active', company_id=company.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('access') }}
       <input type="hidden" name="active" value="{{ '0' if company.is_active else '1' }}">
       <button type="submit" class="btn-secondary">
@@ -116,11 +119,13 @@
         <div class="settings-source-list__actions">
           {% if user.is_active and user.id != current_user.id %}
           <form method="post" action="{{ url_for('admin.impersonate', user_id=user.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('users') }}
             <button type="submit" class="btn-secondary">Sign in as</button>
           </form>
           {% endif %}
           <form method="post" action="{{ url_for('admin.set_user_active', user_id=user.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('users') }}
             <input type="hidden" name="active" value="{{ '0' if user.is_active else '1' }}">
             <button type="submit" class="btn-secondary">
@@ -138,6 +143,7 @@
          input; without it this rendered as bare, unstyled HTML. #}
       <li class="settings-source-list__item">
         <form method="post" action="{{ url_for('admin.reset_password', user_id=user.id) }}" class="detail-form settings-source-add">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {{ notice_field('users') }}
           <label>New password for {{ user.display_name }}
             <input type="password" name="password" autocomplete="new-password"
@@ -151,6 +157,7 @@
 
     {{ notice_slot(notice, 'add-user') }}
     <form method="post" action="{{ url_for('admin.add_user', company_id=company.id) }}" class="detail-form settings-source-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('add-user') }}
       <label>Name<input type="text" name="full_name" placeholder="e.g. Studio Admin"></label>
       <label>Email<input type="email" name="email" autocomplete="off" required></label>

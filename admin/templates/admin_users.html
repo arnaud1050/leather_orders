@@ -36,6 +36,7 @@
         </span>
         <div class="settings-source-list__actions">
           <form method="post" action="{{ url_for('admin.set_user_active', user_id=admin.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('admins') }}
             <input type="hidden" name="active" value="{{ '0' if admin.is_active else '1' }}">
             <button type="submit" class="btn-secondary">
@@ -51,6 +52,7 @@
          see the note in admin_company.html. #}
       <li class="settings-source-list__item">
         <form method="post" action="{{ url_for('admin.reset_password', user_id=admin.id) }}" class="detail-form settings-source-add">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {{ notice_field('admins') }}
           <label>New password for {{ admin.display_name }}
             <input type="password" name="password" autocomplete="new-password"
@@ -64,6 +66,7 @@
 
     {{ notice_slot(notice, 'add-admin') }}
     <form method="post" action="{{ url_for('admin.add_platform_admin') }}" class="detail-form settings-source-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ notice_field('add-admin') }}
       <label>Name<input type="text" name="full_name" placeholder="e.g. Platform Admin"></label>
       <label>Email<input type="email" name="email" autocomplete="off" required></label>
