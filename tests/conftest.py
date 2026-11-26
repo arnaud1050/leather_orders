@@ -316,6 +316,17 @@ def enforce_csrf(_app):
     _app.config["WTF_CSRF_ENABLED"] = False
 
 
+CSRF_VALUES = re.compile(
+    r'(<meta name="csrf-token" content="|name="csrf_token" value=")[^"]+"')
+
+
+def without_csrf_tokens(body: str) -> str:
+    """`body` with every CSRF token blanked, for a test that compares two
+    renders of a page: the signed token carries a timestamp, so two renders
+    a second apart differ by it and by nothing else."""
+    return CSRF_VALUES.sub(lambda m: m.group(1) + '"', body)
+
+
 def csrf_token_for(client, path="/settings/account"):
     """A valid CSRF token for `client`'s session, read off a rendered page
     (base.html's meta tag) — the same path a browser takes."""

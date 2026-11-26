@@ -26,6 +26,7 @@ from models import Client, Order, OrderLine, db
 from communications.sync import email_sync
 
 from tests import fakes
+from tests.conftest import without_csrf_tokens
 
 
 @pytest.fixture
@@ -185,12 +186,15 @@ def test_hiding_does_not_change_a_single_analytics_figure(app, logged_in, client
     takings must not change because somebody tidied a list this morning."""
     _order_for(client_record, item="Card wallet", price=200.0)
     db.session.commit()
-    before = logged_in.get("/analytics").get_data(as_text=True)
+    # The CSRF tokens are blanked: they're signed with a timestamp, so two
+    # renders a second apart differ there and nowhere else.
+    before = without_csrf_tokens(logged_in.get("/analytics").get_data(as_text=True))
 
     client_record.is_hidden = True
     db.session.commit()
 
-    assert logged_in.get("/analytics").get_data(as_text=True) == before
+    after = without_csrf_tokens(logged_in.get("/analytics").get_data(as_text=True))
+    assert after == before
 
 
 # --- coming back (CL21) ---------------------------------------------------
