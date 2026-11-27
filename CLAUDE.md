@@ -304,11 +304,16 @@ suite runs with CSRF off — ask for the `enforce_csrf` fixture to test it.
 `*.arnaudrouillot.com` sites are same-site.
 
 **A Content-Security-Policy is on every response** (`CO4q`,
-`app.CONTENT_SECURITY_POLICY`): everything loads from this origin, Inter
+`app.content_security_policy()`): everything loads from this origin, Inter
 included (`static/assets/fonts/`, not Google Fonts). **Don't add a
 `<script src>`, stylesheet, font or image from another host**: the browser
-will block it silently. `tests/test_csp.py` scans for that, and every e2e
-spec fails on a violation. Inline scripts are still allowed for now.
+will block it silently. **Inline scripts need the request's nonce**:
+write `<script nonce="{{ csp_nonce() }}">`, and never an `onclick=`-style
+attribute or a `javascript:` URL (no nonce can allow those): use
+`data-confirm="…"` on a form or `data-action="back"` on a button
+(`static/assets/js/page-actions.js`), or a listener in a nonced script
+(`CO4r`). `tests/test_csp.py` scans for all of it, and every e2e spec
+fails on a violation.
 
 `app.config["SECRET_KEY"]` reads from the `SECRET_KEY` env var, falling back to an
 insecure dev default (`"dev-not-secure"`) — **must** be set to a real value for any

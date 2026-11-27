@@ -53,7 +53,7 @@
   </div>
 </form>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var list = document.getElementById('inventory-type-list');
     if (!list) return;

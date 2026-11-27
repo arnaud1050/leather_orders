@@ -160,7 +160,7 @@
   </section>
 
 </div>
-<script>
+<script nonce="{{ csp_nonce() }}">
   // "All" / "None" for the area checkboxes — a shortcut for "everything
   // but two" or "only these two". The form still submits as normal.
   document.querySelectorAll('[data-areas]').forEach(function (button) {

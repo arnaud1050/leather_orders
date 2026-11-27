@@ -36,7 +36,10 @@ where adding a `csrf.exempt` gets noticed. `conftest.py`'s per-request hook
 drops Flask-WTF's token cache from `g` alongside Flask-Login's, for the
 same held-open-app-context reason.
 
-**`tests/test_csp.py`** defends `CO4q`, the Content-Security-Policy: the
+**`tests/test_csp.py`** defends `CO4q` and `CO4r`, the Content-Security-Policy
+and its script nonces: each page's inline scripts carry the nonce its own
+header allows, a new one per request, and template scans fail any inline
+`<script>` without `nonce="{{ csp_nonce() }}"` or any `on*=` handler. Also the
 header on a page, the sign-in page, a 404, a static file and a kiosk link;
 the policy's directives pinned (so loosening it means editing the test);
 and a scan of every template for an element that would *load* something

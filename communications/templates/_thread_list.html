@@ -78,7 +78,7 @@
       </form>
       {# Confirmed, unlike Hide: this one changes the studio's real mailbox. #}
       <form method="post" action="{{ url_for('communications.trash_thread', thread_id=thread.id) }}"
-            onsubmit="return confirm('Move this conversation to Gmail\'s Trash? It stays recoverable in Gmail for 30 days.');">
+            data-confirm="Move this conversation to Gmail’s Trash? It stays recoverable in Gmail for 30 days.">
         {{ notice_field('threads') }}
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="return_to" value="{{ return_to }}">

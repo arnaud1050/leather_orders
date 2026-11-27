@@ -2,7 +2,7 @@
    the all-day field toggle, and the guest-invite hint. No template
    variables, so calendar.html and calendar_week.html include it as-is
    rather than each keeping a copy that drifts. #}
-<script>
+<script nonce="{{ csp_nonce() }}">
   document.querySelectorAll('[data-open-modal]').forEach(function (el) {
     el.addEventListener('click', function () {
       var modal = document.getElementById(el.dataset.openModal);

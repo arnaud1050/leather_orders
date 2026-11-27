@@ -182,7 +182,7 @@
   </dialog>
   {% endif %}
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     document.querySelectorAll('[data-open-lifecycle]').forEach(function (el) {
       el.addEventListener('click', function () {
         var modal = document.getElementById(el.dataset.openLifecycle);

@@ -52,7 +52,7 @@
   {% endfor %}
 </ul>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var list = document.getElementById('inventory-column-list');
     if (!list) return;

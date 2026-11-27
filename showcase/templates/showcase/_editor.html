@@ -227,7 +227,7 @@
 {% endif %}
 
 <script src="{{ url_for('static', filename='assets/js/upload-tile.js') }}" defer></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     document.querySelectorAll('[data-open-lifecycle="delete-piece-modal"]').forEach(function (el) {
       el.addEventListener('click', function () {

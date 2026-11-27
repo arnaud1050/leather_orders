@@ -90,7 +90,7 @@
 <p class="detail-note">Every available unit has already been added.</p>
 {% endif %}
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var list = document.getElementById('inventory-unit-list');
     if (!list) return;

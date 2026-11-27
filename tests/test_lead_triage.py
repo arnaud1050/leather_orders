@@ -567,7 +567,9 @@ def test_the_lead_list_offers_hide_and_trash(logged_in, account, lead_thread):
 def test_the_trash_button_is_confirmed(logged_in, account, lead_thread):
     """It changes the studio's real mailbox, unlike Hide."""
     body = logged_in.get("/mail/leads").get_data(as_text=True)
-    assert "onsubmit=\"return confirm(" in body
+    # data-confirm, read by page-actions.js: the CSP runs no inline
+    # onsubmit (CO4r).
+    assert 'data-confirm="Move this conversation to Gmail' in body
 
 
 def test_hidden_threads_are_not_in_the_default_list(logged_in, company, account, lead_thread):

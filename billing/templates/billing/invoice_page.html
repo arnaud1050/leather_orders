@@ -207,7 +207,7 @@
 </div>
 
 {% if not pdf_available %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   document.getElementById('print-invoice').addEventListener('click', function () {
     window.print();
   });

@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+import secrets
 from urllib.parse import unquote, urlsplit
 
 # Load .env before ANY other project import. Not stylistic: communications/
@@ -33,7 +34,7 @@ else:
 from datetime import date, timedelta  # noqa: E402 — must follow load_dotenv
 from calendar import Calendar, month_name  # noqa: E402
 
-from flask import Flask, render_template, request, redirect, url_for, abort, send_file, session  # noqa: E402
+from flask import Flask, render_template, request, redirect, url_for, abort, send_file, session, g  # noqa: E402
 from flask_login import (  # noqa: E402
     LoginManager, current_user, login_required, login_user, logout_user,
 )
@@ -202,18 +203,24 @@ if os.environ.get("TRUST_PROXY_HEADERS") == "1":
 app.config["WTF_CSRF_TIME_LIMIT"] = None
 csrf = CSRFProtect(app)
 
-# Content-Security-Policy on every response (CO4q), set here rather than in
-# nginx because the app knows what its pages load and a test can hold it to
-# that. Everything comes from this origin — Inter included, served from
-# static/assets/fonts — so 'self' is the whole allow-list, with two
-# exceptions: inline <script>/<style> (still 'unsafe-inline': 23 templates
-# carry inline scripts; replacing that with nonces is step 2), and
-# form-action's accounts.google.com, because Settings → Email/Calendar's
-# Connect button is a form whose POST redirects to Google's consent screen,
-# and browsers apply form-action to that redirect.
-CONTENT_SECURITY_POLICY = "; ".join([
+# Content-Security-Policy on every response (CO4q, CO4r), set here rather
+# than in nginx because the app knows what its pages load and a test can
+# hold it to that. Everything comes from this origin — Inter included,
+# served from static/assets/fonts — so 'self' is the whole allow-list, with
+# three exceptions:
+# - an inline <script> runs only if it carries this request's nonce
+#   (`nonce="{{ csp_nonce() }}"`). An injected one can't know it, which is
+#   the point: no 'unsafe-inline' for scripts, and no inline on*= handler
+#   attributes anywhere (static/assets/js/page-actions.js does their jobs);
+# - inline *styles* are still allowed: style="" attributes are everywhere
+#   and the help pages are single self-styled files. A style can't run
+#   code, so this is the cheap trade;
+# - form-action's accounts.google.com, because Settings → Email/Calendar's
+#   Connect button is a form whose POST redirects to Google's consent
+#   screen, and browsers apply form-action to that redirect.
+_CSP_FIXED = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    None,  # script-src, built per request below
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self'",
     "img-src 'self' data: blob:",
@@ -222,13 +229,39 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "base-uri 'self'",
     "form-action 'self' https://accounts.google.com",
     "frame-ancestors 'self'",
-])
+]
+
+
+def content_security_policy(nonce=None):
+    """The policy, with `nonce` allowed for inline scripts if given."""
+    script_src = "script-src 'self'" + (f" 'nonce-{nonce}'" if nonce else "")
+    return "; ".join(script_src if d is None else d for d in _CSP_FIXED)
+
+
+def csp_nonce() -> str:
+    """This request's script nonce, minted on first use. A Jinja global, so
+    templates write `<script nonce="{{ csp_nonce() }}">`."""
+    if "csp_nonce" not in g:
+        g.csp_nonce = secrets.token_urlsafe(18)
+    return g.csp_nonce
+
+
+app.jinja_env.globals["csp_nonce"] = csp_nonce
+
+
+@app.before_request
+def _fresh_csp_nonce():
+    # `g` is per request in production, but not where an app context is held
+    # open across requests (the test suite). A nonce must never repeat.
+    g.pop("csp_nonce", None)
 
 
 @app.after_request
 def _content_security_policy(response):
+    # Only a page that rendered an inline script needs a nonce in its policy.
     # setdefault: a route that needs a different policy can set its own.
-    response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+    response.headers.setdefault(
+        "Content-Security-Policy", content_security_policy(g.get("csp_nonce")))
     return response
 
 db.init_app(app)

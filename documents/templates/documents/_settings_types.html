@@ -55,7 +55,7 @@
   </div>
 </form>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var list = document.getElementById('document-type-list');
     if (!list) return;

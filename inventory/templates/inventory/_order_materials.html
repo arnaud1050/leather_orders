@@ -185,7 +185,7 @@
 </dialog>
 {% endfor %}
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var select = document.getElementById('material-item-select');
     var quantity = document.getElementById('material-quantity');

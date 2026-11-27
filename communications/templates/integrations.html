@@ -52,7 +52,7 @@
             </form>
             {% endif %}
             <form method="post" action="{{ url_for('communications.disconnect_account', account_id=account.id) }}"
-                  onsubmit="return confirm('Disconnect {{ account.email_address }}? Access is revoked at Google and every synced message for this mailbox is deleted from the app.');">
+                  data-confirm="Disconnect {{ account.email_address }}? Access is revoked at Google and every synced message for this mailbox is deleted from the app.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               {{ notice_field('accounts') }}
               <button type="submit" class="btn-secondary">Disconnect</button>

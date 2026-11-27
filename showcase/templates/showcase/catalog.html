@@ -91,7 +91,7 @@
     <p class="cinema__paused" id="cinema-paused" hidden>Paused · tap to look closer</p>
   </div>
 
-  <script type="application/json" id="catalog-data">{{ payload|tojson }}</script>
+  <script nonce="{{ csp_nonce() }}" type="application/json" id="catalog-data">{{ payload|tojson }}</script>
   <script src="{{ url_for('static', filename='assets/js/showcase-catalog.js') }}"></script>
 </body>
 </html>

@@ -135,7 +135,7 @@
   </li>
 </template>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   // The attachment picker. Two dependent dropdowns over one fetch: the
   // client's orders that have documents, each carrying its own document
   // list. Attaching adds a row (and its hidden document_id) to the form;
@@ -292,7 +292,7 @@
 {% endif %}
 
 {% if offer_suggestion %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   // Fills the message box with a draft. Nothing here sends anything — the
   // Send button is still the only thing that does.
   (function () {

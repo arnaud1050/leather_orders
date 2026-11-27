@@ -739,7 +739,8 @@ def publish_piece(company_id, title, visibility="public", photo=True):
 
 
 def payload_of(body: str) -> dict:
-    raw = re.search(r'<script type="application/json" id="catalog-data">(.*?)</script>',
+    # The tag carries the request's CSP nonce first (CO4r).
+    raw = re.search(r'<script [^>]*type="application/json" id="catalog-data">(.*?)</script>',
                     body, re.S).group(1)
     return json.loads(raw)
 

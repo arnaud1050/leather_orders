@@ -356,7 +356,7 @@
       </div>
     </form>
 
-    <script>
+    <script nonce="{{ csp_nonce() }}">
       (function () {
         var list = document.getElementById('source-option-list');
         if (!list) return;
@@ -649,7 +649,7 @@
 
 </div>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   // Column editors (Orders list, Clients list) and Order types: each list
   // names its own reorder route in data-reorder-url, and posts its rows'
   // keys there on drop — data-key strings for columns, data-id integers

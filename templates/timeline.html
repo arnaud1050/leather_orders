@@ -198,7 +198,7 @@
 
 </div>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   document.querySelectorAll('[data-open-client]').forEach(function (el) {
     el.addEventListener('click', function () {
       var modal = document.getElementById('client-modal-' + el.dataset.openClient);

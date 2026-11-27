@@ -149,7 +149,7 @@
     </form>
   </dialog>
 
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     document.querySelectorAll('[data-open-lifecycle]').forEach(function (el) {
       el.addEventListener('click', function () {
         var modal = document.getElementById(el.dataset.openLifecycle);
@@ -247,7 +247,7 @@
 </div>
 
 {% if section == 'orders' and orders %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   // Status filter for this client's own orders table — same localStorage
   // pattern as the main Orders list (orders_list.html), own key so hiding a
   // status here doesn't affect that page or vice versa.
@@ -311,7 +311,7 @@
 {% endif %}
 
 {% if other_source_option %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var checkbox = document.getElementById('source-other-checkbox');
     var detail = document.getElementById('source-other-detail');

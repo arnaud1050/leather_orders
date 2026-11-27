@@ -177,7 +177,7 @@
       {% if link_count %}
       <a class="btn-secondary" href="{{ url_for('showcase.website_link_review') }}">Link imported pieces ({{ link_count }})</a>
       {% endif %}
-      <form method="post" action="{{ url_for('showcase.disconnect_website') }}" onsubmit="return confirm('Delete the website connection? Cards already on the website stay there as they are.');">
+      <form method="post" action="{{ url_for('showcase.disconnect_website') }}" data-confirm="Delete the website connection? Cards already on the website stay there as they are.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {{ notice_field('website') }}
         <button type="submit" class="btn-secondary">Delete</button>
@@ -271,7 +271,7 @@
   </section>
 
 </div>
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     document.querySelectorAll('[data-copy]').forEach(function (button) {
       button.addEventListener('click', function () {

@@ -83,7 +83,7 @@
 
 </div>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   const clientSelect = document.getElementById('client-select');
   const newClientFields = document.getElementById('new-client-fields');
   const newFirstName = newClientFields.querySelector('[name="new_first_name"]');

@@ -90,7 +90,8 @@ date, so the date reads in the company's time zone rather than UTC.
 - **Everything under one path.** The page, photos, logo, service worker and
   manifest all live under `/k/<token>/`, so the worker's scope is exactly
   the link and the token never travels in a query string. `no-referrer`
-  keeps it from reaching the font host.
+  keeps it out of the Referer header if a link on the page is followed
+  (the page loads nothing from another host: fonts are the app's own).
 - **Photos through a kiosk are checked against the catalog** (SC28), not
   just the company: photo ids are sequential, and a valid link mustn't
   open a draft's photos by counting.
