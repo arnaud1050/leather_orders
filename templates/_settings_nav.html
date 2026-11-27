@@ -8,6 +8,7 @@
   <a href="{{ url_for('settings_clients') }}" class="settings-nav__link {{ 'is-active' if section == 'clients' else '' }}">Clients</a>
   <a href="{{ url_for('settings_orders') }}" class="settings-nav__link {{ 'is-active' if section == 'orders' else '' }}">Orders</a>
   <a href="{{ url_for('settings_inventory') }}" class="settings-nav__link {{ 'is-active' if section == 'inventory' else '' }}">Inventory</a>
+  <a href="{{ url_for('settings_costs') }}" class="settings-nav__link {{ 'is-active' if section == 'costs' else '' }}">Costs</a>
   <a href="{{ url_for('settings_invoicing') }}" class="settings-nav__link {{ 'is-active' if section == 'invoicing' else '' }}">Invoicing</a>
   {# Only for a company with the feature (features/, SC1). #}
   {% if has_feature('showcase') %}

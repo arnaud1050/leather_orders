@@ -323,6 +323,15 @@ route, it asserts `Order.total` is unchanged after adding materials or
 Others — the one assertion that would catch this module quietly growing a
 billing side effect.
 
+`tests/test_costing.py` covers `costing/` (`RC*`, map in
+[costing/REQUIREMENTS.md](../costing/REQUIREMENTS.md)). The assertions that
+matter most: revenue on an issued order stays the frozen `issued_subtotal`
+after its lines change (a margin on billed work must not move), a rate change
+leaves logged time at its old rate, the calculator's button only ever *adds*
+a line, analytics counts no order without time, and Showcase can't import
+the module. The arithmetic is tested on plain numbers first, the way a quote
+will call it.
+
 Checked against four deliberate regressions (wrong Nova Scotia rate; dropped
 registration gating; freezing on every save instead of the transition; issued
 orders reading live tax instead of frozen). Each was caught — 2, 4, 1 and 3

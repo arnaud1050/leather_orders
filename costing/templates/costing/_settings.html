@@ -1,0 +1,36 @@
+{# Included from templates/settings.html's "costs" section (app.py's
+   settings_costs()). Context expected: costing_settings, notice. The form
+   posts to costing.update_settings (RC10–RC12). #}
+
+{% from "_save_notice.html" import notice_field, notice_slot %}
+<h2>Labour and overhead</h2>
+{{ notice_slot(notice, 'costs') }}
+<p class="detail-note">
+  What an hour of your time is worth, and what running the studio adds on
+  top. These decide the margin on every order's Costs tab and the price its
+  calculator suggests. None of it is ever shown to a client.
+</p>
+<p class="detail-note">
+  Time already logged keeps the rate it was logged at, so changing the rate
+  only affects time logged from now on. Overhead and the target margin are
+  read fresh everywhere, past orders included.
+</p>
+<form method="post" action="{{ url_for('costing.update_settings') }}" class="detail-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {{ notice_field('costs') }}
+  <label>Hourly labour rate ($)
+    <input type="number" name="hourly_rate" min="0" max="10000" step="0.01" inputmode="decimal" required
+      value="{{ '%.2f'|format(costing_settings.hourly_rate) }}">
+  </label>
+  <label>Overhead (% of materials and labour)
+    <input type="number" name="overhead_percent" min="0" max="1000" step="0.1" inputmode="decimal" required
+      value="{{ '%g'|format(costing_settings.overhead_percent) }}">
+  </label>
+  <label>Target margin (%)
+    <input type="number" name="target_margin_percent" min="0" max="95" step="1" inputmode="decimal" required
+      value="{{ '%g'|format(costing_settings.target_margin_percent) }}">
+  </label>
+  <div>
+    <button type="submit" class="btn-primary">Save costs settings</button>
+  </div>
+</form>

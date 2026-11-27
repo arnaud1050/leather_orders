@@ -169,6 +169,40 @@ SAMPLE_INVOICES = [
 ]
 
 
+# Real costs (costing/): a labour rate, some materials and time logged, so
+# the Costs tab and the Margins section of /analytics have something to
+# say. The figures are picked to tell the story the feature exists for: the
+# briefcase made a thin margin, the wallet lost money once the maker's time
+# is counted, the duffel is on track. Placeholders, like every price here.
+SAMPLE_COSTING = {"hourly_rate": 45.0, "overhead_percent": 15.0, "target_margin_percent": 35.0}
+
+# order id -> one-off material costs, (description, cost). Recorded as
+# inventory "Other" costs, which draw no stock: the sample set has no
+# inventory items to draw from.
+SAMPLE_MATERIAL_COSTS = {
+    1: [("Horween Chromexcel, 9 sq ft", 180.00), ("Solid brass hardware set", 45.00)],
+    2: [("Waxed canvas + veg-tan trim", 140.00)],
+    3: [("Calf leather offcuts + thread", 25.00)],
+    4: [("Bridle leather + buckles", 110.00)],
+    12: [("Veg-tan + brass corners", 30.00)],
+}
+
+# order id -> time logged, (day offset, minutes, note). Offsets are <= 0 and
+# never before the order's start: time can't be logged on a day that hasn't
+# happened, nor before the work began.
+SAMPLE_TIME = {
+    1: [(-18, 180, "Pattern and cutting"), (-12, 240, "Stitching"), (-6, 120, "Edges and hardware")],
+    2: [(-10, 150, "Cutting"), (-5, 210, "Assembly")],
+    3: [(-4, 120, "Cutting and stitching"), (-1, 90, "Edges and foil")],
+    4: [(-1, 120, "Pattern")],
+    12: [(-3, 90, "Cutting and corners")],
+}
+
+# order id -> the calculator's inputs (hours, materials or None, margin or
+# None) — the rush messenger bag, priced against its estimate.
+SAMPLE_ESTIMATES = {4: (10.0, None, None)}
+
+
 def seed_sample_data(
     company_id: int | None = None,
     today: date | None = None,
@@ -275,6 +309,30 @@ def seed_sample_data(
             company.id, invoice, spec["status"], billable,
             notes=spec["notes"] or "", due_date=due_date,
             display_name=company.name,
+        )
+
+    # Costs, through each module's own API like the invoices above. Time is
+    # logged after the rate is set, so every entry carries it (RC4).
+    from costing import services as costing_service
+    from inventory import services as inventory_service
+    from models import User
+
+    costing_service.update_settings(company.id, **SAMPLE_COSTING)
+    maker = (User.query.filter_by(company_id=company.id, is_active=True)
+             .order_by(User.id).first())
+    for order_id, costs in SAMPLE_MATERIAL_COSTS.items():
+        for description, cost in costs:
+            inventory_service.add_other(company.id, order_id, description, cost)
+    for order_id, entries in SAMPLE_TIME.items():
+        for offset, minutes, note in entries:
+            costing_service.add_entry(
+                company.id, order_id, user_id=maker.id if maker else None,
+                worked_on=day(offset), minutes=minutes, note=note,
+            )
+    for order_id, (hours, material_cost, margin) in SAMPLE_ESTIMATES.items():
+        costing_service.save_estimate(
+            company.id, order_id, hours=hours, material_cost=material_cost,
+            target_margin_percent=margin,
         )
 
     db.session.commit()

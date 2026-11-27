@@ -24,7 +24,7 @@ from usage.store import UsageEvent
 from tests.conftest import sign_in
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-MODULES = ["ai", "billing", "communications", "documents", "inventory"]
+MODULES = ["ai", "billing", "communications", "costing", "documents", "inventory"]
 
 
 @pytest.fixture

@@ -42,6 +42,7 @@ VIEW_ENDPOINTS: dict[str, tuple[str, dict]] = {
     "analytics": ("view.analytics", {}),
     "billing.invoice_list": ("view.invoices_list", {}),
     "inventory.inventory_list": ("view.inventory", {}),
+    "order_costs": ("view.order_costs", {}),
     "communications.leads": ("view.leads", {}),
     "communications.client_emails": ("view.client_emails", {}),
     "order_lifecycle_help": ("view.help", {"page": "orders"}),

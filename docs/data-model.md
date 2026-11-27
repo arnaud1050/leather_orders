@@ -109,7 +109,10 @@ Payment(id, order_id, amount, paid_date, method, reference)     # one order can 
 it, and is documented there — `Invoice` / `InvoiceTaxLine` / `BillingProfile` in
 [billing/](../billing/CLAUDE.md) (note `Invoice.subject_id`, not `order_id`),
 `Document` / `DocumentType` in [documents/](../documents/CLAUDE.md),
-`InventoryItem` and friends in [inventory/](../inventory/CLAUDE.md), and the
+`InventoryItem` and friends in [inventory/](../inventory/CLAUDE.md),
+`CostingSettings` / `TimeEntry` / `OrderEstimate` in
+[costing/](../costing/CLAUDE.md) (the rate is snapshotted on each time
+entry; margins are never stored), and the
 mail/calendar tables in [communications/](../communications/CLAUDE.md).
 The invoice rules below still describe behaviour the core app depends on
 (`Order.total` delegates into billing), which is why they're documented here.
@@ -393,6 +396,12 @@ below), not by anything on `Order`/`OrderLine`. Nothing there ever writes to
 `Order.total`; it's cost-tracking only, surfaced on the order page's own
 Materials tab.
 
+**What an order *earned* against what it cost** is the `costing/` module's
+Costs tab: `Order.pre_tax_total` (billing's subtotal — pre-tax, net of the
+discount, the frozen `issued_subtotal` once invoiced, OR5a) minus inventory's
+material cost, labour from time entries and overhead. Like the material
+cost, none of it is stored or touches what's billed.
+
 **Sales tax — `PROVINCE_TAXES` / `taxes_for()` in `models.py`:** tax is charged at
 the **client's** province's rate (destination-based, which is how place-of-supply
 works for goods shipped to a customer), and prices are **tax-exclusive** — a line's
@@ -528,6 +537,11 @@ It writes to whatever database the app itself would use, so set `DATABASE_URL` i
 the environment first (**before** the script imports `app` — hard rule 13) to point
 it at a throwaway file rather than your real one. It refuses to run if the company
 already has clients: it fills an empty install, it never resets a populated one.
+It also sets a labour rate and overhead, adds one-off material costs and time
+entries to five orders, and an estimate to one, so the Costs tab and the
+Margins section of `/analytics` have something to show (`SAMPLE_COSTING`,
+`SAMPLE_TIME`, …) — time entries are day offsets too, never after the seed
+day or before their order's start.
 
 **The dates are computed, not written down.** Every `start`, `due`, payment date and
 invoice issue date in `sample_data.py` is stored as a *day offset* from the day the

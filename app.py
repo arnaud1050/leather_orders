@@ -104,6 +104,13 @@ import inventory.routes as inventory_routes  # noqa: E402
 from inventory import services as inventory_service  # noqa: E402
 from inventory.config import UNIT_LABELS as INVENTORY_UNIT_LABELS  # noqa: E402
 from inventory.config import UNIT_WHOLE as INVENTORY_UNIT_WHOLE  # noqa: E402
+# Real costs per order (costing/__init__.py): time logged, the labour rate,
+# margins and the pricing calculator. Imports only `db`; this file hands it
+# revenue (from billing) and material cost (from inventory) as numbers.
+import costing.migrations as costing_migrations  # noqa: E402
+import costing.routes as costing_routes  # noqa: E402
+from costing import pricing as costing_pricing  # noqa: E402
+from costing import services as costing_service  # noqa: E402
 
 # Feature-usage events (usage/CLAUDE.md). `track()` only queues; the store's
 # after_request hook below writes the queue, and can never fail the request.
@@ -325,6 +332,9 @@ with app.app_context():
     # ADDED_COLUMNS for the columns added to inventory_items since it
     # shipped, and the InventoryUnit backfill.
     inventory_migrations.run_migrations()
+    # Same arrangement; every costing table is new, so a no-op until its
+    # first column migration (hard rule 12).
+    costing_migrations.run_migrations()
     # Same arrangement again: its own table (ai_settings), brand new, so
     # ADDED_COLUMNS is empty and the call is a no-op — it's wired up now so
     # this module's first column migration lands in its own file rather than
@@ -515,6 +525,7 @@ def get_order_or_404(order_id: int) -> Order:
 
 documents_routes.register(app, resolve_order=get_order_or_404)
 inventory_routes.register(app, resolve_order=get_order_or_404)
+costing_routes.register(app, resolve_order=get_order_or_404)
 # TIME_ZONES is handed in rather than imported: admin/ can't import this
 # file without a circular import, and the list belongs to the app.
 admin_routes.register(app, time_zones=TIME_ZONES)
@@ -1825,7 +1836,57 @@ ANALYTICS_SECTIONS = {
     "clients": ("Clients", ("avg_value", "top_clients", "sources")),
     "revenue": ("Revenue", ("total_revenue", "revenue_ytd", "outstanding",
                             "by_method", "tax_ytd")),
+    # Real costs (costing RC30–RC33): only orders with time logged.
+    "margins": ("Margins", ("margin_ytd", "hourly_ytd", "margin_by_type")),
 }
+
+
+def _margin_figures(company_id: int, year: int) -> dict:
+    """Margin and earned-per-hour for this year's orders **with time
+    logged** (RC30–RC33).
+
+    An order with no time would count its labour as free and flatter every
+    figure here, so it's left out rather than guessed at — the page says
+    so. "This year" is the order's due date; cancelled orders are out (no
+    work was sold). Revenue is the pre-tax price, frozen once invoiced
+    (RC6), materials come from inventory, and labour is each entry's own
+    snapshotted rate. Totals are summed before dividing (pricing.combine),
+    so a big order weighs more than a small one.
+    """
+    labour = costing_service.labour_by_order(company_id)
+    if not labour:
+        return {"margin_total": None, "margin_by_type": [], "margin_orders": 0}
+    overhead_percent = costing_service.settings_for(company_id).overhead_percent
+    orders = (
+        Order.query.join(Client)
+        .filter(Client.company_id == company_id, Order.id.in_(list(labour)),
+                Order.status != "cancelled")
+        .all()
+    )
+    by_type: dict[str, list] = {}
+    rows = []
+    for order in orders:
+        if order.due.year != year:
+            continue
+        minutes, labour_cost = labour[order.id]
+        row = costing_pricing.breakdown(
+            revenue=order.pre_tax_total,
+            material_cost=inventory_service.total_material_cost(order.id),
+            labour_cost=labour_cost, hours=minutes / 60,
+            overhead_percent=overhead_percent,
+        )
+        rows.append(row)
+        label = order.order_type.label if order.order_type else "No type"
+        by_type.setdefault(label, []).append(row)
+    return {
+        "margin_total": costing_pricing.combine(rows) if rows else None,
+        "margin_by_type": sorted(
+            ((label, costing_pricing.combine(group), len(group))
+             for label, group in by_type.items()),
+            key=lambda entry: entry[1].revenue, reverse=True,
+        ),
+        "margin_orders": len(rows),
+    }
 
 
 def _analytics_layout_for(company_id: int) -> list[dict]:
@@ -2410,6 +2471,83 @@ def order_materials(order_id: int):
     )
 
 
+@app.route("/orders/<int:order_id>/costs")
+@login_required
+def order_costs(order_id: int):
+    """The order page's "Costs" tab: time logged, the margin, and the
+    pricing calculator (costing RC*). Internal only — what the client is
+    billed is still the Billing tab's lines.
+
+    This route is where the three modules meet without knowing each other:
+    revenue comes from billing (the frozen figure once invoiced), material
+    cost from inventory, and costing gets both as plain numbers.
+    """
+    order = get_order_or_404(order_id)
+    return_to = request.args.get("return_to") or url_for("timeline_view")
+    company_id = current_user.company_id
+    material_cost = inventory_service.total_material_cost(order.id)
+    costs = costing_service.order_costs(
+        company_id, order.id, revenue=order.pre_tax_total, material_cost=material_cost)
+    estimate = costing_service.estimate_for(order.id)
+    suggestion = costing_service.estimate_suggestion(
+        company_id, order.id, material_cost_on_order=material_cost)
+    settings = costing_service.settings_for(company_id)
+    user_names = {
+        u.id: u.full_name or u.email
+        for u in User.query.filter_by(company_id=company_id)
+    }
+    return render_template(
+        "order_page.html",
+        section="costs",
+        order=order,
+        time_entries=costing_service.list_entries(order.id),
+        user_names=user_names,
+        costs=costs,
+        material_cost=material_cost,
+        estimate=estimate,
+        suggestion=suggestion,
+        costing_settings=settings,
+        today=date.today(),
+        notice=_take_order_notice(),
+        return_to=return_to,
+        back_label=back_label(return_to),
+        active_view=None,
+    )
+
+
+@app.route("/orders/<int:order_id>/costs/suggested-line", methods=["POST"])
+@login_required
+def add_suggested_line(order_id: int):
+    """Put the calculator's price on the order as a **new** line (RC23).
+
+    Never edits a line that's there: an existing price only changes when
+    someone deletes and re-adds it on the Billing tab, where they can see
+    it. The amount is whatever the form sends — the page prefills the
+    suggestion, or the difference when the order already has lines, and the
+    person can change either before pressing the button. Locked with the
+    other lines once the invoice is out (OR7a).
+    """
+    order = get_order_or_404(order_id)
+    return_to = request.form.get("return_to") or url_for("order_costs", order_id=order.id)
+    if order.is_issued:
+        _refuse_locked_lines(order)
+        return redirect(return_to)
+    description = " ".join(request.form.get("description", "").split())[:200]
+    unit_price = _parse_amount(request.form.get("unit_price"))
+    if not description or unit_price is None or unit_price <= 0:
+        _flash_order_notice("Give the line a description and an amount above $0.")
+        return redirect(return_to)
+    db.session.add(OrderLine(
+        order_id=order.id, description=description, quantity=1,
+        unit_price=round(unit_price, 2), sort_order=len(order.lines),
+    ))
+    db.session.commit()
+    track("order.line_added", source="calculator")
+    _flash_order_notice(
+        f"Added “{description}” at ${unit_price:,.2f} to the order's lines.", "success")
+    return redirect(return_to)
+
+
 @app.route("/orders/<int:order_id>/showcase")
 @login_required
 def order_showcase(order_id: int):
@@ -2501,6 +2639,8 @@ def delete_order(order_id: int):
         documents_service.delete(document)
     for other in inventory_service.list_others_for_order(order.id):
         inventory_service.delete_other(order.id, other.id)
+    # Time logged on a tentative order (a design consult, say) goes with it.
+    costing_service.delete_for_order(order.id)
 
     db.session.delete(order)
     db.session.commit()
@@ -2899,6 +3039,22 @@ def settings_inventory():
         # visibility back on, so a hidden column still needs its row (same as
         # settings_orders' order_columns).
         inventory_columns=inventory_service.list_columns(current_user.company_id),
+        notice=_take_settings_notice(),
+        active_view="settings",
+    )
+
+
+@app.route("/settings/costs")
+@login_required
+def settings_costs():
+    """Labour rate, overhead and default target margin (costing RC10). The
+    form and its route are costing's; this page just frames them."""
+    settings = costing_service.settings_for(current_user.company_id)
+    return render_template(
+        "settings.html",
+        section="costs",
+        company=db.session.get(Company, current_user.company_id),
+        costing_settings=settings,
         notice=_take_settings_notice(),
         active_view="settings",
     )
@@ -3650,6 +3806,7 @@ def analytics():
             tax_collected_ytd, key=lambda pair: pair[1], reverse=True
         ),
         layout=_analytics_layout_for(current_user.company_id),
+        **_margin_figures(company_id, this_year),
         active_view="analytics",
     )
 

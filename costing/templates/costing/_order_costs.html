@@ -1,0 +1,195 @@
+{% from "_icons.html" import icon_trash %}
+{% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+{# Included from templates/order_page.html's "costs" section (app.py's
+   order_costs()). Context expected: order, time_entries (TimeEntry rows),
+   user_names ({user_id: name}), costs (services.OrderCosts), material_cost
+   (inventory's total for this order), estimate (OrderEstimate or None),
+   suggestion (pricing.Suggestion or None), costing_settings, today, notice.
+
+   Internal only: nothing on this tab changes what the client is billed
+   except the calculator's "Add as a line item", which adds a new line and
+   never edits one (RC23). #}
+
+{% macro duration(minutes) -%}
+{%- set h = (minutes // 60)|int -%}{%- set m = (minutes % 60)|int -%}
+{{ h }}h{% if m %} {{ '%02d'|format(m) }}m{% endif %}
+{%- endmacro %}
+{% macro money(value) -%}
+{%- if value < 0 %}&minus;{% endif %}${{ '{:,.2f}'.format(value|abs) }}
+{%- endmacro %}
+
+{{ page_notice(notice, ['time', 'pricing']) }}
+{% set b = costs.breakdown %}
+
+<section class="detail-lines">
+  <h2>Time</h2>
+  {{ notice_slot(notice, 'time') }}
+  <p class="detail-note">
+    Internal cost tracking only — never shown to the client. Each entry keeps
+    the hourly rate in force when it was logged, so changing the rate later
+    doesn't rewrite what this order cost. Today's rate is
+    {{ money(costing_settings.hourly_rate) }}/h, set in
+    <a href="{{ url_for('settings_costs') }}">Settings → Costs</a>.
+  </p>
+  {% if not costing_settings.hourly_rate %}
+  <p class="warning-note">
+    No hourly rate is set yet, so time logged now counts as $0 of labour.
+    Set one in <a href="{{ url_for('settings_costs') }}">Settings → Costs</a> first.
+  </p>
+  {% endif %}
+
+  {% if time_entries %}
+  <ul class="doc-list">
+    {% for entry in time_entries %}
+    <li class="doc-list__item">
+      <span class="doc-list__label">{{ entry.worked_on.strftime('%b') }} {{ entry.worked_on.day }}, {{ entry.worked_on.year }} &middot; {{ duration(entry.minutes) }}</span>
+      <span class="doc-list__filename">
+        {{ user_names.get(entry.user_id, 'Someone') }} &middot; {{ money(entry.hourly_rate) }}/h{% if entry.note %} &middot; {{ entry.note }}{% endif %}
+      </span>
+      <span class="doc-list__amount">{{ money(entry.labour_cost) }}</span>
+      <div class="doc-list__actions">
+        <form method="post" action="{{ url_for('costing.delete_time', order_id=order.id, entry_id=entry.id) }}" class="icon-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
+          <button type="submit" class="icon-btn icon-btn--danger" title="Delete" aria-label="Delete this time entry">{{ icon_trash() }}</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="line-totals">
+    <p class="line-totals__total"><span>Time logged</span> <strong>{{ duration(costs.minutes) }} &middot; {{ money(b.labour_cost) }}</strong></p>
+  </div>
+  {% else %}
+  <p class="detail-note">No time logged on this order yet.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('costing.add_time', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ notice_field('time') }}
+    <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
+    <label>Date<input type="date" name="worked_on" value="{{ today.isoformat() }}" required></label>
+    <label>Hours<input type="number" name="hours" min="0" max="24" step="0.25" inputmode="decimal" placeholder="0"></label>
+    <label>Minutes<input type="number" name="minutes" min="0" max="59" step="1" inputmode="numeric" placeholder="0"></label>
+    <label>Note (optional)<input type="text" name="note" maxlength="200" placeholder="e.g. Cutting and edge finishing"></label>
+    <div>
+      <button type="submit" class="btn-primary">Log time</button>
+    </div>
+  </form>
+</section>
+
+<section class="detail-lines">
+  <h2>Margin</h2>
+  <div class="client-stats">
+    <div class="client-stats__item">
+      <span class="client-stats__value">{{ '%.1f'|format(b.margin_percent) ~ '%' if b.margin_percent is not none else '—' }}</span>
+      <span class="client-stats__label">Margin</span>
+    </div>
+    <div class="client-stats__item">
+      <span class="client-stats__value">{{ money(b.profit) }}</span>
+      <span class="client-stats__label">Profit</span>
+    </div>
+    <div class="client-stats__item">
+      <span class="client-stats__value">{{ money(b.effective_hourly) ~ '/h' if b.effective_hourly is not none else '—' }}</span>
+      <span class="client-stats__label">Earned per hour</span>
+    </div>
+  </div>
+
+  <div class="line-totals">
+    <p><span>Price before tax{% if order.is_issued %}, as invoiced{% endif %}</span> <strong>{{ money(b.revenue) }}</strong></p>
+    <p><span>Materials (<a href="{{ url_for('order_materials', order_id=order.id, return_to=return_to) }}">Materials tab</a>)</span> <strong>&minus;{{ money(b.material_cost) }}</strong></p>
+    <p><span>Labour, {{ duration(costs.minutes) }}</span> <strong>&minus;{{ money(b.labour_cost) }}</strong></p>
+    <p><span>Overhead ({{ '%g'|format(costing_settings.overhead_percent) }}% of materials and labour)</span> <strong>&minus;{{ money(b.overhead) }}</strong></p>
+    <p class="line-totals__total"><span>Profit</span> <strong>{{ money(b.profit) }}</strong></p>
+  </div>
+
+  {% if not costs.has_time %}
+  <p class="detail-note">
+    No time is logged yet, so this margin counts no labour and reads better
+    than the real one. "Earned per hour" appears once there's time to divide by.
+  </p>
+  {% elif costs.under_target %}
+  <p class="warning-note">
+    At your target margin of {{ '%g'|format(costs.target_margin_percent) }}%, this order
+    should have been priced at {{ money(costs.should_have_charged) }} before tax —
+    {{ money(costs.should_have_charged - b.revenue) }} more than it is.
+  </p>
+  {% else %}
+  <p class="detail-note">
+    At or above your target margin of {{ '%g'|format(costs.target_margin_percent) }}%
+    (which needed {{ money(costs.should_have_charged) }} before tax).
+  </p>
+  {% endif %}
+</section>
+
+<section class="detail-lines">
+  <h2>Pricing</h2>
+  {{ notice_slot(notice, 'pricing') }}
+  <p class="detail-note">
+    Price the work before it's done: the hours you expect, at today's rate,
+    plus materials, plus overhead, with your target margin on top. Leave
+    Materials empty to use what's on the Materials tab
+    ({{ money(material_cost) }}), and the margin empty for your default
+    ({{ '%g'|format(costing_settings.target_margin_percent) }}%).
+  </p>
+  <form method="post" action="{{ url_for('costing.save_estimate', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ notice_field('pricing') }}
+    <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
+    <label>Estimated hours<input type="number" name="hours" min="0" step="0.25" inputmode="decimal" required
+      value="{{ '%g'|format(estimate.hours) if estimate else '' }}"></label>
+    <label>Materials ($)<input type="number" name="material_cost" min="0" step="0.01" inputmode="decimal"
+      placeholder="{{ '%.2f'|format(material_cost) }}"
+      value="{{ '%.2f'|format(estimate.material_cost) if estimate and estimate.material_cost is not none else '' }}"></label>
+    <label>Target margin (%)<input type="number" name="target_margin_percent" min="0" max="95" step="1" inputmode="decimal"
+      placeholder="{{ '%g'|format(costing_settings.target_margin_percent) }}"
+      value="{{ '%g'|format(estimate.target_margin_percent) if estimate and estimate.target_margin_percent is not none else '' }}"></label>
+    <div>
+      <button type="submit" class="btn-primary">Work out price</button>
+    </div>
+  </form>
+
+  {% if suggestion %}
+  <div class="line-totals">
+    <p><span>Labour, {{ '%g'|format(suggestion.hours) }}h at {{ money(suggestion.hourly_rate) }}/h</span> <strong>{{ money(suggestion.labour_cost) }}</strong></p>
+    <p><span>Materials</span> <strong>{{ money(suggestion.material_cost) }}</strong></p>
+    <p><span>Overhead</span> <strong>{{ money(suggestion.overhead) }}</strong></p>
+    <p><span>Cost</span> <strong>{{ money(suggestion.cost) }}</strong></p>
+    <p class="line-totals__total"><span>Suggested price, {{ '%g'|format(suggestion.target_margin_percent) }}% margin</span> <strong>{{ money(suggestion.price) }}</strong></p>
+    <p><span>Priced at now, before tax</span> <strong>{{ money(b.revenue) }}</strong></p>
+  </div>
+
+  {% set gap = suggestion.price - b.revenue %}
+  {% if gap > 0.005 %}
+  <p class="warning-note">
+    Priced {{ money(gap) }} below the suggestion.
+  </p>
+  {% else %}
+  <p class="detail-note">Priced at or above the suggestion.</p>
+  {% endif %}
+
+  {% if order.is_issued %}
+  <p class="detail-note">
+    Invoice {{ order.invoice.number }} has been {{ 'voided' if order.invoice.status == 'void' else 'sent' }},
+    so no line can be added. To change the price, set the invoice back to Draft first.
+  </p>
+  {% elif gap > 0.005 %}
+  {# Adds a line and never edits one. With lines already on the order the
+     amount offered is the difference, so the total lands on the suggestion
+     rather than double-counting; either way it's an editable field, seen
+     before it's saved. #}
+  <form method="post" action="{{ url_for('add_suggested_line', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ notice_field('pricing') }}
+    <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
+    <label>Description<input type="text" name="description" maxlength="200" required
+      value="{{ order.item if not order.lines else 'Additional work' }}"></label>
+    <label>Amount<input type="number" name="unit_price" min="0.01" step="0.01" required
+      value="{{ '%.2f'|format(suggestion.price if not order.lines else gap) }}"></label>
+    <div>
+      <button type="submit" class="btn-primary">Add as a line item</button>
+    </div>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>

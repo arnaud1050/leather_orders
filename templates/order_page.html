@@ -17,6 +17,9 @@
   <nav class="settings-nav">
     <a href="{{ url_for('order_page', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'details' else '' }}">Details</a>
     <a href="{{ url_for('order_materials', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'materials' else '' }}">Materials</a>
+    {# Owned by costing/: what the order really cost — time, margin, the
+       pricing calculator. Internal only (RC40). #}
+    <a href="{{ url_for('order_costs', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'costs' else '' }}">Costs</a>
     <a href="{{ url_for('order_billing', order_id=order.id, return_to=return_to) }}" class="settings-nav__link {{ 'is-active' if section == 'billing' else '' }}">Billing</a>
     {# Owned by showcase/ and sold per company: only for a delivered order
        of an allowed type, or one that already has a piece (SC6). The purple
@@ -170,7 +173,7 @@
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <h2 class="modal__title">Delete this order?</h2>
       <p class="modal__subtitle">{{ order.item }} — {{ order.client.name }}</p>
-      <p class="modal__hint">It will be removed completely, along with its line items and documents. Nothing is kept. If you want a record of it, cancel it instead.</p>
+      <p class="modal__hint">It will be removed completely, along with its line items, documents and any time logged on it. Nothing is kept. If you want a record of it, cancel it instead.</p>
       <p class="modal__hint">Stock isn't affected — an order with materials drawn against it can't reach this point.</p>
       <div class="modal__actions">
         <div class="modal__buttons">
@@ -217,6 +220,10 @@
   {% elif section == 'materials' %}
 
   {% include "inventory/_order_materials.html" %}
+
+  {% elif section == 'costs' %}
+
+  {% include "costing/_order_costs.html" %}
 
   {% elif section == 'showcase' %}
 

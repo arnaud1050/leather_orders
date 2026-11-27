@@ -661,6 +661,11 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   **tax-inclusive** (delegating to `billing` for the tax calculation) and is
   what every consumer reads: the timeline sort, `Client.lifetime_value`, the
   orders list, the invoice list.
+- **OR5a.** `Order.pre_tax_total` is what the order earns the studio:
+  before tax, net of its discount, and the invoice's frozen
+  `issued_subtotal` once the invoice is sent or void — billing's own
+  subtotal, never the lines re-added. It's the revenue a margin is measured
+  against (costing RC6).
 - **OR6.** The new-order form takes a single **Price** field and turns it
   into the order's first `OrderLine` on creation; splitting an order into
   multiple lines happens afterward on the full order page's Billing tab.
@@ -972,9 +977,12 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
     (`client-orders-hidden-statuses`), independent of `/orders`'s.
   - **Invoice** is a column `/orders` doesn't have — the order's invoice
     number, linked, or an em dash when it has none.
-- **MOD4.** The full order page has three tabs — **Details → Materials →
-  Billing** — same sub-nav shape; the bare `/orders/<id>` URL stays on
-  Details for backward-link compatibility.
+- **MOD4.** The full order page has four tabs — **Details → Materials →
+  Costs → Billing** — same sub-nav shape; the bare `/orders/<id>` URL stays on
+  Details for backward-link compatibility. Costs (`/orders/<id>/costs`) is
+  the `costing/` module's: time logged, the margin and the pricing
+  calculator (`costing/REQUIREMENTS.md`). A fifth, Showcase, appears per
+  company (showcase SC6).
 - **MOD5.** Every cross-page link from a modal or list appends
   `?return_to={{ request.path }}`; both edit forms carry it as a hidden
   field; the corresponding routes redirect there after saving rather than
@@ -1049,7 +1057,9 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   `/settings/general` so existing bookmarks/links to `/settings` keep
   working.
 - **SET2.** Categories are real routes, not same-page tabs:
-  **General → Orders → Inventory → Clients → Invoicing → Integrations**
+  **General → Orders → Inventory → Costs → Clients → Invoicing → Integrations**
+  (Costs, the labour rate, overhead and target margin, is `costing`'s —
+  costing RC10–RC11)
   (the last two owned by `billing`/`communications` respectively). All
   render the same `settings.html`, switched on a `section` context var.
 - **SET3.** `/settings/general` exposes only the company's time zone
@@ -1109,6 +1119,12 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   company last saved appears at the end of its list, one since removed from
   the app silently drops out, and an unparseable or empty blob falls back to
   the canonical order rather than erroring.
+- **AN13.** A third section, **Margins** (margin YTD, earned per hour YTD,
+  margin by order type), counts **only orders with time logged**, due this
+  year and not cancelled, and says so on the page. Its rules are
+  `costing/REQUIREMENTS.md` RC30–RC33; revenue there is the pre-tax price
+  (OR5a), not the payments AN5 counts, because a margin is about what the
+  work was sold for, not what has been collected yet.
 
 ## 14. Explicit non-requirements
 
@@ -1237,6 +1253,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | OR3a | `test_order_page_switches_between_pickup_and_shipped`, `test_order_page_shows_the_current_choice`, `test_a_form_without_the_radios_leaves_picked_up_alone`, `test_new_order_records_the_choice`, `test_new_order_refuses_a_missing_choice`, `test_new_order_form_preselects_neither` (`tests/test_place_of_supply.py`) |
 | OR4 | — gap — |
 | OR5 | `test_order_total_with_no_tax_is_the_sum_of_its_lines` (tax-inclusive delegation itself is `tests/test_invoicing.py`'s territory) |
+| OR5a | `test_revenue_is_pre_tax_and_net_of_the_discount`, `test_an_issued_order_keeps_its_invoiced_revenue_when_lines_change`, `test_a_draft_invoice_still_follows_the_lines` (`tests/test_costing.py`) |
 | OR6 | `test_new_order_creates_a_single_line_from_price` |
 | OR6a | `test_a_payment_amount_that_is_not_a_finite_number_is_ignored`, `test_a_line_price_that_is_not_a_finite_number_is_ignored` (both parametrized over the `inf`/`nan` spellings `float()` accepts) |
 | OR7 | *(non-requirement — see N1)* |
@@ -1290,6 +1307,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | AN7 | `test_analytics_method_breakdown_sorted_by_amount_descending` |
 | AN8 | `test_analytics_outstanding_counts_invoiced_work_only`, `test_analytics_outstanding_drops_an_invoice_once_it_is_paid`, `test_analytics_outstanding_excludes_a_void_invoice` — one per clause of the predicate (issued, unsettled, not void), each reading the Outstanding card's own value rather than searching the page for a figure another card also renders |
 | AN9 | `test_analytics_tax_billed_ytd_shows_frozen_tax_for_the_current_year`, `test_analytics_tax_billed_ytd_excludes_invoices_issued_in_prior_years`; the underlying window is `tests/test_invoicing.py::test_tax_collected_windows_on_the_issued_date` |
+| AN13 | `test_analytics_counts_only_orders_with_time`, `test_analytics_margins_ignore_another_tenant`, `test_analytics_with_no_time_anywhere_still_renders` (`tests/test_costing.py`) |
 
 The client-side rows that used to read "— gap —" for this reason (TL7–TL9,
 TL11, LST4–LST5, MOD1–MOD4) are now covered by the Playwright suite

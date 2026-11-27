@@ -616,6 +616,17 @@ class Order(db.Model):
         return self._amounts.discount_description
 
     @property
+    def pre_tax_total(self):
+        """What the order earns the studio, before tax and net of any
+        discount — the revenue a margin is measured against (costing RC6).
+
+        Billing's subtotal: the issued invoice's frozen `issued_subtotal`
+        once it's out, the live lines before that. Never re-derived from the
+        lines of an issued order, which may since have been edited (N5).
+        """
+        return self._amounts.subtotal
+
+    @property
     def tax_lines(self):
         """Taxes on this order: frozen once invoiced, live before that."""
         return self._amounts.tax_lines

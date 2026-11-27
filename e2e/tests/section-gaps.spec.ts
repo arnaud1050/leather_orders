@@ -98,7 +98,8 @@ async function firstId(page: Page, listPath: string, prefix: string): Promise<st
   const hrefs = await page
     .locator(`a[href^="${prefix}/"]`)
     .evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
-  const match = hrefs.map((h) => h.match(new RegExp(`^${prefix}/(\\d+)$`))).find(Boolean);
+  // List links carry `?return_to=…`, so the id is followed by a query or nothing.
+  const match = hrefs.map((h) => h.match(new RegExp(`^${prefix}/(\\d+)(?:\\?|$)`))).find(Boolean);
   return match ? match[1] : null;
 }
 
@@ -112,14 +113,14 @@ test.describe("Sections sit 40px apart on every page (design.md, Vertical rhythm
     const paths = [
       "/", "/calendar", "/week", "/orders", "/orders/new", "/clients", "/clients/new",
       "/inventory", "/invoices", "/analytics", "/mail/leads",
-      "/settings/general", "/settings/clients", "/settings/orders", "/settings/inventory",
+      "/settings/general", "/settings/clients", "/settings/orders", "/settings/inventory", "/settings/costs",
       "/settings/invoicing", "/settings/integrations", "/settings/ai", "/settings/account",
       "/settings/showcase", "/showcase", "/showcase/items/new",
       "/help/orders", "/help/clients", "/privacy", "/terms",
     ];
     const order = await firstId(adminPage, "/orders", "/orders");
     if (order) {
-      paths.push(`/orders/${order}`, `/orders/${order}/billing`, `/orders/${order}/materials`);
+      paths.push(`/orders/${order}`, `/orders/${order}/billing`, `/orders/${order}/materials`, `/orders/${order}/costs`);
     }
     const client = await firstId(adminPage, "/clients", "/clients");
     if (client) {
@@ -129,6 +130,29 @@ test.describe("Sections sit 40px apart on every page (design.md, Vertical rhythm
     if (invoice) paths.push(`/invoices/${invoice}`);
 
     expect(await offRhythm(adminPage, paths)).toEqual([]);
+  });
+
+  test("an order's Costs tab with time logged and a price worked out", async ({ adminPage }) => {
+    await feature("Design");
+    await description(
+      "The Costs tab grows a list, totals, a warning and a second form once time is logged " +
+        "and the calculator has an estimate; its sections still sit 40px apart."
+    );
+    const order = await firstId(adminPage, "/orders", "/orders");
+    test.skip(!order, "no order in the seed");
+    const tab = `/orders/${order}/costs`;
+    await gotoPath(adminPage, tab);
+    const time = adminPage.locator("form", { has: adminPage.getByRole("button", { name: "Log time" }) });
+    await time.getByLabel("Hours").fill("3");
+    await time.getByRole("button", { name: "Log time" }).click();
+    await adminPage.waitForURL(new RegExp(`${tab}`));
+    const pricing = adminPage.locator("form", { has: adminPage.getByRole("button", { name: "Work out price" }) });
+    await pricing.getByLabel("Estimated hours").fill("40");
+    await pricing.getByRole("button", { name: "Work out price" }).click();
+    await adminPage.waitForURL(new RegExp(`${tab}`));
+    await expect(adminPage.getByText("Suggested price", { exact: false })).toBeVisible();
+
+    expect(await offRhythm(adminPage, [tab])).toEqual([]);
   });
 
   test("every platform admin page", async ({ browser }) => {

@@ -62,6 +62,10 @@ EVENTS: dict[str, tuple[str, str, bool]] = {
     "inventory.item_created": ("Inventory", "Item created", False),
     "inventory.item_updated": ("Inventory", "Item edited", False),
     "order.material_added": ("Inventory", "Material added to order", False),
+    # Costs — time, margins and the pricing calculator (costing/)
+    "view.order_costs": ("Costs", "Order costs tab", True),
+    "order.time_logged": ("Costs", "Time logged", False),
+    "order.price_estimated": ("Costs", "Price worked out", False),
     # Documents
     "document.uploaded": ("Documents", "Document uploaded", False),
     "document.opened": ("Documents", "Document opened", False),

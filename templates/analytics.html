@@ -118,6 +118,40 @@
   <p class="detail-note">No tax billed this year.</p>
   {% endif %}
 </div>
+
+{# The three Margins cards (costing RC30–RC33): orders due this year with
+   time logged, nothing else — the section's note says so. #}
+{% elif key == 'margin_ytd' %}
+<div class="stat-card" data-card="margin_ytd">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__value">{{ '%.1f'|format(margin_total.margin_percent) ~ '%' if margin_total and margin_total.margin_percent is not none else '—' }}</span>
+  <span class="stat-card__label">Margin YTD{% if margin_total %} · ${{ '{:,.2f}'.format(margin_total.profit) }} profit{% endif %}</span>
+</div>
+
+{% elif key == 'hourly_ytd' %}
+<div class="stat-card" data-card="hourly_ytd">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__value">{{ '$%.2f/h'|format(margin_total.effective_hourly) if margin_total and margin_total.effective_hourly is not none else '—' }}</span>
+  <span class="stat-card__label">Earned per hour YTD{% if margin_total %} · {{ '%g'|format(margin_total.hours|round(1)) }}h logged{% endif %}</span>
+</div>
+
+{% elif key == 'margin_by_type' %}
+<div class="stat-card stat-card--list" data-card="margin_by_type">
+  {{ grip('.stat-card', 'Drag to reorder card') }}
+  <span class="stat-card__label">Margin by order type YTD</span>
+  {% if margin_by_type %}
+  <ul class="stat-card__ranked-list">
+    {% for label, row, count in margin_by_type %}
+    <li>
+      <span>{{ label }} ({{ count }})</span>
+      <span>{{ ('%.1f'|format(row.margin_percent) ~ '%') if row.margin_percent is not none else '—' }} · {{ ('$%.0f/h'|format(row.effective_hourly)) if row.effective_hourly is not none else '—' }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="detail-note">No time logged on this year's orders yet.</p>
+  {% endif %}
+</div>
 {% endif %}
 {% endmacro %}
 
@@ -138,6 +172,13 @@
         {{ grip('.analytics-section', 'Drag to reorder section') }}
         {{ section.heading }}
       </h2>
+      {% if section.key == 'margins' %}
+      <p class="detail-note">
+        Only orders due this year with time logged on their Costs tab
+        ({{ margin_orders }} so far) — an order with no time would count its
+        labour as free. Cancelled orders are left out.
+      </p>
+      {% endif %}
       <div class="analytics-grid">
         {% for key in section.cards %}{{ stat_card(key) }}{% endfor %}
       </div>

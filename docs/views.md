@@ -302,8 +302,10 @@ form.
 into categories with their own sub-nav (`.settings-nav`, styled as underlined tabs,
 distinct from the top-level `.view-switch`), each a real route rather than a
 same-page anchor/JS tab-switch. The nav, and the order the categories were split
-in, is **General → Orders → Inventory → Clients → Invoicing →
-Email/Calendar → AI**:
+in, is **General → Orders → Inventory → Costs → Clients → Invoicing →
+Email/Calendar → AI** (Costs, `/settings/costs` — the labour rate, overhead and
+default target margin — is framed by `settings_costs()` and posts to the
+`costing/` module's `update_settings`):
 
 - `/settings` (`settings()`) is content-free — it just redirects to
   `settings_general`, so the nav's "Settings" link and any bookmark still work.
@@ -405,8 +407,11 @@ redirecting back to that new route.
 
 **Analytics** (`/analytics`) — company-wide stats (every *figure* read-only; see
 the layout note at the end of this entry for the one thing the page writes),
-`analytics()` in `app.py`, two sections of bordered `.stat-card`s
-(`.analytics-grid`) laid out with `analytics.html`:
+`analytics()` in `app.py`, three sections of bordered `.stat-card`s
+(`.analytics-grid`) laid out with `analytics.html` — the third, *Margins*
+(margin YTD, earned per hour YTD, margin by order type), counts only orders
+with time logged and says so under its heading; its figures come from
+`_margin_figures()` and its rules are costing `RC30`–`RC33`:
 - *Clients*: avg. value per client, top 5 paying clients, client sources breakdown
   (percentage of all clients tagged with each `SourceOption` — **includes hidden
   options**, since a hidden-but-historically-used source should still show up here;
@@ -581,8 +586,12 @@ bottom of `timeline.html`. Each modal has a link out to a full page:
   which would then be `/orders/<id>/edit` — so it redirects back to the same window
   with a one-shot `order_edit_error` in the session, and the window reopens that
   order's dialog (`data-open-on-load`) with the messages over what was typed.
-  **The full order page has three tabs**, same `.settings-nav` sub-nav pattern as the
-  client page, ordered **Details → Materials → Billing**: "Details" (`order_page()`,
+  **The full order page has four tabs**, same `.settings-nav` sub-nav pattern as the
+  client page, ordered **Details → Materials → Costs → Billing** (Costs,
+  `order_costs()` at `/orders/<id>/costs`, is the `costing/` module's — time
+  logged, the margin against the pre-tax price, and the pricing calculator;
+  it sits between what the materials cost and what's charged because it's
+  where the two meet — see [costing/CLAUDE.md](../costing/CLAUDE.md)): "Details" (`order_page()`,
   the bare `/orders/<id>` URL, kept there for the same "don't churn existing links"
   reason as the client page — the editable form plus notes, and the document
   explorer owned by the `documents/` module), "Materials" (`order_materials()` at `/orders/<id>/materials` — the

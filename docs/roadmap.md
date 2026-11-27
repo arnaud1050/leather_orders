@@ -2,6 +2,15 @@
 
 > Part of the `leather_orders` app — see the root [CLAUDE.md](../CLAUDE.md) for orientation.
 
+- **Real costs per order**: *built* (2026-11-27) as `costing/` — time logged,
+  a labour rate snapshotted per entry, overhead, margin and earned-per-hour
+  on the order's Costs tab and in `/analytics`, and a pricing calculator.
+  Deliberately left out (costing `RCN1`–`RCN4`): a start/stop timer (manual
+  entries were chosen; a server-side one fits the stack), a rate per order
+  type, and snapshotting overhead. **Quotes** (planned, with deposits) should
+  call `costing.pricing.suggest_price` with the quote's estimate rather than
+  re-deriving the maths.
+
 - **Postgres/MySQL**: currently SQLite (`sqlite:///data/atelier.db`). Moving to a
   networked database is a `SQLALCHEMY_DATABASE_URI` change plus installing the right
   driver (`psycopg2`/`pymysql`) — the ORM models and query code in `app.py` don't

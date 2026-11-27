@@ -25,6 +25,7 @@ demand — open the one the index points at rather than guessing from memory.
 | Invoicing, Canadian sales tax, the freeze-at-issue contract | [billing/CLAUDE.md](billing/CLAUDE.md), [billing/REQUIREMENTS.md](billing/REQUIREMENTS.md) |
 | Gmail + Google Calendar, leads, sender rules, sync | [communications/CLAUDE.md](communications/CLAUDE.md), [communications/REQUIREMENTS.md](communications/REQUIREMENTS.md) |
 | Materials, stock, units, order material costs | [inventory/CLAUDE.md](inventory/CLAUDE.md), [inventory/REQUIREMENTS.md](inventory/REQUIREMENTS.md) |
+| **Real costs per order — time logged, the labour rate (snapshotted per entry), overhead, margin, earned per hour, the pricing calculator**, Settings → Costs and the Margins section of `/analytics` | [costing/CLAUDE.md](costing/CLAUDE.md), [costing/REQUIREMENTS.md](costing/REQUIREMENTS.md) |
 | Order document upload, storage, thumbnails, document types | [documents/CLAUDE.md](documents/CLAUDE.md), [documents/REQUIREMENTS.md](documents/REQUIREMENTS.md) |
 | AI reply suggestions, image rendering, vendor API keys, prompts | [ai/CLAUDE.md](ai/CLAUDE.md), [ai/REQUIREMENTS.md](ai/REQUIREMENTS.md) |
 | **Platform admin — provisioning companies and users, impersonation, why email replaced usernames.** A host blueprint, *not* a module: it imports host models on purpose | [admin/CLAUDE.md](admin/CLAUDE.md), [admin/REQUIREMENTS.md](admin/REQUIREMENTS.md) |
@@ -63,7 +64,8 @@ where it's indexed above; this is the checklist, not the reasoning.
 3. **New routes go in `app.py`**, unless a self-contained module owns them.
    Ask before restructuring into a `routes/` package.
 4. **Module boundaries are one-way.** The app talks to `billing.services`,
-   `communications.services`, `inventory.services`, `ai.services` and
+   `communications.services`, `inventory.services`, `ai.services`,
+   `costing.services` (plus the pure `costing.pricing`) and
    `showcase.services` and nothing deeper; a module never imports host models
    (`tests/test_billing_boundary.py` and `tests/test_ai_boundary.py` enforce
    this for `billing/` and `ai/`, which may import only `db` from `models.py`
@@ -246,6 +248,8 @@ showcase/              # portfolio of finished pieces (a feature) -> showcase/CL
 billing/               # invoicing, Canadian sales tax          -> billing/CLAUDE.md
 communications/        # Gmail + Google Calendar integration    -> communications/CLAUDE.md
 inventory/             # materials & stock tracking             -> inventory/CLAUDE.md
+costing/               # time, labour rate, margins, pricing    -> costing/CLAUDE.md
+                       # imports only `db`; app.py hands it revenue + materials
 documents/             # order document upload/storage          -> documents/CLAUDE.md
 ai/                    # reply suggestions & image rendering    -> ai/CLAUDE.md
 

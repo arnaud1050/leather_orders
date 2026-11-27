@@ -20,6 +20,7 @@
   {% set slots = {'general': ['brand', 'timezone'], 'account': ['password', 'signature'],
                   'orders': ['order-types', 'order-columns'], 'clients': ['sources', 'client-columns'],
                   'inventory': ['units', 'inventory-types', 'inventory-columns'],
+                  'costs': ['costs'],
                   'invoicing': ['company-details', 'invoicing', 'appearance']} %}
   {{ page_notice(notice, slots.get(section, [])) }}
 
@@ -311,6 +312,12 @@
 
   <section class="detail-orders">
     {% include "inventory/_settings_columns.html" %}
+  </section>
+
+  {% elif section == 'costs' %}
+
+  <section class="detail-orders">
+    {% include "costing/_settings.html" %}
   </section>
 
   {% elif section == 'clients' %}
