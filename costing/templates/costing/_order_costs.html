@@ -25,7 +25,6 @@
 <section class="detail-lines">
   <h2>Time</h2>
   {{ notice_slot(notice, 'time') }}
-  {% call explainer("How time is costed") %}
   <p class="detail-note">
     Internal cost tracking only — never shown to the client. Each entry keeps
     the hourly rate in force when it was logged, so changing the rate later
@@ -33,7 +32,6 @@
     {{ money(costing_settings.hourly_rate) }}/h, set in
     <a href="{{ url_for('settings_costs') }}">Settings → Costs</a>.
   </p>
-  {% endcall %}
   {% if not costing_settings.hourly_rate %}
   <p class="warning-note">
     No hourly rate is set yet, so time logged now counts as $0 of labour.

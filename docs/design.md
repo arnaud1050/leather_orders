@@ -80,7 +80,10 @@ changes made:
     a short note that explains what a button does stays outside it, and so
     does any warning. **Use the macro, not hand-written markup:**
     `{% call explainer("…") %}…{% endcall %}` from `templates/_explainer.html`.
-    Used on Settings → Costs and the order page's Costs tab (Time, Pricing).
+    Used on Settings → Costs and the order page's Costs tab (Pricing). The
+    Costs tab's Time note was folded and put back: it says today's rate and
+    that time keeps the rate it was logged at, which the user wants in view
+    whenever they log time.
 
 Current tokens (top of `style.css`):
 - `--paper` / `--paper-deep` — background (ivory / mid grey)
