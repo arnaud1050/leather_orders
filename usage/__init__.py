@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 EVENTS: dict[str, tuple[str, str, bool]] = {
     # Sessions
     "auth.login": ("Sessions", "Signed in", False),
+    # Studio users only (staff are never counted, and must have it anyway):
+    # how many studios take up the optional second step
+    "account.two_factor_on": ("Sessions", "Two-factor sign-in turned on", False),
     # Read-only pages — their only trace is being opened
     "view.calendar": ("Views", "Calendar", True),
     "view.orders_list": ("Views", "Orders list", True),

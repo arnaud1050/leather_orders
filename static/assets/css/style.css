@@ -2484,6 +2484,18 @@ button[aria-busy="true"] {
   font-size: 0.84rem;
 }
 
+/* The figure stays on one line; only the label may wrap. Without this a
+   narrow card (three across) split "28.2% · $79/h" over two lines. */
+.stat-card__ranked-list li > :first-child {
+  min-width: 0;
+}
+
+.stat-card__ranked-list li > :last-child {
+  flex: none;
+  white-space: nowrap;
+  text-align: right;
+}
+
 .stat-card__ranked-list a {
   color: var(--ink);
   text-decoration: none;

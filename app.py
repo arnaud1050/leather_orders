@@ -3596,6 +3596,7 @@ def two_factor_enable():
     session.pop(_TWO_FACTOR_SETUP_SECRET, None)
     session[_TWO_FACTOR_NEW_CODES] = codes
     app.logger.info("Two-factor sign-in turned on for user %s", user.id)
+    track("account.two_factor_on")
     _flash_two_factor_notice("Two-factor sign-in is on.", "success", "codes")
     return redirect(url_for("two_factor_settings"))
 

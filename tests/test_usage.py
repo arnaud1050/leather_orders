@@ -115,6 +115,32 @@ def test_a_module_route_records_through_the_same_queue(tenant, order):
     assert len(events("invoice.created")) == 1
 
 
+def test_turning_on_two_factor_is_recorded_but_a_wrong_code_is_not(tenant):
+    """Adoption of the optional second step, for studio users (CO4w)."""
+    import pyotp
+
+    import two_factor
+
+    tenant.get("/account/two-factor")
+    with tenant.session_transaction() as session:
+        secret = two_factor.decrypt_secret(session["two_factor_setup_secret"])
+    tenant.post("/account/two-factor/enable", data={"code": "000000"})
+    assert events("account.two_factor_on") == []
+    tenant.post("/account/two-factor/enable", data={"code": pyotp.TOTP(secret).now()})
+    assert len(events("account.two_factor_on")) == 1
+
+
+def test_the_costs_events_reach_the_admin_report_under_their_own_area(tenant, order):
+    """The report lists every catalog event, so a new feature shows up there
+    as soon as it's in EVENTS."""
+    db.session.commit()
+    tenant.post(f"/orders/{order.id}/costs/time", data={"worked_on": "2026-07-03", "hours": "1"})
+    rows = {row["event"]: row for row in usage_store.feature_report(since=None)}
+    assert rows["order.time_logged"]["area"] == "Costs"
+    assert rows["order.time_logged"]["uses"] == 1
+    assert {"view.order_costs", "order.price_estimated", "account.two_factor_on"} <= set(rows)
+
+
 # ---------------------------------------------------------------------------
 # Page views
 # ---------------------------------------------------------------------------
