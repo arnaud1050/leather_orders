@@ -77,8 +77,10 @@ changes made:
     (useless on touch, too small for paragraphs), a dialog (hides the text
     from the form beside it), hairlines above and below (read as a new
     section) and a tinted box (tints mean warnings here). Closed by default;
-    a short note that explains what a button does stays outside it. First
-    used on Settings → Costs.
+    a short note that explains what a button does stays outside it, and so
+    does any warning. **Use the macro, not hand-written markup:**
+    `{% call explainer("…") %}…{% endcall %}` from `templates/_explainer.html`.
+    Used on Settings → Costs and the order page's Costs tab (Time, Pricing).
 
 Current tokens (top of `style.css`):
 - `--paper` / `--paper-deep` — background (ivory / mid grey)

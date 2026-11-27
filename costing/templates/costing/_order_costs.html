@@ -1,5 +1,6 @@
 {% from "_icons.html" import icon_trash %}
 {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+{% from "_explainer.html" import explainer %}
 {# Included from templates/order_page.html's "costs" section (app.py's
    order_costs()). Context expected: order, time_entries (TimeEntry rows),
    user_names ({user_id: name}), costs (services.OrderCosts), material_cost
@@ -24,6 +25,7 @@
 <section class="detail-lines">
   <h2>Time</h2>
   {{ notice_slot(notice, 'time') }}
+  {% call explainer("How time is costed") %}
   <p class="detail-note">
     Internal cost tracking only — never shown to the client. Each entry keeps
     the hourly rate in force when it was logged, so changing the rate later
@@ -31,6 +33,7 @@
     {{ money(costing_settings.hourly_rate) }}/h, set in
     <a href="{{ url_for('settings_costs') }}">Settings → Costs</a>.
   </p>
+  {% endcall %}
   {% if not costing_settings.hourly_rate %}
   <p class="warning-note">
     No hourly rate is set yet, so time logged now counts as $0 of labour.
@@ -125,6 +128,7 @@
 <section class="detail-lines">
   <h2>Pricing</h2>
   {{ notice_slot(notice, 'pricing') }}
+  {% call explainer("How the suggested price is worked out") %}
   <p class="detail-note">
     Price the work before it's done: the hours you expect, at today's rate,
     plus materials, plus overhead, with your target margin on top. Leave
@@ -132,6 +136,7 @@
     ({{ money(material_cost) }}), and the margin empty for your default
     ({{ '%g'|format(costing_settings.target_margin_percent) }}%).
   </p>
+  {% endcall %}
   <form method="post" action="{{ url_for('costing.save_estimate', order_id=order.id) }}" class="detail-form detail-inline-add">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ notice_field('pricing') }}

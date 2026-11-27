@@ -1,0 +1,23 @@
+{#
+  Long help text folded behind one line (docs/design.md, rule 11): a native
+  <details>, so click, tap and keyboard all open it with no script. The
+  caller's block is the body — ordinary .detail-note paragraphs.
+
+    {% from "_explainer.html" import explainer %}
+    {% call explainer("What counts as overhead") %}
+      <p class="detail-note">…</p>
+    {% endcall %}
+
+  Help only: a warning, or a note saying what a button is about to do,
+  stays outside it where it can't be missed.
+#}
+{% from "_icons.html" import icon_info, icon_chevron_down %}
+
+{% macro explainer(summary) -%}
+<details class="explainer">
+  <summary class="explainer__summary">{{ icon_info() }}<span><span class="explainer__text">{{ summary }}</span>&nbsp;<span class="explainer__chevron">{{ icon_chevron_down() }}</span></span></summary>
+  <div class="explainer__body">
+    {{ caller() }}
+  </div>
+</details>
+{%- endmacro %}

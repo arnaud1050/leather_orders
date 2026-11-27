@@ -150,7 +150,7 @@ test.describe("Sections sit 40px apart on every page (design.md, Vertical rhythm
     await pricing.getByLabel("Estimated hours").fill("40");
     await pricing.getByRole("button", { name: "Work out price" }).click();
     await adminPage.waitForURL(new RegExp(`${tab}`));
-    await expect(adminPage.getByText("Suggested price", { exact: false })).toBeVisible();
+    await expect(adminPage.getByText(/^Suggested price, /)).toBeVisible();
 
     expect(await offRhythm(adminPage, [tab])).toEqual([]);
   });
