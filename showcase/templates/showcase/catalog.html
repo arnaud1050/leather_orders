@@ -21,8 +21,7 @@
   <title>{{ studio or 'Showcase' }}</title>
   {% if manifest_url %}<link rel="manifest" href="{{ manifest_url }}">{% endif %}
   {% if logo_url %}<link rel="apple-touch-icon" href="{{ logo_url }}">{% endif %}
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/fonts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/showcase-catalog.css') }}">
 </head>
 <body class="catalog">

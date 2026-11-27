@@ -36,6 +36,16 @@ where adding a `csrf.exempt` gets noticed. `conftest.py`'s per-request hook
 drops Flask-WTF's token cache from `g` alongside Flask-Login's, for the
 same held-open-app-context reason.
 
+**`tests/test_csp.py`** defends `CO4q`, the Content-Security-Policy: the
+header on a page, the sign-in page, a 404, a static file and a kiosk link;
+the policy's directives pinned (so loosening it means editing the test);
+and a scan of every template for an element that would *load* something
+from another host, which the policy would block in the browser without
+any server-side error. The browser half is in e2e: `auth.fixture.ts` wraps
+every page fixture (`page`, `adminPage`, `freshUserPage`, `invoicingPage`)
+and fails the spec if Chromium logged a CSP violation, so every page and
+interaction the e2e suite drives doubles as the CSP check.
+
 **`tests/test_login_security.py`** defends `CO4g` (`?next=` must be a path
 on this site; parametrised over the browser tricks — `//`, `/\`, encoded
 and double-encoded slashes, a tab, `javascript:`) and the sign-in limits

@@ -135,6 +135,19 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   browser fetch a URL — and instead shows `templates/logout.html`, a "Log
   out?" page with the same button (for an old bookmark or a typed URL). A
   signed-out visit to `/logout` goes to `/login`.
+- **CO4q.** Every response carries a **Content-Security-Policy**
+  (`app.CONTENT_SECURITY_POLICY`, set in an `after_request`): everything from
+  this origin (`default-src`, `font-src`, `connect-src` `'self'`; images
+  also `data:` and `blob:`), `object-src 'none'`, `base-uri 'self'`,
+  `frame-ancestors 'self'`, and `form-action 'self'` plus
+  `https://accounts.google.com` (the Connect form's POST redirects to
+  Google's consent screen). Inline scripts and styles are still allowed
+  (`'unsafe-inline'`); replacing that with per-request nonces is the
+  next step. Nothing the browser loads comes from another host: Inter is
+  served from `static/assets/fonts/` (latin + latin-ext WOFF2, SIL OFL)
+  via `static/assets/css/fonts.css`, not Google Fonts. HSTS,
+  `X-Frame-Options`, `nosniff` and `Referrer-Policy` come from the shared
+  nginx `security-headers.conf`, not the app.
 - **CO4h.** A tenant user whose `users.must_change_password` is set is
   redirected to Settings → Account from every route except the settings
   page itself, `change_password`, `/logout`, the legal pages and static
@@ -1127,6 +1140,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | CO4l | `test_one_ip_trying_many_addresses_is_limited`, `test_the_ip_limit_reads_the_forwarded_address_behind_the_proxy` (`tests/test_login_security.py`) |
 | CO4o | `test_signing_out_mid_impersonation_leaves_admin_reachable`, `test_a_stale_impersonation_key_does_not_survive_sign_in`, `test_sign_in_starts_a_fresh_session` (`tests/test_login_security.py`) |
 | CO4p | `test_a_get_to_logout_does_not_sign_out`, `test_posting_to_logout_signs_out`, `test_logging_out_needs_a_csrf_token`, `test_the_nav_logs_out_with_a_form`, `test_a_signed_out_visit_to_logout_goes_to_sign_in` (`tests/test_login_security.py`); `e2e/tests/auth.spec.ts` "Log out" presses the nav button |
+| CO4q | `tests/test_csp.py` (header on every kind of response, the policy pinned, no template loading from another host, fonts served locally); every e2e spec fails on a CSP violation in the browser (`e2e/fixtures/auth.fixture.ts`) |
 | CO4m | `test_the_counter_is_kept_in_the_database`, `test_old_failures_are_pruned` (`tests/test_login_security.py`) |
 | CO4n | `tests/test_csrf.py` — static scans of every POST form and every posting `fetch`, plus enforced 400s on `app.py`, `admin/`, `inventory/` and `communications/` routes; the communications tests that ask for `enforce_csrf` (S-7) |
 | CO4h | `test_changing_the_password_clears_the_forced_flag`, `test_a_forced_change_redirects_everywhere_but_settings` (`tests/test_change_password.py`); `test_a_reset_password_must_be_changed`, `test_resetting_a_staff_password_does_not_require_a_change`, `test_a_user_is_added_to_the_named_company` (`tests/test_admin.py`) |

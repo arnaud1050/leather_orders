@@ -9,7 +9,7 @@
  *     await adminPage.goto("/");
  *   });
  */
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 import * as fs from "fs";
 import { resolveConfig } from "../lib/env";
 import { LoginPage } from "../pages/LoginPage";
@@ -51,7 +51,29 @@ interface AuthFixtures {
   invoicingPage: import("@playwright/test").Page;
 }
 
+/**
+ * Fail the test if the browser blocked anything under the app's
+ * Content-Security-Policy (REQUIREMENTS CO4q). A blocked script or style
+ * doesn't throw: the page just quietly stops working, so every page and
+ * every interaction the suite already drives doubles as the CSP check.
+ * Chromium reports a violation as a console error naming the policy.
+ */
+async function withCspWatch(page: Page, use: (page: Page) => Promise<void>): Promise<void> {
+  const violations: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /Content Security Policy/i.test(message.text())) {
+      violations.push(`${page.url()}: ${message.text()}`);
+    }
+  });
+  await use(page);
+  expect(violations, "Content-Security-Policy violations").toEqual([]);
+}
+
 export const test = base.extend<AuthFixtures>({
+  page: async ({ page }, use) => {
+    await withCspWatch(page, use);
+  },
+
   adminPage: async ({ browser }, use) => {
     const cfg = resolveConfig();
     if (!fs.existsSync(cfg.adminStorageStatePath)) {
@@ -63,7 +85,7 @@ export const test = base.extend<AuthFixtures>({
     }
     const context = await browser.newContext({ storageState: cfg.adminStorageStatePath });
     const page = await context.newPage();
-    await use(page);
+    await withCspWatch(page, use);
     await context.close();
   },
 
@@ -73,7 +95,7 @@ export const test = base.extend<AuthFixtures>({
     const login = new LoginPage(page);
     await login.goto();
     await login.login(testData.freshUser.email, testData.freshUser.password);
-    await use(page);
+    await withCspWatch(page, use);
     await context.close();
   },
 
@@ -85,7 +107,7 @@ export const test = base.extend<AuthFixtures>({
     const { email, password } = testData.invoicingStudio.adminUser;
     await login.login(email, password);
     await page.waitForURL((url) => !url.pathname.startsWith("/login"), { waitUntil: "domcontentloaded" });
-    await use(page);
+    await withCspWatch(page, use);
     await context.close();
   },
 });

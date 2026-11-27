@@ -16,7 +16,9 @@ Everything a kiosk page loads lives under `/k/<token>/` — the page, its
 photos, the logo, the service worker and the manifest — so the service
 worker's scope covers the page and the token never has to be repeated in
 a query string. `Referrer-Policy: no-referrer` keeps the token from
-leaking to the font host.
+leaking in a Referer header; the page loads nothing from another host
+(the fonts are the app's own, CO4q), but a link someone follows would
+otherwise carry it.
 """
 
 import json

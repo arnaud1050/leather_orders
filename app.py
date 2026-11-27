@@ -202,6 +202,35 @@ if os.environ.get("TRUST_PROXY_HEADERS") == "1":
 app.config["WTF_CSRF_TIME_LIMIT"] = None
 csrf = CSRFProtect(app)
 
+# Content-Security-Policy on every response (CO4q), set here rather than in
+# nginx because the app knows what its pages load and a test can hold it to
+# that. Everything comes from this origin — Inter included, served from
+# static/assets/fonts — so 'self' is the whole allow-list, with two
+# exceptions: inline <script>/<style> (still 'unsafe-inline': 23 templates
+# carry inline scripts; replacing that with nonces is step 2), and
+# form-action's accounts.google.com, because Settings → Email/Calendar's
+# Connect button is a form whose POST redirects to Google's consent screen,
+# and browsers apply form-action to that redirect.
+CONTENT_SECURITY_POLICY = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
+    "img-src 'self' data: blob:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self' https://accounts.google.com",
+    "frame-ancestors 'self'",
+])
+
+
+@app.after_request
+def _content_security_policy(response):
+    # setdefault: a route that needs a different policy can set its own.
+    response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+    return response
+
 db.init_app(app)
 communications_routes.register(app)
 # Writes the request's queued usage events once the response exists, on its

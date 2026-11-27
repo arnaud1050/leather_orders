@@ -303,6 +303,13 @@ suite runs with CSRF off — ask for the `enforce_csrf` fixture to test it.
 `SameSite=Lax` alone isn't enough here: the server's sibling
 `*.arnaudrouillot.com` sites are same-site.
 
+**A Content-Security-Policy is on every response** (`CO4q`,
+`app.CONTENT_SECURITY_POLICY`): everything loads from this origin, Inter
+included (`static/assets/fonts/`, not Google Fonts). **Don't add a
+`<script src>`, stylesheet, font or image from another host**: the browser
+will block it silently. `tests/test_csp.py` scans for that, and every e2e
+spec fails on a violation. Inline scripts are still allowed for now.
+
 `app.config["SECRET_KEY"]` reads from the `SECRET_KEY` env var, falling back to an
 insecure dev default (`"dev-not-secure"`) — **must** be set to a real value for any
 non-local deployment (`docker-compose.yml` already passes it through).

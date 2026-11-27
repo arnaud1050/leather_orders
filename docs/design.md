@@ -135,14 +135,18 @@ Current tokens (top of `style.css`):
   out-of-stock signal it sits beside, not a count promoted because it felt
   important. Don't add a fifth, and don't promote a count from one weight to
   another because it feels important
-- Fonts: Inter (body + effectively headings too) — a Google Font, loaded in
-  `base.html`'s single `<link>`. **There is no mono font anywhere in the app
+- Fonts: Inter (body + effectively headings too) — **served by the app
+  itself**, not from Google Fonts: `static/assets/fonts/` holds the latin and
+  latin-ext variable WOFF2 files (weights 400–600, SIL OFL licence beside
+  them), declared in `static/assets/css/fonts.css`, which `base.html`,
+  `errors/_bare.html` and the kiosk catalog link. The CSP allows fonts from
+  this origin only (`CO4q`), so a font `<link>` to Google would be blocked. **There is no mono font anywhere in the app
   any more.** It started as IBM Plex Mono, was swapped for Roboto Mono, then
   removed everywhere at the user's request (orders/clients/invoices lists,
   settings, the order and invoice detail pages, the calendar, the
   communications module, `.invoice-ref`, `.nav-badge` — plain body text
   throughout instead), including the now-unused Roboto Mono request itself
-  dropped from `base.html`'s Google Fonts `<link>`. Don't reintroduce mono
+  dropped from what was then `base.html`'s Google Fonts `<link>`. Don't reintroduce mono
   anywhere without checking first.
 
 - **A legend row takes three kinds of thing, and they read differently.**
