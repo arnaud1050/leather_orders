@@ -47,6 +47,12 @@ services:
       # the two keys above: unset, it's derived from SECRET_KEY, and
       # rotating that means connecting the website again.
       - SHOWCASE_ENCRYPTION_KEY=${SHOWCASE_ENCRYPTION_KEY:-}
+      # --- Two-factor sign-in (two_factor.py) ---
+      # Encrypts each account's authenticator secret. Same fallback and
+      # consequence as the keys above: unset, it's derived from SECRET_KEY,
+      # and rotating that means everyone with two-factor signs in with a
+      # recovery code and sets it up again.
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
       # TLS is live for atelier.arnaudrouillot.com (see docs/deployment.md),
       # so the session cookie should be Secure by default here too — same
       # reasoning as GOOGLE_REDIRECT_URI above for defaulting it in this

@@ -60,6 +60,7 @@ from flask import g  # noqa: E402
 
 import app as app_module  # noqa: E402
 from models import Client, Company, Order, OrderLine, User, db  # noqa: E402
+import two_factor  # noqa: E402
 
 from billing.services import invoicing  # noqa: E402
 
@@ -188,7 +189,42 @@ def platform_admin(app):
     row.set_password("changeme")
     db.session.add(row)
     db.session.flush()
+    # Two-factor is required for staff (CO4u), so the fixture's admin has it
+    # on, with a known secret `sign_in` computes codes from. A test about
+    # an admin *without* it turns it off (`two_factor.disable`) itself.
+    two_factor.enable(row, STAFF_TOTP_SECRET, proved_step=0)
+    db.session.flush()
     return row
+
+
+# The platform_admin fixture's authenticator secret.
+STAFF_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+
+def current_code(secret: str = STAFF_TOTP_SECRET) -> str:
+    """The code an authenticator app would show right now."""
+    import pyotp
+    return pyotp.TOTP(secret).at(two_factor._now())
+
+
+def sign_in(client, email, password="changeme", secret=STAFF_TOTP_SECRET, next_url=None):
+    """Sign `client` in through both steps when the account has two-factor
+    (CO4s), returning the last response. The code is a real one for now.
+
+    Each code is good once (replays are refused), so a test that signs the
+    same account in twice within 30 seconds would be refused the second
+    time. The helper forgets the last step used first: that's the replay
+    rule, which has tests of its own in test_two_factor.py, not this one.
+    """
+    user = User.query.filter_by(email=email).first()
+    if user is not None and user.totp_last_step:
+        user.totp_last_step = None
+        db.session.commit()
+    url = "/login" if next_url is None else f"/login?next={next_url}"
+    response = client.post(url, data={"email": email, "password": password})
+    if response.status_code == 302 and response.headers["Location"].endswith("/login/verify"):
+        response = client.post("/login/verify", data={"code": current_code(secret)})
+    return response
 
 
 @pytest.fixture
@@ -289,12 +325,10 @@ def logged_in(app, user):
 
 @pytest.fixture
 def admin_client(app, platform_admin):
-    """A test client authenticated as a platform admin."""
+    """A test client authenticated as a platform admin, code and all."""
+    db.session.commit()
     with app.test_client() as test_client:
-        test_client.post(
-            "/login", data={"email": "platform@example.com", "password": "changeme"},
-            follow_redirects=True,
-        )
+        sign_in(test_client, "platform@example.com")
         yield test_client
 
 

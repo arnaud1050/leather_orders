@@ -159,6 +159,43 @@ by area (`CO-`, `CL-`, `OT-`, `OR-`, `PM-`, `DOC-`, `TL-`, `LST-`, `MOD-`,
   two jobs, `data-confirm="…"` on a form (asks before posting, in the
   capture phase, so a cancelled post never reaches `stay-in-place.js`)
   and `data-action="back"` on a button.
+- **CO4s.** **Two-factor sign-in** (TOTP, RFC 6238, `two_factor.py`). An
+  account with it on signs in in two steps: a right password goes to
+  `/login/verify` **without signing in** (the session holds only who is
+  halfway, for 5 minutes), and the 6-digit code from an authenticator app
+  finishes it, honouring `next` as CO4g does. A code is accepted one
+  30-second step either side of now, and **only once**: `users.totp_last_step`
+  refuses that step and earlier ones, including the code that confirmed
+  setup. Code failures count in the same per-address and per-IP lockout as
+  passwords (CO4k-CO4l), and **a right password doesn't clear them** for an
+  account with two-factor: only a full sign-in does, or a stolen password
+  could alternate with code guesses forever. Setting it up
+  (`/account/two-factor`, one page for staff and studio users) shows a QR
+  code and the key typed out; nothing is stored on the account until a
+  first code proves the scan worked, the secret waiting encrypted in the
+  session. The stored secret is encrypted (`TOTP_ENCRYPTION_KEY`, falling
+  back to one derived from `SECRET_KEY`); one the current key can't read
+  fails closed, and the account signs in with a recovery code.
+- **CO4t.** Turning it on issues **10 single-use recovery codes**, shown
+  once and stored only as SHA-256 digests (`user_recovery_codes`). The
+  sign-in box takes one in place of a code, in any case and with or without
+  the dash; using one lands on the two-factor page saying how many are
+  left. New codes need a current code and cancel the old set.
+- **CO4u.** **Required for platform staff.** A staff account without it
+  (every one that existed before, or one an admin reset) signs in with its
+  password once and is held on `/account/two-factor` by
+  `_require_staff_two_factor` until it's on: every other route except
+  sign-out, the legal pages and static files redirects there. Staff can't
+  turn it off. Impersonation needs nothing more: it starts from an admin
+  session, which already passed this.
+- **CO4v.** For a lost phone: a platform admin turns off **someone else's**
+  two-factor from `/admin` ("Reset two-factor", PA13b), never their own;
+  and on the server, `scripts/reset_two_factor.py EMAIL` does the same for
+  any account, as the last resort when no admin can sign in. A reset staff
+  account sets it up again at its next sign-in (CO4u).
+- **CO4w.** **Optional for studio users**, from Settings → Account (a
+  section saying whether it's on, linking to the page). They turn it off
+  there with a current code; off, signing in asks for the password only.
 - **CO4h.** A tenant user whose `users.must_change_password` is set is
   redirected to Settings → Account from every route except the settings
   page itself, `change_password`, `/logout`, the legal pages and static
@@ -1153,6 +1190,7 @@ rows. See [e2e/README.md](e2e/README.md).
 | CO4p | `test_a_get_to_logout_does_not_sign_out`, `test_posting_to_logout_signs_out`, `test_logging_out_needs_a_csrf_token`, `test_the_nav_logs_out_with_a_form`, `test_a_signed_out_visit_to_logout_goes_to_sign_in` (`tests/test_login_security.py`); `e2e/tests/auth.spec.ts` "Log out" presses the nav button |
 | CO4q | `tests/test_csp.py` (header on every kind of response, the policy pinned, no template loading from another host, fonts served locally); every e2e spec fails on a CSP violation in the browser (`e2e/fixtures/auth.fixture.ts`) |
 | CO4r | `test_a_page_s_scripts_carry_the_nonce_its_policy_allows`, `test_the_nonce_is_new_on_every_request`, `test_a_response_with_no_inline_script_allows_none`, `test_every_inline_script_carries_the_nonce`, `test_no_inline_event_handlers_or_javascript_urls`, `test_both_layouts_load_page_actions` (`tests/test_csp.py`); the e2e CSP fixture, which fails any page whose script was blocked; `e2e/tests/page-actions.spec.ts` (Disconnect asks first, and cancelling posts nothing) |
+| CO4s–CO4w | `tests/test_two_factor.py` — setup (nothing stored before a code, the secret encrypted, codes shown once, the setup code spent), the two steps, the clock window, replay, the 5-minute wait, the shared lockout and that a password doesn't reset it, recovery codes, staff held on setup and unable to turn it off, a studio user turning it off with a code, the admin reset (not your own), the server script, an unreadable secret failing closed |
 | CO4m | `test_the_counter_is_kept_in_the_database`, `test_old_failures_are_pruned` (`tests/test_login_security.py`) |
 | CO4n | `tests/test_csrf.py` — static scans of every POST form and every posting `fetch`, plus enforced 400s on `app.py`, `admin/`, `inventory/` and `communications/` routes; the communications tests that ask for `enforce_csrf` (S-7) |
 | CO4h | `test_changing_the_password_clears_the_forced_flag`, `test_a_forced_change_redirects_everywhere_but_settings` (`tests/test_change_password.py`); `test_a_reset_password_must_be_changed`, `test_resetting_a_staff_password_does_not_require_a_change`, `test_a_user_is_added_to_the_named_company` (`tests/test_admin.py`) |

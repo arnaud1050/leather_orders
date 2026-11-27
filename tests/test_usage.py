@@ -21,6 +21,7 @@ from models import Client, Company, Order, User, db
 from usage import EVENTS, track
 from usage import store as usage_store
 from usage.store import UsageEvent
+from tests.conftest import sign_in
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 MODULES = ["ai", "billing", "communications", "documents", "inventory"]
@@ -43,7 +44,7 @@ def tenant(app, committed):
 def staff(app, platform_admin, committed):
     db.session.commit()
     with app.test_client() as test_client:
-        test_client.post("/login", data={"email": "platform@example.com", "password": "changeme"})
+        sign_in(test_client, "platform@example.com")
         yield test_client
 
 

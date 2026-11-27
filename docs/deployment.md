@@ -101,11 +101,14 @@ allocated to another container on the host.
   required by default. Copy `.env.demo.example` to `.env.demo` on the server
   once; nothing needs to be filled in beyond `SECRET_KEY` unless the
   communications/AI integrations are wanted on the demo too.
-- **Three separate encryption keys**, all readable from either env file and
+- **Four separate encryption keys**, all readable from either env file and
   all optional: **`COMMS_ENCRYPTION_KEY`** (OAuth tokens, `communications/`),
-  **`AI_ENCRYPTION_KEY`** (vendor API keys, `ai/`) and
+  **`AI_ENCRYPTION_KEY`** (vendor API keys, `ai/`),
   **`SHOWCASE_ENCRYPTION_KEY`** (the secret that signs calls to a studio's
-  website, `showcase/`; rotating it means connecting the website again). Generate any with
+  website, `showcase/`; rotating it means connecting the website again) and
+  **`TOTP_ENCRYPTION_KEY`** (each account's two-factor secret,
+  `two_factor.py`; rotating it means everyone with two-factor signs in with
+  a recovery code and sets it up again). Generate any with
   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
   Left unset, each is derived from `SECRET_KEY` — which works, and means
   **rotating `SECRET_KEY` makes those stored secrets permanently unreadable**

@@ -3,6 +3,7 @@ import { test, expect } from "../fixtures/auth.fixture";
 import { feature, description } from "allure-js-commons";
 import { LoginPage } from "../pages/LoginPage";
 import { gotoPath } from "../lib/nav";
+import { totp } from "../lib/totp";
 
 /**
  * docs/design.md, "Vertical rhythm" — sections sit exactly 40px apart, on
@@ -144,8 +145,22 @@ test.describe("Sections sit 40px apart on every page (design.md, Vertical rhythm
         process.env.PLATFORM_ADMIN_EMAIL ?? "platform@example.invalid",
         process.env.PLATFORM_ADMIN_PASSWORD ?? "changeme"
       );
-      await page.waitForURL(/\/admin/);
-      const paths = ["/admin/companies", "/admin/platform-admins", "/admin/settings", "/admin/usage"];
+      // Staff must set up two-factor sign-in before /admin answers (CO4u):
+      // the fresh seeded admin is held on its setup page. Measure that page
+      // as it stands, then set it up the way a person would, from the key
+      // the page shows, and measure it again once it's on.
+      await page.waitForURL(/\/account\/two-factor/);
+      expect(await offRhythm(page, ["/account/two-factor"])).toEqual([]);
+      const key = (await page.locator(".two-factor-key").textContent()) ?? "";
+      await page.getByLabel("Code", { exact: true }).fill(totp(key));
+      await page.getByRole("button", { name: "Turn on two-factor sign-in" }).click();
+      await page.waitForURL(/\/account\/two-factor/);
+      await expect(page.locator(".two-factor-codes li")).toHaveCount(10);
+
+      const paths = [
+        "/admin/companies", "/admin/platform-admins", "/admin/settings", "/admin/usage",
+        "/account/two-factor",
+      ];
       const company = await firstId(page, "/admin/companies", "/admin/companies");
       if (company) paths.push(`/admin/companies/${company}`);
 

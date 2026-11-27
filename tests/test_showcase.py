@@ -24,6 +24,7 @@ from showcase.models import (
     ShowcaseCategory, ShowcaseDismissal, ShowcaseItem, ShowcaseKioskLink, ShowcasePhoto,
     ShowcaseSpecField,
 )
+from tests.conftest import sign_in
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -849,7 +850,7 @@ def test_a_kiosk_link_ignores_whoever_is_signed_in(app, on, kiosk, platform_admi
     Settings, by app.py's guards — a kiosk link belongs to neither (SC30)."""
     db.session.commit()
     staff = app.test_client()
-    staff.post("/login", data={"email": "platform@example.com", "password": "changeme"})
+    sign_in(staff, "platform@example.com")
     assert staff.get(f"/k/{kiosk}/").status_code == 200
     user.must_change_password = True
     db.session.commit()

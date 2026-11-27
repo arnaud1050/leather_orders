@@ -10,6 +10,7 @@ import pytest
 
 from admin import services
 from models import Company, User, create_company, db, normalise_email
+from tests.conftest import sign_in
 
 
 def signed_out_client(app):
@@ -549,9 +550,8 @@ def test_a_tenant_user_still_sees_the_tenant_nav(logged_in):
 
 
 def test_signing_in_as_staff_lands_on_admin(app, platform_admin):
-    response = signed_out_client(app).post("/login", data={
-        "email": "platform@example.com", "password": "changeme",
-    }, follow_redirects=False)
+    db.session.commit()
+    response = sign_in(signed_out_client(app), "platform@example.com")
 
     assert response.headers["Location"].endswith("/admin/companies")
 
@@ -559,9 +559,8 @@ def test_signing_in_as_staff_lands_on_admin(app, platform_admin):
 def test_a_bookmarked_tenant_url_does_not_trap_staff(app, platform_admin):
     """`next` is honoured for tenant users only — following it here would
     bounce straight off the route guard."""
-    response = signed_out_client(app).post("/login?next=/clients", data={
-        "email": "platform@example.com", "password": "changeme",
-    }, follow_redirects=False)
+    db.session.commit()
+    response = sign_in(signed_out_client(app), "platform@example.com", next_url="/clients")
 
     assert response.headers["Location"].endswith("/admin/companies")
 

@@ -172,6 +172,22 @@
     </form>
   </section>
 
+  {# Two-factor sign-in (CO4s): its own page, shared with staff, so this
+     section only says where it stands and links there. #}
+  <section class="detail-orders">
+    <h2>Two-factor sign-in</h2>
+    <p class="detail-note">
+      {% if current_user.two_factor_enabled %}
+      On: signing in asks for a code from your authenticator app as well as your password.
+      {% else %}
+      Off. Turn it on so a stolen password alone can't open your account.
+      {% endif %}
+    </p>
+    <div><a href="{{ url_for('two_factor_settings') }}" class="btn-secondary">
+      {{ 'Manage two-factor sign-in' if current_user.two_factor_enabled else 'Set up two-factor sign-in' }}
+    </a></div>
+  </section>
+
   <section class="detail-orders">
     <h2>Email signature</h2>
     {{ notice_slot(notice, 'signature') }}

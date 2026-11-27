@@ -4333,3 +4333,42 @@ button.chip--event:hover .chip__title {
 .showcase-website-panel .btn-primary {
   display: inline-block;
 }
+
+/* ---------------------------------------------------------------------
+   Two-factor sign-in (templates/two_factor.html, CO4s)
+   --------------------------------------------------------------------- */
+.two-factor-steps {
+  margin: 0 0 0 1.2em;
+  padding: 0;
+}
+
+.two-factor-steps > li + li {
+  margin-top: 20px;
+}
+
+.two-factor-qr-box {
+  margin: 12px 0;
+}
+
+.two-factor-qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  background: #fff;
+}
+
+.two-factor-key,
+.two-factor-codes li {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  word-break: break-all;
+}
+
+.two-factor-codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px 20px;
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+}

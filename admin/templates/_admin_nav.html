@@ -14,4 +14,6 @@
   <a href="{{ url_for('admin.platform_admins') }}" class="settings-nav__link {{ 'is-active' if section == 'admins' else '' }}">Admin Users</a>
   <a href="{{ url_for('admin.usage') }}" class="settings-nav__link {{ 'is-active' if section == 'usage' else '' }}">Usage</a>
   <a href="{{ url_for('admin.settings') }}" class="settings-nav__link {{ 'is-active' if section == 'settings' else '' }}">Settings</a>
+  {# Your own two-factor sign-in (CO4s), required for staff. #}
+  <a href="{{ url_for('two_factor_settings') }}" class="settings-nav__link {{ 'is-active' if section == 'two-factor' else '' }}">Two-factor</a>
 </nav>

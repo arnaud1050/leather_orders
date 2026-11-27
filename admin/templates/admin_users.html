@@ -35,6 +35,15 @@
           <span class="detail-note">{{ admin.email }}</span>
         </span>
         <div class="settings-source-list__actions">
+          {% if admin.two_factor_enabled and admin.id != current_user.id %}
+          {# For a lost phone (CO4v): they set it up again at next sign-in. #}
+          <form method="post" action="{{ url_for('admin.reset_two_factor', user_id=admin.id) }}"
+                data-confirm="Reset two-factor sign-in for {{ admin.display_name }}? They'll set it up again at their next sign-in.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {{ notice_field('admins') }}
+            <button type="submit" class="btn-secondary">Reset two-factor</button>
+          </form>
+          {% endif %}
           <form method="post" action="{{ url_for('admin.set_user_active', user_id=admin.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {{ notice_field('admins') }}

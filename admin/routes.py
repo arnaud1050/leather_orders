@@ -306,6 +306,15 @@ def reset_password(user_id: int):
     return redirect(_back_to(user))
 
 
+@bp.route("/users/<int:user_id>/two-factor/reset", methods=["POST"])
+@platform_admin_required
+def reset_two_factor(user_id: int):
+    user = _user_or_404(user_id)
+    error = services.reset_two_factor(user)
+    _report(error, f"Two-factor sign-in turned off for {user.display_name}.")
+    return redirect(_back_to(user))
+
+
 @bp.route("/users/<int:user_id>/active", methods=["POST"])
 @platform_admin_required
 def set_user_active(user_id: int):

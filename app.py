@@ -14,6 +14,7 @@ import math
 import os
 import re
 import secrets
+import time
 from urllib.parse import unquote, urlsplit
 
 # Load .env before ANY other project import. Not stylistic: communications/
@@ -134,6 +135,10 @@ import showcase_adapter  # noqa: E402
 # Failed sign-ins, counted in the database so both gunicorn workers share
 # the limit (CO4k). Imported before create_all() so its table exists.
 import login_throttle  # noqa: E402
+
+# Two-factor sign-in (TOTP): required for platform staff, optional for studio
+# users (CO4s-CO4w). Imported before create_all() for its recovery-code table.
+import two_factor  # noqa: E402
 
 app = Flask(__name__)
 
@@ -1003,7 +1008,12 @@ def get_client_or_404(client_id: int) -> Client:
 # Endpoints reachable without a company. Everything else in the app needs a
 # `company_id` to answer at all — "which orders?" has no meaning for
 # somebody who isn't in a studio.
-_COMPANYLESS_ENDPOINTS = {"login", "logout", "privacy", "terms", "static"}
+_COMPANYLESS_ENDPOINTS = {
+    "login", "login_verify", "logout", "privacy", "terms", "static",
+    # Two-factor setup is per person, staff included (CO4s-CO4u).
+    "two_factor_settings", "two_factor_enable", "two_factor_recovery_codes",
+    "two_factor_disable",
+}
 
 # Showcase kiosk links (/k/<token>/…): authorised by the token in the URL,
 # not by whoever happens to be signed in on that browser, so neither guard
@@ -1079,6 +1089,33 @@ _PASSWORD_CHANGE_EXEMPT_ENDPOINTS = {
 }
 
 
+# Where a platform admin without two-factor may still go: the setup page and
+# the routes that have to stay reachable regardless.
+_TWO_FACTOR_SETUP_ENDPOINTS = {
+    "two_factor_settings", "two_factor_enable", "logout", "static", "privacy", "terms",
+}
+
+
+@app.before_request
+def _require_staff_two_factor():
+    """Hold a platform admin without two-factor on its setup page (CO4u).
+
+    Staff can reach every studio, impersonation included, so for them a
+    password alone isn't enough. An account created before two-factor
+    existed, or provisioned since, signs in with its password once and is
+    walked through setup before /admin answers anything. Impersonation
+    passes through: `current_user` is then the tenant user, and the admin
+    only got there through this guard in the first place.
+    """
+    if not (current_user.is_authenticated and current_user.is_staff
+            and not current_user.two_factor_enabled):
+        return None
+    endpoint = request.endpoint
+    if endpoint is None or endpoint in _TWO_FACTOR_SETUP_ENDPOINTS:
+        return None
+    return redirect(url_for("two_factor_settings"))
+
+
 @app.before_request
 def _force_password_change():
     """Send a tenant user with an operator-assigned password to Settings →
@@ -1138,6 +1175,19 @@ def login():
             # Which of the two is off stays unsaid: it's the same phone
             # call either way.
             error = "That account is no longer active. Contact your administrator."
+        elif user.two_factor_enabled:
+            # Password right, but not signed in yet: the code is the second
+            # step (CO4s). The session holds only who's halfway through and
+            # since when. Failures are NOT cleared here: they clear once the
+            # code is right too, or a stolen password could alternate with a
+            # few code guesses forever without ever reaching the lockout.
+            session.clear()
+            session[_TWO_FACTOR_PENDING] = {
+                "user_id": user.id,
+                "since": time.time(),
+                "next": safe_next_path(request.args.get("next")) if user.is_tenant_user else None,
+            }
+            return redirect(url_for("login_verify"))
         else:
             login_throttle.clear(email)
             # A sign-in starts a fresh session (CO4o). Whatever the old one
@@ -1157,6 +1207,80 @@ def login():
     # A refused sign-in comes back with the address still typed; only the
     # password has to be entered again.
     return render_template("login.html", error=error, email=email, active_view=None)
+
+
+# Session key for a sign-in halfway done: password right, code not yet.
+_TWO_FACTOR_PENDING = "two_factor_pending"
+# How long the code step waits after the password, in seconds. Long enough
+# to find the phone, short enough that a half-signed-in browser left open
+# doesn't stay one step from an account.
+_TWO_FACTOR_PENDING_SECONDS = 5 * 60
+
+
+def _pending_two_factor_user():
+    """The user halfway through signing in, or None if nobody is or the
+    wait ran out. Re-checks the account is still allowed in."""
+    pending = session.get(_TWO_FACTOR_PENDING)
+    if not pending or time.time() - pending.get("since", 0) > _TWO_FACTOR_PENDING_SECONDS:
+        return None
+    user = db.session.get(User, pending.get("user_id"))
+    if user is None or not user.is_active or not user.two_factor_enabled:
+        return None
+    if user.company is not None and not user.company.is_active:
+        return None
+    return user
+
+
+@app.route("/login/verify", methods=["GET", "POST"])
+def login_verify():
+    """The second step of signing in: the authenticator code (CO4s).
+
+    One box takes either the 6-digit code or a recovery code (CO4t), so a
+    lost phone doesn't need a different page. Failures count against the
+    same per-address and per-IP lockout as passwords (CO4k-CO4l), and a
+    locked address is refused before the code is looked at.
+    """
+    if current_user.is_authenticated:
+        return redirect(_landing_page())
+    user = _pending_two_factor_user()
+    if user is None:
+        session.pop(_TWO_FACTOR_PENDING, None)
+        return redirect(url_for("login"))
+
+    error = None
+    if request.method == "POST":
+        client_ip = request.remote_addr or ""
+        if login_throttle.is_locked(user.email, client_ip):
+            app.logger.warning("Two-factor code refused: too many failed attempts")
+            return render_template("login_verify.html", error=login_throttle.LOCKED_MESSAGE,
+                                   active_view=None), 429
+        code = request.form.get("code", "")
+        used_recovery = False
+        if two_factor.verify_code(user, code):
+            pass
+        elif two_factor.use_recovery_code(user, code):
+            used_recovery = True
+        else:
+            db.session.rollback()
+            login_throttle.record_failure(user.email, client_ip)
+            error = "That code didn't work. Check the time on your phone, or use a recovery code."
+        if error is None:
+            db.session.commit()
+            login_throttle.clear(user.email)
+            next_url = session.get(_TWO_FACTOR_PENDING, {}).get("next")
+            # A fresh session, as for any sign-in (CO4o).
+            session.clear()
+            login_user(user)
+            track("auth.login")
+            if used_recovery:
+                app.logger.info("Signed in with a recovery code")
+                _flash_two_factor_notice(
+                    "You signed in with a recovery code, which can't be used again. "
+                    f"{two_factor.recovery_codes_left(user)} left.", "success", "codes")
+                return redirect(url_for("two_factor_settings"))
+            return redirect(next_url or _landing_page())
+
+    return render_template("login_verify.html", error=error, active_view=None)
 
 
 @app.route("/logout", methods=["GET", "POST"])
@@ -3238,6 +3362,124 @@ def change_password():
         _flash_settings_notice("Password changed.", "success")
 
     return redirect(url_for("settings_account"))
+
+
+# ---------------------------------------------------------------------------
+# Two-factor sign-in, per person (CO4s-CO4w). One page for staff and studio
+# users alike: staff can't reach Settings, and the setup is about a person,
+# not a company. Required for staff (`_require_staff_two_factor`), optional
+# for everyone else, linked from Settings -> Account.
+# ---------------------------------------------------------------------------
+
+_TWO_FACTOR_SETUP_SECRET = "two_factor_setup_secret"
+_TWO_FACTOR_NEW_CODES = "two_factor_new_codes"
+
+
+def _flash_two_factor_notice(message: str, category: str = "error",
+                             section: str | None = None) -> None:
+    """One-shot message for the two-factor page, in the section whose
+    button was pressed (MOD8)."""
+    session["two_factor_notice"] = {
+        "message": message, "category": category,
+        "section": section or request.form.get("notice_section") or None,
+    }
+
+
+def _me() -> User:
+    """The signed-in user's own row, for writing through."""
+    return db.session.get(User, current_user.id)
+
+
+@app.route("/account/two-factor")
+@login_required
+def two_factor_settings():
+    user = _me()
+    context = {
+        "required": user.is_staff,
+        "notice": session.pop("two_factor_notice", None),
+        "active_view": "admin" if user.is_staff else "settings",
+    }
+    if user.two_factor_enabled:
+        context.update(
+            enabled=True,
+            codes_left=two_factor.recovery_codes_left(user),
+            # Shown once, straight after they're issued, then gone.
+            new_codes=session.pop(_TWO_FACTOR_NEW_CODES, None),
+        )
+    else:
+        # The secret being set up lives in the session, encrypted, until a
+        # first code proves the scan worked: a failed setup leaves nothing
+        # on the account (CO4s).
+        secret = two_factor.decrypt_secret(session.get(_TWO_FACTOR_SETUP_SECRET) or "")
+        if secret is None:
+            secret = two_factor.new_secret()
+            session[_TWO_FACTOR_SETUP_SECRET] = two_factor.encrypt_secret(secret)
+        context.update(
+            enabled=False,
+            qr=two_factor.qr_svg(two_factor.provisioning_uri(user, secret)),
+            manual_key=two_factor.format_secret(secret),
+        )
+    return render_template("two_factor.html", **context)
+
+
+@app.route("/account/two-factor/enable", methods=["POST"])
+@login_required
+def two_factor_enable():
+    user = _me()
+    if user.two_factor_enabled:
+        return redirect(url_for("two_factor_settings"))
+    secret = two_factor.decrypt_secret(session.get(_TWO_FACTOR_SETUP_SECRET) or "")
+    step = two_factor.setup_step(secret, request.form.get("code", "")) if secret else None
+    if step is None:
+        _flash_two_factor_notice(
+            "That code didn't match. Scan the QR code again and enter the code "
+            "your app shows now.")
+        return redirect(url_for("two_factor_settings"))
+    codes = two_factor.enable(user, secret, step)
+    db.session.commit()
+    session.pop(_TWO_FACTOR_SETUP_SECRET, None)
+    session[_TWO_FACTOR_NEW_CODES] = codes
+    app.logger.info("Two-factor sign-in turned on for user %s", user.id)
+    _flash_two_factor_notice("Two-factor sign-in is on.", "success", "codes")
+    return redirect(url_for("two_factor_settings"))
+
+
+@app.route("/account/two-factor/recovery-codes", methods=["POST"])
+@login_required
+def two_factor_recovery_codes():
+    """A new set of recovery codes, replacing the old. Needs a current code,
+    so an unattended signed-in browser can't print itself a way back in."""
+    user = _me()
+    if not user.two_factor_enabled or not two_factor.verify_code(user, request.form.get("code", "")):
+        db.session.rollback()
+        _flash_two_factor_notice("That code didn't match the one your app shows now.")
+        return redirect(url_for("two_factor_settings"))
+    session[_TWO_FACTOR_NEW_CODES] = two_factor.replace_recovery_codes(user)
+    db.session.commit()
+    _flash_two_factor_notice("New recovery codes issued. The old ones no longer work.",
+                             "success")
+    return redirect(url_for("two_factor_settings"))
+
+
+@app.route("/account/two-factor/disable", methods=["POST"])
+@login_required
+def two_factor_disable():
+    """Turn it off: studio users only, and only with a current code. Staff
+    can't, it's required for them (CO4u); another admin can reset it from
+    /admin if a phone is lost (CO4v)."""
+    user = _me()
+    if user.is_staff:
+        _flash_two_factor_notice("Two-factor sign-in is required for platform admins.")
+        return redirect(url_for("two_factor_settings"))
+    if not user.two_factor_enabled or not two_factor.verify_code(user, request.form.get("code", "")):
+        db.session.rollback()
+        _flash_two_factor_notice("That code didn't match the one your app shows now.")
+        return redirect(url_for("two_factor_settings"))
+    two_factor.disable(user)
+    db.session.commit()
+    app.logger.info("Two-factor sign-in turned off for user %s", user.id)
+    _flash_two_factor_notice("Two-factor sign-in is off.", "success")
+    return redirect(url_for("two_factor_settings"))
 
 
 @app.route("/settings/invoicing", methods=["POST"])

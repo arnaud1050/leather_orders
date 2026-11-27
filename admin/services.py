@@ -287,6 +287,26 @@ def reset_password(user: User, password: str) -> str | None:
     return None
 
 
+def reset_two_factor(user: User) -> str | None:
+    """Turn off someone else's two-factor sign-in, for a lost phone (CO4v).
+
+    Never your own: from a session that's already signed in, that would
+    turn a stolen session into one that no longer needs the phone. Your own
+    goes through your account page, which asks for a current code. A staff
+    account reset here is walked through setup again at its next sign-in
+    (CO4u); a studio user simply signs in with their password.
+    """
+    import two_factor
+
+    if user.id == current_user.id:
+        return "Reset your own two-factor sign-in from your Two-factor page."
+    if not user.two_factor_enabled:
+        return f"{user.display_name} doesn't have two-factor sign-in on."
+    two_factor.disable(user)
+    db.session.commit()
+    return None
+
+
 def set_user_active(user: User, active: bool) -> str | None:
     """Switch a login off or back on — tenant user or platform staff alike.
 

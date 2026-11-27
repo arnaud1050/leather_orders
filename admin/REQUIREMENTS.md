@@ -118,6 +118,15 @@ must hold true*.
   staff account would just be a flag nothing ever checks. See
   `REQUIREMENTS.md` CO4h for the redirect this flag drives.
 
+- **PA13b.** A platform admin can **reset someone else's two-factor
+  sign-in** (`reset_two_factor()`, "Reset two-factor" beside a user with it
+  on, in both the company's user list and Admin users). Never their own:
+  from a session already signed in, that would let a stolen session drop
+  the need for the phone; their own goes through `/account/two-factor`,
+  which asks for a current code. A reset studio user signs in with their
+  password; a reset staff account sets it up again at its next sign-in.
+  See `REQUIREMENTS.md` CO4s-CO4v.
+
 ## 4. Deactivation
 
 Hard rule 8 — hide, don't delete — applied to tenants and the people in
@@ -299,6 +308,7 @@ What studios use, read from `usage_events`. The recording rules are
 | PA0.3, PA3, PA3a–PA3d | `tests/test_admin.py` — staff see /admin and nothing else, sub-nav |
 | PA4–PA8 | `tests/test_admin.py` — provisioning |
 | PA9–PA13, PA13a | `tests/test_admin.py` — identity, passwords |
+| PA13b | `tests/test_two_factor.py` — `test_an_admin_resets_a_studio_user`, `test_an_admin_cannot_reset_their_own`, `test_a_tenant_user_cannot_reset_anyone` |
 | PA14–PA17, PA17a–PA17c | `tests/test_admin.py` — deactivation and staff accounts |
 | PA18–PA23 | `tests/test_admin.py` — impersonation |
 | PA24, PA24a, PA25 | `tests/test_user_migration.py` |

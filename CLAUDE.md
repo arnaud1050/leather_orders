@@ -216,6 +216,7 @@ app.py                 # Flask app: config, auth wiring, routes/view logic
 models.py              # core SQLAlchemy models + first-boot bootstrap + run_migrations()
 crypto.py              # shared Fernet SecretBox — the one host helper a module may import
 login_throttle.py      # failed sign-ins table + per-email/per-IP lockout (CO4k–CO4m)
+two_factor.py          # TOTP two-factor sign-in + recovery codes (CO4s–CO4w)
 sample_data.py         # demo clients/orders/invoices — imported by NOTHING at startup
 billing_adapter.py     # the ONLY file that knows billing's "subject" means an Order
 showcase_adapter.py    # the ONLY file that knows a showcase piece can come from an Order
@@ -230,6 +231,8 @@ scripts/               # run by hand, never at startup
                        # --remove deletes what it imported (SC37)
   backfill_pickup.py   # marks existing orders "picked up"; dry run lists every
                        # uninvoiced order whose total would change, --apply writes
+  reset_two_factor.py  # turns off one account's two-factor, the last resort
+                       # when no admin can sign in (CO4v)
 
 admin/                 # platform admin: companies, users       -> admin/CLAUDE.md
                        # NOT a module — imports host models on purpose
@@ -293,6 +296,18 @@ nothing — and 20 from one client IP locks that IP; during a lock even the
 right password is refused. Counted in the `login_attempts` table, never in
 memory, because two gunicorn workers share nothing else (`CO4k`–`CO4m`).
 nginx can add its own `limit_req` in front; that lives in `server_config`.
+
+**Two-factor sign-in** (`two_factor.py`, TOTP with any authenticator app) is
+**required for platform staff** and optional for studio users (`CO4s`–`CO4w`).
+With it on, a right password goes to `/login/verify` without signing in, and
+the code finishes it; each code works once, and code failures share the
+password lockout (a right password doesn't clear them). Staff without it are
+held on `/account/two-factor` until it's on. Ten single-use recovery codes
+cover a lost phone; an admin can reset someone else's from `/admin`, and
+`scripts/reset_two_factor.py` is the server-side last resort. The secret is
+encrypted under `TOTP_ENCRYPTION_KEY`. **In tests, `platform_admin` has it on
+with a known secret**: sign staff in with `conftest.sign_in()`, which does
+both steps.
 
 **CSRF is app-wide** — Flask-WTF's `CSRFProtect` checks every POST,
 `/login` and every module included (`CO4n`). **Every new POST form needs

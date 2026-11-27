@@ -16,6 +16,7 @@ import login_throttle
 from login_throttle import LOCKED_MESSAGE, MAX_FAILURES_PER_EMAIL, MAX_FAILURES_PER_IP, WINDOW
 from models import User, db
 from tests.conftest import csrf_token_for
+from tests.conftest import sign_in as staff_sign_in
 
 import app as app_module
 
@@ -80,7 +81,7 @@ def test_safe_next_path(value, expected):
 
 def test_staff_still_ignore_next(app, platform_admin):
     with app.test_client() as client:
-        response = _sign_in(client, email="platform@example.com", next_url="/orders/5")
+        response = staff_sign_in(client, "platform@example.com", next_url="/orders/5")
     assert response.headers["Location"] == "/admin/companies"
 
 
@@ -247,12 +248,12 @@ def test_signing_out_mid_impersonation_leaves_admin_reachable(app, user, platfor
     `impersonator_id` outlived the sign-out."""
     tenant = _studio_user(user)
     with app.test_client() as client:
-        _sign_in(client, email="platform@example.com")
+        staff_sign_in(client, "platform@example.com")
         client.post(f"/admin/users/{tenant.id}/impersonate")
         client.post("/logout")
         with client.session_transaction() as session:
             assert "impersonator_id" not in session
-        response = _sign_in(client, email="platform@example.com")
+        response = staff_sign_in(client, "platform@example.com")
         assert response.headers["Location"] == "/admin/companies"
         assert client.get("/admin/companies").status_code == 200
 
@@ -263,7 +264,7 @@ def test_a_stale_impersonation_key_does_not_survive_sign_in(app, platform_admin)
     with app.test_client() as client:
         with client.session_transaction() as session:
             session["impersonator_id"] = platform_admin.id
-        _sign_in(client, email="platform@example.com")
+        staff_sign_in(client, "platform@example.com")
         assert client.get("/admin/companies").status_code == 200
 
 

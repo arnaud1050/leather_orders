@@ -178,6 +178,18 @@ class User(db.Model, UserMixin):
     # one would be wrong the day a second user exists. Used by the compose
     # box and appended to AI-drafted replies — see `signature_block`.
     signature = db.Column(db.Text)
+    # Two-factor sign-in (TOTP, REQUIREMENTS CO4s–CO4w; two_factor.py does
+    # the work). The shared secret is stored *encrypted* (two_factor's
+    # SecretBox, TOTP_ENCRYPTION_KEY): with it, anyone can mint codes, so it
+    # is worse to leak than the password hash next to it. Set when the user
+    # has scanned it and proved it with a first code, never before — a
+    # half-finished setup lives in their session, not here.
+    totp_secret = db.Column(db.Text)
+    totp_enabled_at = db.Column(db.DateTime)
+    # The 30-second time step of the last code accepted. A code is refused
+    # for any step at or before it, so one overheard code can't be replayed
+    # in the minute or so it would otherwise stay valid.
+    totp_last_step = db.Column(db.Integer)
 
     company = db.relationship("Company", back_populates="users")
 
@@ -219,6 +231,10 @@ class User(db.Model, UserMixin):
         """
         signature = (self.signature or "").strip()
         return f"\n\n{signature}" if signature else ""
+
+    @property
+    def two_factor_enabled(self) -> bool:
+        return self.totp_enabled_at is not None and bool(self.totp_secret)
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
@@ -782,6 +798,12 @@ _ADDED_COLUMNS = [
     ("orders", "discount_kind", "VARCHAR(10)"),
     ("orders", "discount_value", "FLOAT"),
     ("orders", "discount_label", "VARCHAR(60)"),
+    # Two-factor sign-in. All null on every existing account: nobody had it
+    # before it existed, and platform staff are walked through setting it up
+    # at their next sign-in rather than here (CO4u).
+    ("users", "totp_secret", "TEXT"),
+    ("users", "totp_enabled_at", "DATETIME"),
+    ("users", "totp_last_step", "INTEGER"),
 ]
 
 # Free-text address columns replaced by street/city/province/postal_code.
@@ -849,6 +871,9 @@ _USERS_TABLE_DDL = (
     " is_active BOOLEAN NOT NULL DEFAULT 1,"
     " is_platform_admin BOOLEAN NOT NULL DEFAULT 0,"
     " must_change_password BOOLEAN NOT NULL DEFAULT 0,"
+    " totp_secret TEXT,"
+    " totp_enabled_at DATETIME,"
+    " totp_last_step INTEGER,"
     " PRIMARY KEY (id),"
     " FOREIGN KEY(company_id) REFERENCES companies (id))"
 )

@@ -49,6 +49,19 @@ every page fixture (`page`, `adminPage`, `freshUserPage`, `invoicingPage`)
 and fails the spec if Chromium logged a CSP violation, so every page and
 interaction the e2e suite drives doubles as the CSP check.
 
+**`tests/test_two_factor.py`** defends `CO4s`–`CO4w`, two-factor sign-in.
+Codes are real TOTP codes for a known secret; the clock is
+`two_factor._now`, frozen and moved in 30-second steps by a fixture, and
+the code step's 5-minute wait is `app.time`. Beyond the happy path it pins
+the things that fail quietly: nothing stored before setup is proved, the
+setup code being spent, replay, a right password **not** resetting code
+failures, recovery codes stored only as digests, staff held on setup, and
+an unreadable secret failing closed. **The `platform_admin` fixture has
+two-factor on** (`STAFF_TOTP_SECRET`), so every admin test exercises both
+steps; `conftest.sign_in()` signs anyone in through both, forgetting the
+last code step first so one test can sign the same account in twice (the
+replay rule has its own test here). In e2e, `section-gaps.spec.ts` is the one spec that signs in as staff: it sets two-factor up from the key the page shows, computing codes with `e2e/lib/totp.ts`, and measures `/account/two-factor` in both states.
+
 **`tests/test_login_security.py`** defends `CO4g` (`?next=` must be a path
 on this site; parametrised over the browser tricks — `//`, `/\`, encoded
 and double-encoded slashes, a tab, `javascript:`) and the sign-in limits

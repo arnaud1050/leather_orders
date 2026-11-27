@@ -2,6 +2,7 @@ Flask>=3.0
 Flask-SQLAlchemy>=3.1
 Flask-Login>=0.6
 Flask-WTF>=1.2           # CSRFProtect, app-wide (REQUIREMENTS CO4n); no WTForms forms used
+pyotp>=2.9               # two-factor sign-in codes (two_factor.py, CO4s); pure Python
 # zoneinfo has no IANA database of its own on Windows, where a stock Python
 # raises ZoneInfoNotFoundError for "America/Vancouver" — the timezone setting
 # at /settings/general needs this to resolve at all.

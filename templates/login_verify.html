@@ -1,0 +1,36 @@
+{#
+  The second step of signing in (REQUIREMENTS CO4s, CO4t): the password was
+  right, and the authenticator code finishes it. The one box also takes a
+  recovery code, so a lost phone needs no other page.
+#}
+{% extends "base.html" %}
+{% block title %}Sign in — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger login-page">
+
+  <header class="detail-header">
+    <h1>Atelier Order Book</h1>
+    <p class="detail-subtitle">Enter the code from your authenticator app</p>
+  </header>
+
+  <form method="post" class="detail-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if error %}
+    {% from "_save_notice.html" import save_notice %}
+    {{ save_notice({'message': error, 'category': 'error'}) }}
+    {% endif %}
+    <div class="detail-form__field">
+      <label>Code
+        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="12" required autofocus>
+      </label>
+      <p class="detail-note">Lost your phone? Enter one of your recovery codes instead.</p>
+    </div>
+    <div>
+      <button type="submit" class="btn-primary">Sign in</button>
+      <a href="{{ url_for('login') }}" class="btn-secondary">Cancel</a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

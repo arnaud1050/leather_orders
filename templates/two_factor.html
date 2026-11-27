@@ -1,0 +1,126 @@
+{#
+  Two-factor sign-in for the signed-in person (REQUIREMENTS CO4s-CO4w).
+  One page for staff and studio users: staff see the admin nav and can't
+  turn it off (it's required for them, CO4u); studio users reach it from
+  Settings -> Account and see that nav.
+#}
+{% extends "base.html" %}
+{% block title %}Two-factor sign-in — Atelier Order Book{% endblock %}
+{% block content %}
+<div class="ledger">
+
+  <header class="detail-header">
+    {% if required %}
+    <h1>Platform admin</h1>
+    <p class="detail-subtitle">Two-factor sign-in</p>
+    {% else %}
+    <h1>Settings</h1>
+    <p class="detail-subtitle">Two-factor sign-in</p>
+    {% endif %}
+  </header>
+
+  {% if required %}
+    {% with section = 'two-factor' %}{% include "_admin_nav.html" %}{% endwith %}
+  {% else %}
+    {% with section = 'account' %}{% include "_settings_nav.html" %}{% endwith %}
+  {% endif %}
+
+  {% if required and not enabled %}
+  <p class="warning-note">Platform admins need two-factor sign-in. Set it up to continue.</p>
+  {% endif %}
+
+  {% from "_save_notice.html" import notice_field, notice_slot, page_notice %}
+  {{ page_notice(notice, ['setup', 'codes', 'turn-off']) }}
+
+  {% if not enabled %}
+
+  <section class="detail-orders">
+    <h2>Set up</h2>
+    {{ notice_slot(notice, 'setup') }}
+    <p class="detail-note">
+      Signing in will ask for a 6-digit code from an authenticator app on your phone, as well as
+      your password. Any authenticator app works: Google Authenticator, Microsoft Authenticator,
+      Aegis, or the one in 1Password or Bitwarden.
+    </p>
+    <ol class="two-factor-steps">
+      <li>In the app, add an account and scan this code.
+        <div class="two-factor-qr-box">{{ qr }}</div>
+        <p class="detail-note">Can't scan it? Type this key instead:
+          <span class="two-factor-key">{{ manual_key }}</span></p>
+      </li>
+      <li>Enter the 6-digit code the app now shows.
+        <form method="post" action="{{ url_for('two_factor_enable') }}" class="detail-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ notice_field('setup') }}
+          <label>Code
+            <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
+                   pattern="[0-9 ]{6,8}" maxlength="8" required autofocus>
+          </label>
+          <div>
+            <button type="submit" class="btn-primary">Turn on two-factor sign-in</button>
+          </div>
+        </form>
+      </li>
+    </ol>
+  </section>
+
+  {% else %}
+
+  <section class="detail-orders">
+    <h2>Recovery codes</h2>
+    {{ notice_slot(notice, 'codes') }}
+    {% if new_codes %}
+    <p class="warning-note">
+      Save these now: they're shown only once. Each one signs you in once without your phone.
+    </p>
+    <ul class="two-factor-codes">
+      {% for code in new_codes %}<li>{{ code }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    <p class="detail-note">
+      Two-factor sign-in is on. You have <strong>{{ codes_left }}</strong> unused recovery
+      code{{ '' if codes_left == 1 else 's' }}, for signing in if your phone is lost.
+      Getting new ones cancels the old ones.
+    </p>
+    <form method="post" action="{{ url_for('two_factor_recovery_codes') }}" class="detail-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ notice_field('codes') }}
+      <label>Code from your app
+        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
+               pattern="[0-9 ]{6,8}" maxlength="8" required>
+      </label>
+      <div>
+        <button type="submit" class="btn-secondary">Get new recovery codes</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="detail-orders">
+    <h2>Turn off</h2>
+    {{ notice_slot(notice, 'turn-off') }}
+    {% if required %}
+    <p class="detail-note">
+      Required for platform admins, so it can't be turned off here. If your phone is lost, sign in
+      with a recovery code, or ask another platform admin to reset it from Admin users.
+    </p>
+    {% else %}
+    <p class="detail-note">Signing in will ask for your password only.</p>
+    <form method="post" action="{{ url_for('two_factor_disable') }}" class="detail-form"
+          data-confirm="Turn off two-factor sign-in? Your recovery codes stop working too.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {{ notice_field('turn-off') }}
+      <label>Code from your app
+        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
+               pattern="[0-9 ]{6,8}" maxlength="8" required>
+      </label>
+      <div>
+        <button type="submit" class="btn-secondary">Turn off two-factor sign-in</button>
+      </div>
+    </form>
+    {% endif %}
+  </section>
+
+  {% endif %}
+
+</div>
+{% endblock %}
