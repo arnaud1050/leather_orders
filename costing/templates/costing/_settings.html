@@ -3,6 +3,7 @@
    posts to costing.update_settings (RC10–RC12). #}
 
 {% from "_save_notice.html" import notice_field, notice_slot %}
+{% from "_icons.html" import icon_info, icon_chevron_down %}
 <h2>Labour and overhead</h2>
 {{ notice_slot(notice, 'costs') }}
 <p class="detail-note">
@@ -10,6 +11,9 @@
   top. These decide the margin on every order's Costs tab and the price its
   calculator suggests. None of it is ever shown to a client.
 </p>
+<details class="explainer">
+<summary class="explainer__summary">{{ icon_info() }}<span><span class="explainer__text">What counts as overhead, and how to pick the percentage</span>&nbsp;<span class="explainer__chevron">{{ icon_chevron_down() }}</span></span></summary>
+<div class="explainer__body">
 <p class="detail-note">
   <strong>Overhead</strong> is what it costs to keep the studio running that
   can't be pinned to one order: rent, power and heating, tools wearing out
@@ -25,6 +29,8 @@
   cover rent and tools rather than to pay you, set overhead to 0 so it isn't
   counted twice.
 </p>
+</div>
+</details>
 <p class="detail-note">
   Time already logged keeps the rate it was logged at, so changing the rate
   only affects time logged from now on. Overhead and the target margin are

@@ -66,6 +66,19 @@ changes made:
     sections, "Delete" for the two `.settings-source-list`-shaped ones)
     specifically so this rule holds everywhere, not just in the newer
     modules it was first built for.
+11. **Long help text folds away behind one line, and only one way:**
+    `.explainer`, a native `<details>` (no script, so click, tap and keyboard
+    all work and nothing needs a CSP nonce). The summary is `icon_info()`, an
+    underlined question in note size, and `icon_chevron_down()` that turns up
+    when open; it sits inline after the last word so it doesn't drift right
+    when the line wraps on a phone. What opens is ordinary `.detail-note`
+    paragraphs inside `.explainer__body`, behind a 2px hairline rule down the
+    left that marks where the explanation ends. Chosen over a "?" tooltip
+    (useless on touch, too small for paragraphs), a dialog (hides the text
+    from the form beside it), hairlines above and below (read as a new
+    section) and a tinted box (tints mean warnings here). Closed by default;
+    a short note that explains what a button does stays outside it. First
+    used on Settings → Costs.
 
 Current tokens (top of `style.css`):
 - `--paper` / `--paper-deep` — background (ivory / mid grey)

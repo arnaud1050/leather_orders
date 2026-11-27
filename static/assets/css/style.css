@@ -2501,6 +2501,75 @@ button[aria-busy="true"] {
   font-style: italic;
 }
 
+/* Long help text, folded away behind one line: the native <details>
+   disclosure, so it opens on click, tap or keyboard with no script. The
+   summary is an info icon, the question, and a chevron that turns up when
+   open (icon_info / icon_chevron_down in _icons.html). What opens is
+   ordinary .detail-note paragraphs behind a hairline rule down the left,
+   so it's clear where the explanation stops and the page resumes. */
+.explainer {
+  margin-top: 12px;
+}
+
+/* Flex for the icon, inline for the rest: the chevron follows the last
+   word, so on a phone, where the line wraps, it doesn't drift to the
+   right edge. */
+.explainer__summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.explainer__summary::-webkit-details-marker {
+  display: none;
+}
+
+.explainer__text {
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 3px;
+}
+
+.explainer__summary svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.explainer__chevron {
+  display: inline-block;
+  vertical-align: -3px;
+  transition: transform 0.15s ease;
+}
+
+.explainer__chevron svg {
+  display: block;
+}
+
+.explainer[open] .explainer__chevron {
+  transform: rotate(180deg);
+}
+
+/* The rule starts under the info icon's centre (7px of a 15px icon). */
+.explainer__body {
+  margin-left: 7px;
+  padding-left: 12px;
+  border-left: 2px solid var(--hairline);
+}
+
+.explainer__body > .detail-note:first-child {
+  margin-top: 8px;
+}
+
+.explainer__summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 .checkbox-group__hidden-tag {
   font-size: 0.68rem;
   font-style: italic;
