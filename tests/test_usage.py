@@ -134,8 +134,9 @@ def test_the_costs_events_reach_the_admin_report_under_their_own_area(tenant, or
     """The report lists every catalog event, so a new feature shows up there
     as soon as it's in EVENTS."""
     db.session.commit()
+    tenant.post(f"/orders/{order.id}/costs/rate", data={"hourly_rate": "45"})  # costing RC12
     tenant.post(f"/orders/{order.id}/costs/time", data={"worked_on": "2026-07-03", "hours": "1"})
-    rows = {row["event"]: row for row in usage_store.feature_report(since=None)}
+    rows ={row["event"]: row for row in usage_store.feature_report(since=None)}
     assert rows["order.time_logged"]["area"] == "Costs"
     assert rows["order.time_logged"]["uses"] == 1
     assert {"view.order_costs", "order.price_estimated", "account.two_factor_on"} <= set(rows)

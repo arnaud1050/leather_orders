@@ -72,9 +72,18 @@ negative.
   no price that reaches it); anything outside, or anything that isn't a
   finite number, is refused with a red notice and nothing is saved. A field
   the form doesn't send is left alone (hard rule 9).
-- **RC12.** With no hourly rate set, the Costs tab says so in an amber
-  `.warning-note` linking to Settings → Costs, since time logged then
-  carries $0 of labour.
+- **RC12.** **No rate, no time.** While the hourly rate is $0, the Costs
+  tab's Time section shows an amber `.warning-note` ("Set your hourly rate
+  to start") and a form asking for the rate alone, in place of the log
+  form; the Pricing section shows a note in place of the calculator. The
+  server refuses logging time and saving an estimate too, with a red notice
+  in the section, and nothing is written: an entry snapshots its rate
+  (`RC4`), so time logged at $0 would count the work as free for good.
+  Saving the rate there (`POST /orders/<id>/costs/rate`, more than $0, up
+  to the RC11 cap) writes only the rate, leaving overhead and the target
+  margin alone, and the panel is gone from then on. Entries already logged,
+  the Margin section and Analytics are untouched. A studio that really
+  wants a $0 rate can't log time; that's accepted.
 
 ## 4. The pricing calculator
 
@@ -154,7 +163,7 @@ All in `tests/test_costing.py` unless named.
 | RC9 | `test_no_hours_means_no_hourly_rate_rather_than_zero`, `test_no_revenue_means_no_margin_rather_than_a_division_error`, `test_a_loss_reads_as_a_negative_margin`, `test_an_order_with_no_time_says_its_margin_counts_no_labour`, `test_underpricing_is_flagged` |
 | RC10 | `test_a_company_that_never_saved_reads_the_defaults_without_a_row`, `test_the_settings_form_saves`, `test_settings_are_per_company` |
 | RC11 | `test_settings_out_of_range_are_refused_and_nothing_is_written`, `test_a_settings_value_that_isnt_a_usable_number_is_refused`, `test_a_settings_field_the_form_left_out_is_left_alone` |
-| RC12 | `test_an_order_with_no_time_says_its_margin_counts_no_labour` |
+| RC12 | `test_with_no_rate_the_tab_asks_for_one_instead_of_time_and_the_calculator`, `test_once_a_rate_is_set_the_panel_is_gone`, `test_with_no_rate_time_and_estimates_are_refused`, `test_setting_the_rate_from_the_tab_saves_only_the_rate`, `test_a_rate_from_the_tab_that_isnt_one_is_refused`, `test_another_tenants_order_cant_take_a_rate` |
 | RC20 | `test_saving_an_estimate_shows_the_suggestion`, `test_an_estimate_field_left_off_the_form_keeps_its_value`, `test_a_bad_estimate_is_refused` |
 | RC21 | `test_the_suggested_price_makes_exactly_the_target_margin`, `test_a_target_margin_is_capped_below_one_hundred_percent`, `test_the_estimate_uses_todays_rate` |
 | RC22 | `test_saving_an_estimate_shows_the_suggestion` |

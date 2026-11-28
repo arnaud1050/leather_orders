@@ -65,6 +65,40 @@ def _back(order_id: int):
     return redirect(request.form.get("return_to") or url_for("order_costs", order_id=order_id))
 
 
+NO_RATE = "Set your hourly rate first: time logged without one would count your work as free."
+
+
+def _rate_is_set() -> bool:
+    """RC12: time and the calculator wait for a rate. Each entry snapshots
+    the rate (RC4), so an entry logged at $0 would stay $0 for good."""
+    return services.settings_for(current_user.company_id).hourly_rate > 0
+
+
+# ---------------------------------------------------------------------------
+# The rate, from the Costs tab — /orders/<id>/costs/rate
+# ---------------------------------------------------------------------------
+
+@bp.route("/orders/<int:order_id>/costs/rate", methods=["POST"])
+@login_required
+def set_rate(order_id: int):
+    """The Costs tab's "Set your hourly rate to start" panel (RC12). Only the
+    rate: overhead and the target margin stay as they are (hard rule 9)."""
+    order = _resolve_order(order_id)
+    rate = _number(request.form.get("hourly_rate"))
+    if rate is None or rate <= 0:
+        _flash_order_notice("Enter your hourly rate, more than $0.")
+        return _back(order.id)
+    try:
+        services.update_settings(current_user.company_id, hourly_rate=rate)
+    except ValueError as error:
+        _flash_order_notice(str(error))
+        return _back(order.id)
+    db.session.commit()
+    track("settings.changed", section="costs")
+    _flash_order_notice("Hourly rate saved. You can log time now.", "success")
+    return _back(order.id)
+
+
 # ---------------------------------------------------------------------------
 # Time — /orders/<id>/costs/time
 # ---------------------------------------------------------------------------
@@ -73,6 +107,9 @@ def _back(order_id: int):
 @login_required
 def add_time(order_id: int):
     order = _resolve_order(order_id)
+    if not _rate_is_set():
+        _flash_order_notice(NO_RATE)
+        return _back(order.id)
     try:
         worked_on = date.fromisoformat(request.form.get("worked_on", ""))
     except ValueError:
@@ -115,6 +152,9 @@ def delete_time(order_id: int, entry_id: int):
 @login_required
 def save_estimate(order_id: int):
     order = _resolve_order(order_id)
+    if not _rate_is_set():
+        _flash_order_notice(NO_RATE)
+        return _back(order.id)
     existing = services.estimate_for(order.id)
     # A field the form didn't send keeps what was saved (hard rule 9); one
     # sent blank means "use the default" for the two optional inputs.

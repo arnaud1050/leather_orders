@@ -88,6 +88,13 @@ there (hard rule 12).
   **Pricing**. Underpricing is the amber `.warning-note`: it's a standing
   condition, which is exactly what amber is for (hard rule 7), and it adds no
   badge.
+- **No rate, no time** (`RC12`). Until the rate is above $0 the Time
+  section asks for the rate alone (`set_rate`) instead of offering the log
+  form, and the calculator is hidden; `add_time` and `save_estimate` refuse
+  too. A warning was the first version, but the snapshot (`RC4`) makes a
+  $0 entry permanent, so the one mistake this feature can't repair later is
+  blocked instead of just flagged. Only the rate is asked for on the tab:
+  overhead and margin can wait, and the panel links to Settings → Costs.
 - **"Add as a line item"** posts to app.py's `add_suggested_line()`, not to
   this blueprint: an `OrderLine` is a host model. It only ever adds a line
   (`RC23`); the amount is the difference when lines exist, so the total lands

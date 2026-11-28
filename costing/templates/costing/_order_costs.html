@@ -25,19 +25,14 @@
 <section class="detail-lines">
   <h2>Time</h2>
   {{ notice_slot(notice, 'time') }}
+  {% set rate_set = costing_settings.hourly_rate > 0 %}
   <p class="detail-note">
     Internal cost tracking only — never shown to the client. Each entry keeps
     the hourly rate in force when it was logged, so changing the rate later
-    doesn't rewrite what this order cost. Today's rate is
+    doesn't rewrite what this order cost.{% if rate_set %} Today's rate is
     {{ money(costing_settings.hourly_rate) }}/h, set in
-    <a href="{{ url_for('settings_costs') }}">Settings → Costs</a>.
+    <a href="{{ url_for('settings_costs') }}">Settings → Costs</a>.{% endif %}
   </p>
-  {% if not costing_settings.hourly_rate %}
-  <p class="warning-note">
-    No hourly rate is set yet, so time logged now counts as $0 of labour.
-    Set one in <a href="{{ url_for('settings_costs') }}">Settings → Costs</a> first.
-  </p>
-  {% endif %}
 
   {% if time_entries %}
   <ul class="doc-list">
@@ -65,6 +60,26 @@
   <p class="detail-note">No time logged on this order yet.</p>
   {% endif %}
 
+  {% if not rate_set %}
+  {# RC12: no time and no calculator until there's a rate, because an entry
+     keeps the rate it was logged at and $0 would stay $0 for good. Only the
+     rate is asked for here; overhead and the target margin can wait. #}
+  <p class="warning-note">
+    Set your hourly rate to start. Each time entry keeps the rate it was
+    logged at, so time logged without one would count your work as free
+    for good. Overhead and your target margin are in
+    <a href="{{ url_for('settings_costs') }}">Settings → Costs</a>.
+  </p>
+  <form method="post" action="{{ url_for('costing.set_rate', order_id=order.id) }}" class="detail-form detail-inline-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ notice_field('time') }}
+    <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
+    <label>Hourly rate ($)<input type="number" name="hourly_rate" min="0.01" max="10000" step="0.01" inputmode="decimal" required placeholder="e.g. 45"></label>
+    <div>
+      <button type="submit" class="btn-primary">Save rate</button>
+    </div>
+  </form>
+  {% else %}
   <form method="post" action="{{ url_for('costing.add_time', order_id=order.id) }}" class="detail-form detail-inline-add">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ notice_field('time') }}
@@ -77,6 +92,7 @@
       <button type="submit" class="btn-primary">Log time</button>
     </div>
   </form>
+  {% endif %}
 </section>
 
 <section class="detail-lines">
@@ -126,6 +142,12 @@
 <section class="detail-lines">
   <h2>Pricing</h2>
   {{ notice_slot(notice, 'pricing') }}
+  {% if not rate_set %}
+  <p class="detail-note">
+    The suggested price is worked out from your hourly rate, so the
+    calculator appears once the rate is set, in the Time section above.
+  </p>
+  {% else %}
   {% call explainer("How the suggested price is worked out") %}
   <p class="detail-note">
     Price the work before it's done: the hours you expect, at today's rate,
@@ -193,6 +215,7 @@
       <button type="submit" class="btn-primary">Add as a line item</button>
     </div>
   </form>
+  {% endif %}
   {% endif %}
   {% endif %}
 </section>

@@ -250,7 +250,9 @@ def test_logging_time_through_the_tab(logged_in, company, order, user):
     assert "1h 50m" in body
 
 
-def test_a_missing_minutes_field_is_just_hours(logged_in, order):
+def test_a_missing_minutes_field_is_just_hours(logged_in, company, order):
+    _rate(company)
+    db.session.commit()
     logged_in.post(f"/orders/{order.id}/costs/time", data={"worked_on": "2026-07-03", "hours": "2"})
     assert TimeEntry.query.one().minutes == 120
 
@@ -261,7 +263,9 @@ def test_a_missing_minutes_field_is_just_hours(logged_in, order):
     ({"worked_on": "2026-07-03", "hours": "-1"}, "can't be negative"),
     ({"worked_on": "2026-07-03", "hours": "30"}, "24 hours"),
 ])
-def test_a_bad_time_entry_is_refused_in_its_section(logged_in, order, form, message):
+def test_a_bad_time_entry_is_refused_in_its_section(logged_in, company, order, form, message):
+    _rate(company)
+    db.session.commit()
     body = logged_in.post(f"/orders/{order.id}/costs/time",
                           data={**form, "notice_section": "time"},
                           follow_redirects=True).get_data(as_text=True)
@@ -340,7 +344,73 @@ def test_an_order_with_no_time_says_its_margin_counts_no_labour(logged_in, order
     body = logged_in.get(f"/orders/{order.id}/costs").get_data(as_text=True)
     assert "No time logged on this order yet." in body
     assert "counts no labour" in body
-    assert "No hourly rate is set yet" in body
+
+
+# --- No rate, no time (RC12) -------------------------------------------------
+
+def test_with_no_rate_the_tab_asks_for_one_instead_of_time_and_the_calculator(logged_in, order):
+    body = logged_in.get(f"/orders/{order.id}/costs").get_data(as_text=True)
+    assert "Set your hourly rate to start." in body
+    assert f'action="/orders/{order.id}/costs/rate"' in body
+    assert "Log time" not in body
+    assert "Work out price" not in body
+    assert "appears once the rate is set" in body
+    assert "Margin" in body                              # still shown
+
+
+def test_once_a_rate_is_set_the_panel_is_gone(logged_in, company, order):
+    _rate(company, rate=45)
+    db.session.commit()
+    body = logged_in.get(f"/orders/{order.id}/costs").get_data(as_text=True)
+    assert "Set your hourly rate to start." not in body
+    assert "Log time" in body and "Work out price" in body
+    assert "Today's rate is\n    $45.00/h" in body
+
+
+@pytest.mark.parametrize("url, form, section", [
+    ("time", {"worked_on": "2026-07-03", "hours": "1"}, "time"),
+    ("estimate", {"hours": "4"}, "pricing"),
+])
+def test_with_no_rate_time_and_estimates_are_refused(logged_in, order, url, form, section):
+    """The server holds the gate too, not just the page."""
+    body = logged_in.post(f"/orders/{order.id}/costs/{url}",
+                          data={**form, "notice_section": section},
+                          follow_redirects=True).get_data(as_text=True)
+    assert located(body, "Set your hourly rate first") == (section, "error")
+    assert TimeEntry.query.count() == 0 and OrderEstimate.query.count() == 0
+
+
+def test_setting_the_rate_from_the_tab_saves_only_the_rate(logged_in, company, order):
+    _rate(company, rate=0, overhead=12, target=40)
+    db.session.commit()
+    body = logged_in.post(f"/orders/{order.id}/costs/rate", data={
+        "hourly_rate": "55", "overhead_percent": "99", "notice_section": "time",
+        "return_to": f"/orders/{order.id}/costs"}, follow_redirects=True).get_data(as_text=True)
+    assert located(body, "Hourly rate saved.") == ("time", "success")
+    assert "Log time" in body
+    db.session.expire_all()
+    row = db.session.get(CostingSettings, company.id)
+    assert (row.hourly_rate, row.overhead_percent, row.target_margin_percent) == (55, 12, 40)
+
+
+@pytest.mark.parametrize("value, message", [
+    ("", "more than $0"), ("0", "more than $0"), ("-5", "more than $0"),
+    ("abc", "more than $0"), ("inf", "more than $0"), ("20000", "$10,000"),
+])
+def test_a_rate_from_the_tab_that_isnt_one_is_refused(logged_in, company, order, value, message):
+    body = logged_in.post(f"/orders/{order.id}/costs/rate", data={
+        "hourly_rate": value, "notice_section": "time"},
+        follow_redirects=True).get_data(as_text=True)
+    assert located(body, message) == ("time", "error")
+    assert "Set your hourly rate to start." in body
+    assert services.settings_for(company.id).hourly_rate == 0
+
+
+def test_another_tenants_order_cant_take_a_rate(logged_in, other_company):
+    foreign = _foreign_order(other_company)
+    db.session.commit()
+    response = logged_in.post(f"/orders/{foreign.id}/costs/rate", data={"hourly_rate": "50"})
+    assert response.status_code == 404
 
 
 def test_underpricing_is_flagged(logged_in, company, order):
@@ -380,6 +450,7 @@ def test_saving_an_estimate_shows_the_suggestion(logged_in, company, order):
 
 
 def test_an_estimate_field_left_off_the_form_keeps_its_value(logged_in, company, order):
+    _rate(company)
     services.save_estimate(company.id, order.id, hours=5, material_cost=80,
                            target_margin_percent=40)
     db.session.commit()
@@ -394,7 +465,9 @@ def test_an_estimate_field_left_off_the_form_keeps_its_value(logged_in, company,
     ({"hours": "4", "target_margin_percent": "120"}, "between 0% and 95%"),
     ({"hours": "4", "material_cost": "-3"}, "can't be negative"),
 ])
-def test_a_bad_estimate_is_refused(logged_in, order, form, message):
+def test_a_bad_estimate_is_refused(logged_in, company, order, form, message):
+    _rate(company)
+    db.session.commit()
     body = logged_in.post(f"/orders/{order.id}/costs/estimate",
                           data={**form, "notice_section": "pricing"},
                           follow_redirects=True).get_data(as_text=True)
@@ -483,6 +556,7 @@ def test_labour_by_order_is_scoped_to_the_company(company, other_company, order)
     ("get", "/orders/1/costs"), ("get", "/settings/costs"),
     ("post", "/orders/1/costs/time"), ("post", "/orders/1/costs/time/1/delete"),
     ("post", "/orders/1/costs/estimate"), ("post", "/orders/1/costs/suggested-line"),
+    ("post", "/orders/1/costs/rate"),
     ("post", "/settings/costs"),
 ])
 def test_every_costs_route_needs_sign_in(app, method, url):
@@ -585,13 +659,14 @@ def test_the_costs_actions_are_recorded(app, user, company, order):
     with app.test_client() as tenant:
         tenant.post("/login", data={"email": "admin@example.com", "password": "changeme"})
         tenant.get(f"/orders/{order.id}/costs")
+        tenant.post(f"/orders/{order.id}/costs/rate", data={"hourly_rate": "40"})
         tenant.post(f"/orders/{order.id}/costs/time", data={"worked_on": "2026-07-03", "hours": "1"})
         tenant.post(f"/orders/{order.id}/costs/estimate", data={"hours": "4"})
-        tenant.post("/settings/costs", data={"hourly_rate": "40"})
+        tenant.post("/settings/costs", data={"hourly_rate": "45"})
         tenant.post(f"/orders/{order.id}/costs/suggested-line",
                     data={"description": "x", "unit_price": "5"})
     assert len(events("view.order_costs")) == 1
     assert len(events("order.time_logged")) == 1
     assert len(events("order.price_estimated")) == 1
-    assert [r.props for r in events("settings.changed")] == ['{"section": "costs"}']
+    assert [r.props for r in events("settings.changed")] == ['{"section": "costs"}'] * 2
     assert len(events("order.line_added")) == 1

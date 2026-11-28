@@ -142,6 +142,15 @@ test.describe("Sections sit 40px apart on every page (design.md, Vertical rhythm
     test.skip(!order, "no order in the seed");
     const tab = `/orders/${order}/costs`;
     await gotoPath(adminPage, tab);
+    // A fresh seed has no hourly rate, so the tab asks for one before it
+    // offers the log form and the calculator (costing RC12). Set it there.
+    const saveRate = adminPage.getByRole("button", { name: "Save rate" });
+    if (await saveRate.isVisible()) {
+      const rate = adminPage.locator("form", { has: saveRate });
+      await rate.getByLabel("Hourly rate ($)").fill("45");
+      await saveRate.click();
+      await adminPage.waitForURL(new RegExp(`${tab}`));
+    }
     const time = adminPage.locator("form", { has: adminPage.getByRole("button", { name: "Log time" }) });
     await time.getByLabel("Hours").fill("3");
     await time.getByRole("button", { name: "Log time" }).click();
